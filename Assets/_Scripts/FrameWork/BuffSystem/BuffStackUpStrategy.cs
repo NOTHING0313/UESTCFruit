@@ -34,11 +34,14 @@ namespace BuffSystem
         public string ID => "CyclicallyAddStackOnlyBuffStackUpStrategy";
         public void Apply(Buff buff, BuffRuntimeData data)
         {
-            buff.RunTimeData.Stack += data.Stack;
-            if (buff.ConfigData.MaxStack > 0 && !buff.ConfigData.Unlimited)
-                buff.RunTimeData.Stack %= buff.ConfigData.MaxStack;
-            else
+            if (data.Stack <= 0) return;
+            if (buff.ConfigData.Unlimited || buff.ConfigData.MaxStack <= 0)
+            {
                 buff.RunTimeData.Stack += data.Stack;
+                return;
+            }
+            int total = buff.RunTimeData.Stack + data.Stack;
+            buff.RunTimeData.Stack = ((total - 1) % buff.ConfigData.MaxStack) + 1;
         }
     }
     public sealed class AddStackAndResetRuntimeBuffStackUpStrategy : IBuffStackUpStrategy

@@ -73,6 +73,11 @@ namespace BuffSystem
         }
         public void AddBuff<TBuff>(int configId, BuffRuntimeData runTimeData, Action<Buff, BuffRuntimeData> onAddBuff = null, bool isAutoReleaseRuntimeData = true) where TBuff : Buff, new()
         {
+            if (runTimeData == null)
+            {
+                Debug.LogError($"BuffHandler AddBuff Error: RuntimeData Is Null, ConfigId={configId}.");
+                return;
+            }
             BuffLookupKey lookupKey = MakeLookupKey(configId, runTimeData);
 
             if (_handleByLookup.TryGetValue(lookupKey, out int handle) &&
@@ -85,6 +90,7 @@ namespace BuffSystem
                         BuffRuntimeDataFactory.Release(runTimeData);
                     return;
                 }
+                CancelQueuedRemoval(handle, buff);
                 int origin = buff.RunTimeData.Stack;
                 float beforeDuration = buff.RunTimeData.ActualDuration;
                 float beforeRunTime = buff.RunTimeData.RunTime;
@@ -121,7 +127,12 @@ namespace BuffSystem
                 return;
             }
             TBuff newBuff = BuffFactory.CreateBuff<TBuff>(configId, runTimeData);
-            if (newBuff == null) return;
+            if (newBuff == null)
+            {
+                if (isAutoReleaseRuntimeData)
+                    BuffRuntimeDataFactory.Release(runTimeData);
+                return;
+            }
             int newHandle = NewRuntimeHandle();
             runTimeData.RuntimeHandle = newHandle;
             newBuff.StartBuff();
@@ -142,6 +153,7 @@ namespace BuffSystem
                 return;
             }
             int handle = buff.RunTimeData.RuntimeHandle;
+            int before = buff.RunTimeData.Stack;
             switch (buff.ConfigData.BuffType)
             {
                 case BuffInstanceType.normal:
@@ -169,8 +181,10 @@ namespace BuffSystem
                     buff.DownBuffStack(stackCount);
                     break;
             }
-            onRemove?.Invoke(buff, stackCount);
-            RegistBuffEffectRequest(handle, EffectPhase.StackChanged, buff.ConfigData.Priority, -stackCount);
+            int delta = buff.RunTimeData.Stack - before;
+            onRemove?.Invoke(buff, Mathf.Max(0, -delta));
+            if (delta != 0)
+                RegistBuffEffectRequest(handle, EffectPhase.StackChanged, buff.ConfigData.Priority, delta);
             if (buff.IsCompletelyOver)
                 QueueRemoveOnce(handle, buff);
         }
@@ -197,6 +211,12 @@ namespace BuffSystem
                 RegistBuffEffectRequest(handle, EffectPhase.Remove, buff.ConfigData.Priority);
             }
         }
+        private void CancelQueuedRemoval(int handle, Buff buff)
+        {
+            if (buff?.RunTimeData == null) return;
+            if (!_timeOutBuff.Remove(handle) && !buff.RunTimeData.RemoveQueued) return;
+            buff.RunTimeData.RemoveQueued = false;
+        }
         public void Raise<TEvent>(in TEvent e) where TEvent : struct, IGameEvent => _router.Raise(in e);
         public void RegistBuffEffectRequest(int buffHandle, EffectPhase effectPhase, int priority, int stackDelta = 0, object ev = null)
         {
@@ -218,7 +238,11 @@ namespace BuffSystem
                 case EffectPhase.StackChanged: effect.OnStackChanged(in ctx, req.StackDelta); break;
                 case EffectPhase.Tick: effect.OnTick(in ctx); break;
                 case EffectPhase.Event: effect.OnEvent(in ctx); break;
-                case EffectPhase.Remove: effect.OnRemove(in ctx); buff.RunTimeData.RemoveQueued = false; break;
+                case EffectPhase.Remove:
+                    if (!buff.RunTimeData.RemoveQueued) return;
+                    effect.OnRemove(in ctx);
+                    buff.RunTimeData.RemoveQueued = false;
+                    break;
             }
         }
         #region ÉúÃüÖÜÆÚ
@@ -281,9 +305,7 @@ namespace BuffSystem
                         }
                     }
                 }
-                while (buff.ConfigData.BuffTriggerType == BuffTriggerType.Tick &&
-                    buff.RunTimeData.RunTime < buff.RunTimeData.ActualDuration &&
-                    buff.ConfigData.TickTime > 0 &&
+                while (ShouldTick(buff, isParallelBuff) &&
                     (int)(buff.RunTimeData.RunTime / buff.ConfigData.TickTime) >= buff.RunTimeData.Ticks)
                 {
                     RegistBuffEffectRequest(id, EffectPhase.Tick, buff.ConfigData.Priority);
@@ -326,6 +348,14 @@ namespace BuffSystem
                     }
                 }
             }
+        }
+        private static bool ShouldTick(Buff buff, bool isParallelBuff)
+        {
+            if (buff.ConfigData.BuffTriggerType != BuffTriggerType.Tick || buff.ConfigData.TickTime <= 0)
+                return false;
+            if (buff.ConfigData.IsForever)
+                return true;
+            return isParallelBuff ? buff.RunTimeData.Stack > 0 : buff.RunTimeData.RunTime < buff.RunTimeData.ActualDuration;
         }
         #endregion
     }
