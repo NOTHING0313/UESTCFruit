@@ -119,6 +119,44 @@ internal class EntityManager
         }
     }
 
+
+    /// <summary>
+    /// 把当前存活 Entity 写入外部 List，避免 Debug 面板频繁分配枚举器和临时集合。
+    /// </summary>
+    public int FillAliveEntities(List<Entity> results)
+    {
+        if (results == null)
+            return 0;
+
+        results.Clear();
+
+        for (int i = 0; i < dataCount; i++)
+        {
+            EntityData data = _datas[i];
+
+            if (data != null && data.isAlive)
+                results.Add(new Entity(i, data.Version));
+        }
+
+        return results.Count;
+    }
+
+    /// <summary>
+    /// 尝试获取 Entity 的只读调试信息。
+    /// </summary>
+    public bool TryGetDebugInfo(Entity entity, out EntityDebugInfo info)
+    {
+        if (!IsAlive(entity))
+        {
+            info = new EntityDebugInfo(entity, false, default, 0);
+            return false;
+        }
+
+        ComponentMask256 mask = _datas[entity.ID].ArcheType;
+        info = new EntityDebugInfo(entity, true, mask, mask.CountBits());
+        return true;
+    }
+
     /// <summary>
     /// 获取实体当前持有组件组合对应的 ComponentMask256。
     /// </summary>

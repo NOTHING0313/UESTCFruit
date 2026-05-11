@@ -17,6 +17,10 @@ internal class ComponentTypeRegistry
     private const int MaxComponentTypes = 256;
 
     private readonly Dictionary<Type, int> _typeToId = new Dictionary<Type, int>();
+    private readonly List<Type> _idToType = new List<Type>();
+
+    /// <summary>已经注册过的组件类型数量。</summary>
+    public int RegisteredTypeCount => _idToType.Count;
 
     /// <summary>
     /// 获取组件类型 T 的注册 ID；如果尚未注册则自动注册。
@@ -39,6 +43,7 @@ internal class ComponentTypeRegistry
             throw new InvalidOperationException("ComponentMask256 supports at most 256 component types.");
 
         _typeToId.Add(type, id);
+        _idToType.Add(type);
         return id;
     }
     /// <summary>
@@ -73,6 +78,56 @@ internal class ComponentTypeRegistry
         mask.Set(GetOrRegister<T2>());
         mask.Set(GetOrRegister<T3>());
         return mask;
+    }
+
+    /// <summary>
+    /// 尝试通过组件注册 ID 获取组件类型。
+    /// </summary>
+    public bool TryGetType(int id, out Type type)
+    {
+        if (id >= 0 && id < _idToType.Count)
+        {
+            type = _idToType[id];
+            return true;
+        }
+
+        type = null;
+        return false;
+    }
+
+    /// <summary>
+    /// 把当前已经注册过的组件类型写入外部 List。
+    /// </summary>
+    public int FillRegisteredTypes(List<Type> results)
+    {
+        if (results == null)
+            return 0;
+
+        results.Clear();
+
+        for (int i = 0; i < _idToType.Count; i++)
+            results.Add(_idToType[i]);
+
+        return results.Count;
+    }
+
+    /// <summary>
+    /// 根据 ComponentMask256 把其中包含的组件类型写入外部 List。
+    /// </summary>
+    public int FillTypesByMask(ComponentMask256 mask, List<Type> results)
+    {
+        if (results == null)
+            return 0;
+
+        results.Clear();
+
+        for (int i = 0; i < _idToType.Count; i++)
+        {
+            if (mask.Has(i))
+                results.Add(_idToType[i]);
+        }
+
+        return results.Count;
     }
 }
 

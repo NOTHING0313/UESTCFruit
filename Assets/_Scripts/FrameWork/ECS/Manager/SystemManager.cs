@@ -267,6 +267,33 @@ internal class SystemManager
             profile?.Reset();
     }
 
+
+    /// <summary>
+    /// 把当前 System 的调试信息按执行顺序写入外部 List。
+    /// </summary>
+    public int FillSystemDebugInfos(List<SystemDebugInfo> results)
+    {
+        if (results == null)
+            return 0;
+
+        results.Clear();
+
+        for (int i = 0; i < _systems.Count; i++)
+        {
+            IFixedStepSystem system = _systems[i];
+
+            if (system == null)
+                continue;
+
+            SystemProfileInfo profile = GetOrCreateProfile(system);
+            System.Type systemType = system.GetType();
+
+            results.Add(new SystemDebugInfo(systemType, systemType.Name, system.sequence, true, profile.lastMilliseconds, profile.averageMilliseconds, profile.maxMilliseconds, profile.tickCount));
+        }
+
+        return results.Count;
+    }
+
     /// <summary>
     /// 获取或创建指定 System 的性能统计对象。
     /// </summary>

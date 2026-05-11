@@ -17,6 +17,9 @@ internal sealed class WorldEventBuffer
     /// <summary>当前缓存的事件总数。</summary>
     public int Count { get; private set; }
 
+    /// <summary>当前已经创建过缓存列表的事件类型数量。</summary>
+    public int EventTypeCount => _eventsByType.Count;
+
     /// <summary>写入一个 World 事件。</summary>
     public void Add<T>(T worldEvent) where T : struct, IWorldEvent
     {
@@ -58,6 +61,29 @@ internal sealed class WorldEventBuffer
         }
     }
 
+
+    /// <summary>
+    /// 把当前 WorldEvent 缓冲区调试信息写入外部 List。
+    /// </summary>
+    public int FillDebugInfos(List<WorldEventDebugInfo> results)
+    {
+        if (results == null)
+            return 0;
+
+        results.Clear();
+
+        foreach (KeyValuePair<Type, IWorldEventList> pair in _eventsByType)
+        {
+            IWorldEventList events = pair.Value;
+            int count = events != null ? events.Count : 0;
+            int oldestFrame = events != null ? events.OldestFrame : -1;
+            int newestFrame = events != null ? events.NewestFrame : -1;
+            results.Add(new WorldEventDebugInfo(pair.Key, count, oldestFrame, newestFrame));
+        }
+
+        return results.Count;
+    }
+
     /// <summary>获取或创建指定事件类型的缓存列表。</summary>
     private WorldEventList<T> GetOrCreateEvents<T>() where T : struct, IWorldEvent
     {
@@ -74,6 +100,8 @@ internal sealed class WorldEventBuffer
     private interface IWorldEventList
     {
         int Count { get; }
+        int OldestFrame { get; }
+        int NewestFrame { get; }
         void Clear();
         void ClearBeforeFrame(int frameNumber);
     }
@@ -82,6 +110,44 @@ internal sealed class WorldEventBuffer
     {
         public readonly List<T> Events = new List<T>(16);
         public int Count => Events.Count;
+
+        public int OldestFrame
+        {
+            get
+            {
+                if (Events.Count == 0)
+                    return -1;
+
+                int frame = Events[0].frameNumber;
+
+                for (int i = 1; i < Events.Count; i++)
+                {
+                    if (Events[i].frameNumber < frame)
+                        frame = Events[i].frameNumber;
+                }
+
+                return frame;
+            }
+        }
+
+        public int NewestFrame
+        {
+            get
+            {
+                if (Events.Count == 0)
+                    return -1;
+
+                int frame = Events[0].frameNumber;
+
+                for (int i = 1; i < Events.Count; i++)
+                {
+                    if (Events[i].frameNumber > frame)
+                        frame = Events[i].frameNumber;
+                }
+
+                return frame;
+            }
+        }
 
         /// <summary>写入事件。</summary>
         public void Add(T worldEvent)

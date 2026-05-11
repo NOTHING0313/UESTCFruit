@@ -118,6 +118,49 @@ internal class ArcheTypeManager
         return results.Count;
     }
 
+
+    /// <summary>
+    /// 把当前所有 ArcheType 分组的调试信息写入外部 List。
+    /// </summary>
+    public int FillArcheTypeDebugInfos(List<ArcheTypeDebugInfo> results)
+    {
+        if (results == null)
+            return 0;
+
+        results.Clear();
+
+        foreach (KeyValuePair<ComponentMask256, ArcheTypeGroup> pair in _archeGroups)
+        {
+            ComponentMask256 mask = pair.Key;
+            ArcheTypeGroup group = pair.Value;
+            int entityCount = group != null ? group.Count : 0;
+            results.Add(new ArcheTypeDebugInfo(mask, entityCount, mask.CountBits()));
+        }
+
+        return results.Count;
+    }
+
+    /// <summary>
+    /// 把指定 ArcheType Mask 下的 Entity 写入外部 List。
+    /// </summary>
+    public int FillEntitiesByArcheType(ComponentMask256 mask, List<Entity> results)
+    {
+        if (results == null)
+            return 0;
+
+        results.Clear();
+
+        if (!_archeGroups.TryGetValue(mask, out ArcheTypeGroup group) || group == null)
+            return 0;
+
+        List<Entity> entities = group.Entities;
+
+        for (int i = 0; i < entities.Count; i++)
+            results.Add(entities[i]);
+
+        return results.Count;
+    }
+
     /// <summary>清空 Query 缓存。</summary>
     public void ClearQueryCache()
     {

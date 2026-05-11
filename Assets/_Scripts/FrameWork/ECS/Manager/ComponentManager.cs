@@ -402,6 +402,47 @@ internal class ComponentManager
         _archeTypeManager?.ChangeGroup(entity, oldMask, default);
     }
 
+
+    /// <summary>
+    /// 把当前已经创建的 ComponentStore 调试信息写入外部 List。
+    /// </summary>
+    public int FillComponentStoreDebugInfos(List<ComponentStoreDebugInfo> results)
+    {
+        if (results == null)
+            return 0;
+
+        results.Clear();
+
+        foreach (IComponentStore store in _stores.Values)
+        {
+            results.Add(new ComponentStoreDebugInfo(store.ComponentType, store.RegisterID, store.Count, store.Capacity, store.SparseCapacity));
+        }
+
+        return results.Count;
+    }
+
+    /// <summary>
+    /// 把 Entity 当前持有的组件类型写入外部 List。
+    /// </summary>
+    public int FillEntityComponentTypes(Entity entity, List<Type> results)
+    {
+        if (results == null)
+            return 0;
+
+        results.Clear();
+
+        if (_entityManager == null || !_entityManager.IsAlive(entity))
+            return 0;
+
+        foreach (IComponentStore store in _stores.Values)
+        {
+            if (store.Has(entity))
+                results.Add(store.ComponentType);
+        }
+
+        return results.Count;
+    }
+
     /// <summary>
     /// 创建指定组件类型对应的 ComponentStore。
     /// </summary>

@@ -216,6 +216,39 @@ public struct ComponentMask256 : IEquatable<ComponentMask256>
                 throw new ArgumentOutOfRangeException(nameof(bitIndex));
         }
     }
+
+    /// <summary>
+    /// 统计当前 Mask 中已经置为 1 的组件位数量。
+    /// </summary>
+    public int CountBits()
+    {
+        return CountBits(_word0) + CountBits(_word1) + CountBits(_word2) + CountBits(_word3);
+    }
+
+    /// <summary>
+    /// 返回便于 Debug.Log 查看的一行 Mask 文本。
+    /// </summary>
+    public override string ToString()
+    {
+        return $"Mask256(0x{_word3:X16}_{_word2:X16}_{_word1:X16}_{_word0:X16})";
+    }
+
+    /// <summary>
+    /// 统计单个 ulong 中已经置为 1 的 bit 数。
+    /// </summary>
+    private static int CountBits(ulong value)
+    {
+        int count = 0;
+
+        while (value != 0)
+        {
+            value &= value - 1;
+            count++;
+        }
+
+        return count;
+    }
+
     /// <summary>
     /// 把 other 的组件位合并到当前 Mask 中。
     /// </summary>

@@ -43,7 +43,9 @@ public class World
     public int QueryCacheCount => _archeTypeManager.QueryCacheCount;
     public int ArcheTypeVersion => _archeTypeManager.ArcheTypeVersion;
     public int WorldEventCount => _worldEventBuffer.Count;
+    public int WorldEventTypeCount => _worldEventBuffer.EventTypeCount;
     public int SingletonCount => _singletonEntities.Count;
+    public int RegisteredComponentTypeCount => _registry.RegisteredTypeCount;
 
     /// <summary>是否启用 System Tick 耗时统计；关闭后 System 仍正常执行，但不会更新 Profile。</summary>
     public bool EnableSystemProfile
@@ -706,6 +708,157 @@ public class World
             results.Sort(EntityComparer.Instance);
 
         return results.Count;
+    }
+
+
+    /// <summary>
+    /// 获取当前 World 的调试总览快照。
+    /// 该方法不会修改 ECS 状态，适合 EditorWindow 或 Inspector 面板按需刷新。
+    /// </summary>
+    public WorldDebugSnapshot GetDebugSnapshot()
+    {
+        WorldStatistics statistics = GetStatistics();
+
+        return new WorldDebugSnapshot(
+            statistics,
+            EntityCapacity,
+            RegisteredComponentTypeCount,
+            ComponentStoreCount,
+            ArcheTypeCount,
+            QueryCacheCount,
+            SystemCount,
+            SingletonCount,
+            WorldEventTypeCount,
+            WorldEventCount,
+            PendingCommandCount,
+            PendingSystemCommandCount,
+            _currentState
+        );
+    }
+
+    /// <summary>
+    /// 把当前存活 Entity 写入外部 List。
+    /// Debug 工具应优先使用该方法复用 List，避免每次刷新产生额外 GC。
+    /// </summary>
+    public int FillAliveEntities(List<Entity> results)
+    {
+        return _entityManager.FillAliveEntities(results);
+    }
+
+    /// <summary>
+    /// 尝试获取指定 Entity 的调试信息。
+    /// </summary>
+    public bool TryGetEntityDebugInfo(Entity entity, out EntityDebugInfo info)
+    {
+        return _entityManager.TryGetDebugInfo(entity, out info);
+    }
+
+    /// <summary>
+    /// 把指定 Entity 当前拥有的组件类型写入外部 List。
+    /// </summary>
+    public int FillEntityComponentTypes(Entity entity, List<Type> results)
+    {
+        return _componentManager.FillEntityComponentTypes(entity, results);
+    }
+
+    /// <summary>
+    /// 把已经注册过的组件类型写入外部 List。
+    /// </summary>
+    public int FillRegisteredComponentTypes(List<Type> results)
+    {
+        return _registry.FillRegisteredTypes(results);
+    }
+
+    /// <summary>
+    /// 把当前 ComponentStore 调试信息写入外部 List。
+    /// </summary>
+    public int FillComponentStoreDebugInfos(List<ComponentStoreDebugInfo> results)
+    {
+        return _componentManager.FillComponentStoreDebugInfos(results);
+    }
+
+    /// <summary>
+    /// 把当前 ArcheType 分组调试信息写入外部 List。
+    /// </summary>
+    public int FillArcheTypeDebugInfos(List<ArcheTypeDebugInfo> results)
+    {
+        return _archeTypeManager.FillArcheTypeDebugInfos(results);
+    }
+
+    /// <summary>
+    /// 把指定 ArcheType Mask 下的 Entity 写入外部 List。
+    /// </summary>
+    public int FillEntitiesByArcheType(ComponentMask256 mask, List<Entity> results)
+    {
+        return _archeTypeManager.FillEntitiesByArcheType(mask, results);
+    }
+
+    /// <summary>
+    /// 把指定 ArcheType Mask 对应的组件类型写入外部 List。
+    /// </summary>
+    public int FillComponentTypesByMask(ComponentMask256 mask, List<Type> results)
+    {
+        return _registry.FillTypesByMask(mask, results);
+    }
+
+    /// <summary>
+    /// 把当前 System 调试信息按执行顺序写入外部 List。
+    /// </summary>
+    public int FillSystemDebugInfos(List<SystemDebugInfo> results)
+    {
+        return _systemManager.FillSystemDebugInfos(results);
+    }
+
+    /// <summary>
+    /// 把当前 SingletonComponent 映射调试信息写入外部 List。
+    /// </summary>
+    public int FillSingletonDebugInfos(List<SingletonDebugInfo> results)
+    {
+        if (results == null)
+            return 0;
+
+        results.Clear();
+
+        if (_singletonEntities == null)
+            return 0;
+
+        foreach (KeyValuePair<Type, Entity> pair in _singletonEntities)
+        {
+            bool isAlive = _entityManager.IsAlive(pair.Value);
+            results.Add(new SingletonDebugInfo(pair.Key, pair.Value, isAlive));
+        }
+
+        return results.Count;
+    }
+
+    /// <summary>
+    /// 把当前 SingletonComponent 类型写入外部 List。
+    /// </summary>
+    public int FillSingletonTypes(List<Type> results)
+    {
+        if (results == null)
+            return 0;
+
+        results.Clear();
+
+        if (_singletonEntities == null)
+            return 0;
+
+        foreach (KeyValuePair<Type, Entity> pair in _singletonEntities)
+        {
+            if (_entityManager.IsAlive(pair.Value))
+                results.Add(pair.Key);
+        }
+
+        return results.Count;
+    }
+
+    /// <summary>
+    /// 把当前 WorldEvent 缓冲区调试信息写入外部 List。
+    /// </summary>
+    public int FillWorldEventDebugInfos(List<WorldEventDebugInfo> results)
+    {
+        return _worldEventBuffer.FillDebugInfos(results);
     }
 
     /// <summary>

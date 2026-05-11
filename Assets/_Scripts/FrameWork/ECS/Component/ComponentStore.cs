@@ -249,6 +249,9 @@ internal interface IComponentStore
 {
     Type ComponentType { get; }
     int RegisterID { get; }
+    int Count { get; }
+    int Capacity { get; }
+    int SparseCapacity { get; }
 
     /// <summary>
     /// 判断实体是否持有当前 Store 管理的组件类型。
