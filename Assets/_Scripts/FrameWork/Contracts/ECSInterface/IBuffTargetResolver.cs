@@ -1,13 +1,18 @@
-/// <summary>
-/// Buff 系统访问目标 Entity 逻辑数据的受限接口。
-/// </summary>
-public interface IBuffTargetResolver
+using ECSFrameWork;
+
+namespace Contracts
 {
-    bool IsAlive(EntityInfo entity);
-    bool HasHealth(EntityInfo entity);
-    ref HealthComponent GetHealth(EntityInfo entity);
-    bool HasPosition(EntityInfo entity);
-    ref PositionComponent GetPosition(EntityInfo entity);
-    bool HasStat(EntityInfo entity);
-    ref StatComponent GetStat(EntityInfo entity);
+    /// <summary>
+    /// Buff 系统访问目标 Entity 逻辑数据的受限接口。
+    /// </summary>
+    public interface IBuffTargetResolver
+    {
+        bool IsAlive(Entity entity);
+        bool HasHealth(Entity entity);
+        ref HealthComponent GetHealth(Entity entity);
+        bool HasPosition(Entity entity);
+        ref PositionComponent GetPosition(Entity entity);
+        bool HasStat(Entity entity);
+        ref StatComponent GetStat(Entity entity);
+    }
 }

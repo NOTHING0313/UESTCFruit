@@ -5,12 +5,15 @@
 
 using System.Collections.Generic;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 处理 DamageRequestComponent，把伤害应用到目标 HealthComponent。
 /// </summary>
 public sealed class DamageResolveSystem : FixedStepSystemBase
 {
-    private readonly List<EntityInfo> _requests = new List<EntityInfo>(128);
+    private readonly List<Entity> _requests = new List<Entity>(128);
     private EntityQueryDescription _damageRequestQuery;
 
     public override SystemTickSequence sequence => SystemTickSequence.damage;
@@ -28,7 +31,7 @@ public sealed class DamageResolveSystem : FixedStepSystemBase
 
         for (int i = 0; i < _requests.Count; i++)
         {
-            EntityInfo requestEntity = _requests[i];
+            Entity requestEntity = _requests[i];
             ref DamageRequestComponent request = ref World.GetComponent<DamageRequestComponent>(requestEntity);
 
             ApplyDamage(in request, context.frameNumber);
@@ -67,4 +70,6 @@ public sealed class DamageResolveSystem : FixedStepSystemBase
     {
         _requests.Clear();
     }
+}
+
 }

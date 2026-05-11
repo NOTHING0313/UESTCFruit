@@ -1,13 +1,16 @@
 using System;
 using System.Collections.Generic;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// World 事件缓冲区，用于保存逻辑帧中产生的一次性事件。
 /// </summary>
 /// <remarks>
 /// WorldEventBuffer 是 ECS 到表现层、UI、音效层的输出通道；它不参与 Entity 状态存储，也不负责驱动逻辑。
 /// </remarks>
-public sealed class WorldEventBuffer
+internal sealed class WorldEventBuffer
 {
     private readonly Dictionary<Type, IWorldEventList> _eventsByType = new Dictionary<Type, IWorldEventList>();
 
@@ -107,4 +110,6 @@ public sealed class WorldEventBuffer
     {
         public static readonly T[] Value = new T[0];
     }
+}
+
 }

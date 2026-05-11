@@ -6,6 +6,9 @@
 using System;
 using System.Collections.Generic;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 从 SimulationFrameCommandBuffer 中读取并执行对应逻辑帧、对应时机的外部模拟指令。
 /// </summary>
@@ -101,4 +104,6 @@ public sealed class SimulationFrameCommandApplier
         if (!forceReplay)
             _appliedFrames.Add(key);
     }
+}
+
 }

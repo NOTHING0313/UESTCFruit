@@ -49,7 +49,7 @@ ECS Core 层
 ## 3. Entity / Component 数据关系
 
 ```text
-EntityInfo
+Entity
     ID
     Version
 
@@ -64,7 +64,7 @@ ComponentStore<T>
     denseComponent[denseIndex]
 ```
 
-`EntityInfo` 本身不直接持有组件，只是定位实体槽位的句柄。组件数据存放在对应的 `ComponentStore<T>` 中。
+`Entity` 本身不直接持有组件，只是定位实体槽位的句柄。组件数据存放在对应的 `ComponentStore<T>` 中。
 
 ## 4. ArcheType 分组
 
@@ -85,7 +85,7 @@ ArcheTypeManager.ChangeGroup(entity, oldMask, newMask)
 Dictionary<ComponentMask256, ArcheTypeGroup>
 ```
 
-对 Entity 进行分组。`ArcheTypeGroup` 内部通过 `List<EntityInfo>` 保存实体，并通过 `Dictionary<EntityInfo, int>` 记录实体下标，使移除 Entity 时可以使用尾元素回填的方式接近 O(1) 完成。Query 会通过 include / exclude mask 找到匹配分组。
+对 Entity 进行分组。`ArcheTypeGroup` 内部通过 `List<Entity>` 保存实体，并通过 `Dictionary<Entity, int>` 记录实体下标，使移除 Entity 时可以使用尾元素回填的方式接近 O(1) 完成。Query 会通过 include / exclude mask 找到匹配分组。
 
 ## 5. System 数据流
 

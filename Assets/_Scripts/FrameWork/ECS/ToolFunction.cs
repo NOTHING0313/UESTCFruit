@@ -6,10 +6,13 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+
+namespace ECSFrameWork
+{
 /// <summary>
 /// ECS 框架通用工具函数集合。
 /// </summary>
-public static class ToolFunction
+internal static class ToolFunction
 {
     /// <summary>
     /// 确保数组容量至少达到指定长度，不足时按倍增策略扩容。
@@ -24,3 +27,5 @@ public static class ToolFunction
     }
 }
 
+
+}

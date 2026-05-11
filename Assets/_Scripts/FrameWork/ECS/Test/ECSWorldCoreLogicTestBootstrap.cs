@@ -1,4 +1,8 @@
+using Contracts;
 using UnityEngine;
+
+namespace ECSFrameWork
+{
 
 /// <summary>
 /// 验证 World / Entity / Component / System / Resolver / ViewReader 的纯逻辑闭环。
@@ -36,7 +40,7 @@ public sealed class ECSWorldCoreLogicTestBootstrap : MonoBehaviour
     /// <summary>测试 MovementSystem 是否能推进 PositionComponent。</summary>
     private void TestMovementAndComponentWrite()
     {
-        EntityInfo entity = _world.CreateEntity();
+        Entity entity = _world.CreateEntity();
 
         _world.SetComponent(entity, new PositionComponent(0f, 0f, 0f));
         _world.SetComponent(entity, new VelocityComponent(2f, 0f, 0f));
@@ -51,7 +55,7 @@ public sealed class ECSWorldCoreLogicTestBootstrap : MonoBehaviour
     /// <summary>测试 Buff 受限访问器是否能读取和修改目标组件。</summary>
     private void TestBuffTargetResolver()
     {
-        EntityInfo entity = _world.CreateEntity();
+        Entity entity = _world.CreateEntity();
         _world.SetComponent(entity, new HealthComponent(10, 10));
         _world.SetComponent(entity, new StatComponent(3, 1, 5));
 
@@ -72,7 +76,7 @@ public sealed class ECSWorldCoreLogicTestBootstrap : MonoBehaviour
     /// <summary>测试表现层只读访问器是否能读取 ViewID / Position / Health。</summary>
     private void TestWorldViewReader()
     {
-        EntityInfo entity = _world.CreateEntity();
+        Entity entity = _world.CreateEntity();
 
         _world.SetComponent(entity, new ViewComponent(1001));
         _world.SetComponent(entity, new PositionComponent(2f, 3f, 4f));
@@ -93,11 +97,11 @@ public sealed class ECSWorldCoreLogicTestBootstrap : MonoBehaviour
     /// <summary>测试伤害请求、死亡标记和死亡清理流程。</summary>
     private void TestDamageAndDeadCleanup()
     {
-        EntityInfo target = _world.CreateEntity();
+        Entity target = _world.CreateEntity();
         _world.SetComponent(target, new HealthComponent(10, 10));
 
-        EntityInfo firstRequest = _world.CreateEntity();
-        _world.SetComponent(firstRequest, new DamageRequestComponent(EntityInfo.Invalid, target, 4));
+        Entity firstRequest = _world.CreateEntity();
+        _world.SetComponent(firstRequest, new DamageRequestComponent(Entity.Invalid, target, 4));
 
         _world.Tick(new SimulationContext(2, 1f, false));
 
@@ -105,8 +109,8 @@ public sealed class ECSWorldCoreLogicTestBootstrap : MonoBehaviour
             && healthAfterFirstHit.current == 6
             && !_world.IsAlive(firstRequest);
 
-        EntityInfo secondRequest = _world.CreateEntity();
-        _world.SetComponent(secondRequest, new DamageRequestComponent(EntityInfo.Invalid, target, 10));
+        Entity secondRequest = _world.CreateEntity();
+        _world.SetComponent(secondRequest, new DamageRequestComponent(Entity.Invalid, target, 10));
 
         _world.Tick(new SimulationContext(3, 1f, false));
 
@@ -140,4 +144,6 @@ public sealed class ECSWorldCoreLogicTestBootstrap : MonoBehaviour
     {
         return Mathf.Abs(a - b) < 0.0001f;
     }
+}
+
 }

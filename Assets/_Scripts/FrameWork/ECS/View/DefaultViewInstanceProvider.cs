@@ -4,6 +4,9 @@
 
 using UnityEngine;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 默认 View 实例提供器，直接使用 Unity Instantiate / Destroy。
 /// </summary>
@@ -33,4 +36,6 @@ public sealed class DefaultViewInstanceProvider : IViewInstanceProvider
     public void Clear()
     {
     }
+}
+
 }

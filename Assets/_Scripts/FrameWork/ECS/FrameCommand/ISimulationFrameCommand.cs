@@ -1,3 +1,5 @@
+namespace ECSFrameWork
+{
 /*
  * 文件说明：按逻辑帧记录和消费外部模拟指令。
  * 设计约束：ECS Core 逻辑应尽量保持确定性；Unity 表现、输入采样、外部指令通过 Adapter 或 Buffer 接入。
@@ -12,4 +14,6 @@ public interface ISimulationFrameCommand
 
     /// <summary>执行该外部模拟指令。</summary>
     void Execute(World world);
+}
+
 }

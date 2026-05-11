@@ -1,20 +1,17 @@
-using UnityEngine;
-using ECS;
 using BuffSystem;
-using Contracts;
 using Drivers;
+using ECSFrameWork;
+using UnityEngine;
 
 namespace View
 {
     /// <summary>
-    /// ·ÂÕæÆô¶¯Æ÷£¨4ºÅ¸ºÔğ£¬¹ÒÔØµ½³¡¾° GameObject£©¡£
-    /// ´´½¨Âß¼­ÊÀ½ç¡¢Buff ÏµÍ³¡¢Çı¶¯Æ÷£¬°´¹Ì¶¨Ö¡²½ÍÆ½ø£¬ºóĞø½ÓÈë±íÏÖÍ¬²½¡£
-    /// µÚÒ»ÌìÖ»ĞèÈÃ´Ë½Å±¾ÅÜÆğÀ´£¬¿ÕÖ¡Êä³öÈÕÖ¾¡£
+    /// ä»¿çœŸå¯åŠ¨å™¨ç©ºå£³ï¼Œè´Ÿè´£åˆ›å»º Worldã€BuffSystemCore ä¸å®æ—¶é©±åŠ¨å™¨ï¼Œå¹¶æŒ‰å›ºå®šé€»è¾‘å¸§æ¨è¿›ã€‚
     /// </summary>
     public sealed class SimulationBootstrap : MonoBehaviour
     {
         [SerializeField] private float _fixedDeltaTime = 1f / 60f;
-        [SerializeField] private bool _useRollback = false;   // ÔİÊ±Ö»ÓÃÊµÊ±Ä£Ê½
+        [SerializeField] private bool _useRollback = false;
 
         private World _world;
         private BuffSystemCore _buffSystem;
@@ -23,11 +20,10 @@ namespace View
 
         private void Awake()
         {
-            // 1ºÅÌá¹© World, 3ºÅÌá¹© BuffSystemCore
             _world = new World();
             _buffSystem = new BuffSystemCore();
 
-            // ÏÈÊ¹ÓÃÊµÊ±Çı¶¯Æ÷£¬»Ø¹öÄ£Ê½ºóĞø½ÓÈë
+            // å½“å‰å…ˆä½¿ç”¨å®æ—¶é©±åŠ¨å™¨ï¼›å›æ»šé©±åŠ¨å™¨å¯ä»¥åç»­åœ¨è¿™é‡ŒæŒ‰ _useRollback åˆ‡æ¢ã€‚
             _driver = new RealtimeSimulationDriver(_world, _buffSystem, _fixedDeltaTime);
         }
 
@@ -38,12 +34,10 @@ namespace View
             {
                 _accumulatedTime -= _fixedDeltaTime;
 
-                // µ±Ç°ÎŞ²Ù×÷£¬ËÍÈë¿ÕÊäÈë
-                var emptyInput = new PlayerInput(0, 0, false);
-                _driver.Step(emptyInput);
+                PlayerInputSnapshot emptyInput = new PlayerInputSnapshot(_driver.CurrentFrame, 0);
+                _driver.Step(in emptyInput);
 
-                // ºóĞøÔÚ´Ëµ÷ÓÃ ViewBridge.Sync(...)
-                Debug.Log($"[Bootstrap] Frame {_driver.CurrentFrame} finished");
+                Debug.Log($"[SimulationBootstrap] Frame {_driver.CurrentFrame} finished. RollbackMode={_useRollback}");
             }
         }
     }

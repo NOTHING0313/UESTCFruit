@@ -5,6 +5,9 @@
 
 using System;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 固定逻辑帧推进器，负责累计时间并驱动 World.Tick。
 /// </summary>
@@ -129,4 +132,6 @@ public readonly struct SimulationContext
         this.tickLength = tickLength;
         this.isRollback = isRollback;
     }
+}
+
 }

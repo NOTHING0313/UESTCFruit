@@ -1,5 +1,8 @@
 using UnityEngine;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 验证 World.ForEach<T> / ForEach<T1,T2> / ForEach<T1,T2,T3> 的高频遍历不会破坏组件对应关系和现有 Query 规则。
 /// </summary>
@@ -31,9 +34,9 @@ public sealed class ECSComponentForEachTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[ForEach Test 0] Single Component Writes Expected Component</color>");
 
         World world = new World();
-        EntityInfo positionA = world.CreateEntity();
-        EntityInfo positionB = world.CreateEntity();
-        EntityInfo noPosition = world.CreateEntity();
+        Entity positionA = world.CreateEntity();
+        Entity positionB = world.CreateEntity();
+        Entity noPosition = world.CreateEntity();
 
         world.SetComponent(positionA, new PositionComponent(1f, 2f, 3f));
         world.SetComponent(positionB, new PositionComponent(10f, 20f, 30f));
@@ -57,7 +60,7 @@ public sealed class ECSComponentForEachTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[ForEach Test 1] Writes Expected Components</color>");
 
         World world = new World();
-        EntityInfo entity = world.CreateEntity();
+        Entity entity = world.CreateEntity();
 
         world.SetComponent(entity, new PositionComponent(1f, 2f, 3f));
         world.SetComponent(entity, new VelocityComponent(4f, 5f, 6f));
@@ -79,9 +82,9 @@ public sealed class ECSComponentForEachTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[ForEach Test 2] Skips Missing Component</color>");
 
         World world = new World();
-        EntityInfo onlyPosition = world.CreateEntity();
-        EntityInfo onlyVelocity = world.CreateEntity();
-        EntityInfo both = world.CreateEntity();
+        Entity onlyPosition = world.CreateEntity();
+        Entity onlyVelocity = world.CreateEntity();
+        Entity both = world.CreateEntity();
 
         world.SetComponent(onlyPosition, new PositionComponent(100f, 0f, 0f));
         world.SetComponent(onlyVelocity, new VelocityComponent(10f, 0f, 0f));
@@ -107,7 +110,7 @@ public sealed class ECSComponentForEachTestBootstrap : MonoBehaviour
 
         for (int i = 0; i < 10; i++)
         {
-            EntityInfo entity = world.CreateEntity();
+            Entity entity = world.CreateEntity();
             world.SetComponent(entity, new PositionComponent(i, 0f, 0f));
 
             if (i < 3)
@@ -118,7 +121,7 @@ public sealed class ECSComponentForEachTestBootstrap : MonoBehaviour
         int velocityFirstCount = world.ForEach<VelocityComponent, PositionComponent>(MovePositionByVelocityReversed);
 
         EntityQueryDescription query = world.Query().With<PositionComponent>().With<VelocityComponent>().BuildDescription();
-        System.Collections.Generic.List<EntityInfo> results = new System.Collections.Generic.List<EntityInfo>();
+        System.Collections.Generic.List<Entity> results = new System.Collections.Generic.List<Entity>();
         world.FillQuery(query, results, false);
 
         bool allMovedTwice = true;
@@ -141,17 +144,17 @@ public sealed class ECSComponentForEachTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[ForEach Test 4] Three Components Writes Expected Velocity</color>");
 
         World world = new World();
-        EntityInfo controlled = world.CreateEntity();
-        EntityInfo missingSpeed = world.CreateEntity();
+        Entity controlled = world.CreateEntity();
+        Entity missingSpeed = world.CreateEntity();
 
-        world.SetComponent(controlled, new PlayerInputComponent(1, 0, 1f, -1f));
+        world.SetComponent(controlled, new PlayerInputSnapshotComponent(1, 0, 1f, -1f));
         world.SetComponent(controlled, new MoveSpeedComponent(3f));
         world.SetComponent(controlled, new VelocityComponent(0f, 0f, 0f));
 
-        world.SetComponent(missingSpeed, new PlayerInputComponent(1, 0, 1f, 1f));
+        world.SetComponent(missingSpeed, new PlayerInputSnapshotComponent(1, 0, 1f, 1f));
         world.SetComponent(missingSpeed, new VelocityComponent(9f, 0f, 9f));
 
-        int count = world.ForEach<PlayerInputComponent, MoveSpeedComponent, VelocityComponent>(ApplyInputVelocityForTest);
+        int count = world.ForEach<PlayerInputSnapshotComponent, MoveSpeedComponent, VelocityComponent>(ApplyInputVelocityForTest);
 
         bool controlledSuccess = world.TryGetComponent(controlled, out VelocityComponent velocity)
             && NearlyEqual(velocity.x, 3f)
@@ -174,8 +177,8 @@ public sealed class ECSComponentForEachTestBootstrap : MonoBehaviour
         World world = new World();
         world.AddSystem(new MovementSystem());
 
-        EntityInfo moving = world.CreateEntity();
-        EntityInfo staticEntity = world.CreateEntity();
+        Entity moving = world.CreateEntity();
+        Entity staticEntity = world.CreateEntity();
 
         world.SetComponent(moving, new PositionComponent(0f, 0f, 0f));
         world.SetComponent(moving, new VelocityComponent(3f, 0f, 0f));
@@ -192,13 +195,13 @@ public sealed class ECSComponentForEachTestBootstrap : MonoBehaviour
 
 
     /// <summary>单组件 Position 测试回调。</summary>
-    private void RaisePositionXOnce(EntityInfo entity, ref PositionComponent position)
+    private void RaisePositionXOnce(Entity entity, ref PositionComponent position)
     {
         position.x += 1f;
     }
 
     /// <summary>测试用输入速度转换回调。</summary>
-    private void ApplyInputVelocityForTest(EntityInfo entity, ref PlayerInputComponent input, ref MoveSpeedComponent speed, ref VelocityComponent velocity)
+    private void ApplyInputVelocityForTest(Entity entity, ref PlayerInputSnapshotComponent input, ref MoveSpeedComponent speed, ref VelocityComponent velocity)
     {
         velocity.x = input.moveX * speed.value;
         velocity.y = 0f;
@@ -206,7 +209,7 @@ public sealed class ECSComponentForEachTestBootstrap : MonoBehaviour
     }
 
     /// <summary>Position + Velocity 标准顺序移动回调。</summary>
-    private void MoveByVelocityOnce(EntityInfo entity, ref PositionComponent position, ref VelocityComponent velocity)
+    private void MoveByVelocityOnce(Entity entity, ref PositionComponent position, ref VelocityComponent velocity)
     {
         position.x += velocity.x;
         position.y += velocity.y;
@@ -214,7 +217,7 @@ public sealed class ECSComponentForEachTestBootstrap : MonoBehaviour
     }
 
     /// <summary>Velocity + Position 反向泛型参数移动回调，用于验证参数顺序正确。</summary>
-    private void MovePositionByVelocityReversed(EntityInfo entity, ref VelocityComponent velocity, ref PositionComponent position)
+    private void MovePositionByVelocityReversed(Entity entity, ref VelocityComponent velocity, ref PositionComponent position)
     {
         position.x += velocity.x;
         position.y += velocity.y;
@@ -238,4 +241,6 @@ public sealed class ECSComponentForEachTestBootstrap : MonoBehaviour
             Debug.LogError($"[FAIL] {message}");
         }
     }
+}
+
 }

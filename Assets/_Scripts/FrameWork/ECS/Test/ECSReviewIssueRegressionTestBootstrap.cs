@@ -1,6 +1,9 @@
 using System;
 using UnityEngine;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 针对审查中发现的生命周期与帧指令应用问题的回归测试。
 /// </summary>
@@ -26,7 +29,7 @@ public sealed class ECSReviewIssueRegressionTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Review Regression 1] Dispose During Tick</color>");
 
         World world = new World();
-        EntityInfo entity = world.CreateEntity();
+        Entity entity = world.CreateEntity();
         ReviewDisposeDuringTickSystem disposeSystem = new ReviewDisposeDuringTickSystem(entity);
         ReviewPassiveAfterDisposeSystem passiveSystem = new ReviewPassiveAfterDisposeSystem();
 
@@ -106,12 +109,12 @@ public struct ReviewDeferredComponent : IComponentData
 
 public sealed class ReviewDisposeDuringTickSystem : FixedStepSystemBase
 {
-    private readonly EntityInfo _entity;
+    private readonly Entity _entity;
 
     public int TickCount { get; private set; }
     public override SystemTickSequence sequence => SystemTickSequence.logic;
 
-    public ReviewDisposeDuringTickSystem(EntityInfo entity)
+    public ReviewDisposeDuringTickSystem(Entity entity)
     {
         _entity = entity;
     }
@@ -169,4 +172,6 @@ public sealed class ReviewCountFrameCommand : ISimulationFrameCommand
     {
         ExecuteCount++;
     }
+}
+
 }

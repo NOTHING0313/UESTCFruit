@@ -1,4 +1,4 @@
-using ECS;
+using ECSFrameWork;
 using BuffSystem;
 using Contracts;
 
@@ -25,7 +25,7 @@ namespace Drivers
             _frame = 0;
         }
 
-        public void Step(in PlayerInput input)
+        public void Step(in PlayerInputSnapshot input)
         {
             var context = new SimulationContext(_frame, _fixedDeltaTime, false);
             _world.Tick(context);

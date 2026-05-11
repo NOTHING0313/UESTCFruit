@@ -7,8 +7,11 @@ using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
-/// 从 Unity 新输入系统采样键盘和鼠标输入，并在逻辑帧开始前写入 ECS PlayerInputComponent。
+/// 从 Unity 新输入系统采样键盘和鼠标输入，并在逻辑帧开始前写入 ECS PlayerInputSnapshotComponent。
 /// </summary>
 public sealed class UnityInputAdapter : MonoBehaviour
 {
@@ -61,7 +64,7 @@ public sealed class UnityInputAdapter : MonoBehaviour
     };
 
     private World _world;
-    private EntityInfo _playerEntity;
+    private Entity _playerEntity;
 
     private Vector2 _moveInput;
     private Vector2 _mousePosition;
@@ -75,7 +78,7 @@ public sealed class UnityInputAdapter : MonoBehaviour
     public int PlayerID => playerID;
 
     /// <summary>初始化输入 Adapter 的写入目标。</summary>
-    public void Init(World world, EntityInfo playerEntity)
+    public void Init(World world, Entity playerEntity)
     {
         _world = world;
         _playerEntity = playerEntity;
@@ -95,7 +98,7 @@ public sealed class UnityInputAdapter : MonoBehaviour
         WriteInputToWorld(context.frameNumber);
     }
 
-    /// <summary>在每个 ECS 逻辑帧开始前，把缓存输入直接写入 PlayerInputComponent；推荐新代码优先使用 CollectSnapshot + InputSnapshotBuffer。</summary>
+    /// <summary>在每个 ECS 逻辑帧开始前，把缓存输入直接写入 PlayerInputSnapshotComponent；推荐新代码优先使用 CollectSnapshot + InputSnapshotBuffer。</summary>
     public void WriteInputToWorld(int frameNumber)
     {
         PlayerInputSnapshot snapshot = CollectSnapshot(frameNumber);
@@ -103,7 +106,7 @@ public sealed class UnityInputAdapter : MonoBehaviour
         if (_world == null || !_world.IsAlive(_playerEntity))
             return;
 
-        PlayerInputComponent input = PlayerInputComponent.FromSnapshot(in snapshot);
+        PlayerInputSnapshotComponent input = PlayerInputSnapshotComponent.FromSnapshot(in snapshot);
         _world.SetComponent(_playerEntity, in input);
     }
 
@@ -356,4 +359,6 @@ public enum MouseButtonType
     Middle,
     Back,
     Forward,
+}
+
 }

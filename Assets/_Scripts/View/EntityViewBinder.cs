@@ -1,26 +1,51 @@
+using System.Collections.Generic;
 using Contracts;
-using ECS;
+using ECSFrameWork;
 using UnityEngine;
 
 namespace View
 {
     /// <summary>
-    /// ÊµÌå - ÊÓÍ¼°ó¶¨Æ÷¿Õ¿Ç£¨4ºÅÊµÏÖ£¬ºóĞøÌî³ä£©¡£
-    /// Î¬»¤ EntityHandle Óë GameObject µÄË«ÏòÓ³Éä¡£
+    /// Entity ä¸ GameObject çš„åŒå‘ç»‘å®šå™¨ã€‚
     /// </summary>
     public sealed class EntityViewBinder : IEntityViewBinder
     {
-        public int Bind(EntityHandle entity, GameObject view) => entity.ID;
-        public void Unbind(EntityHandle entity) { }
-        public bool TryGetView(EntityHandle entity, out GameObject view)
+        private readonly Dictionary<Entity, GameObject> _viewByEntity = new Dictionary<Entity, GameObject>();
+        private readonly Dictionary<int, Entity> _entityByViewId = new Dictionary<int, Entity>();
+
+        /// <summary>ç»‘å®š Entity ä¸ Viewï¼Œå¹¶è¿”å› View çš„å®ä¾‹ IDã€‚</summary>
+        public int Bind(Entity entity, GameObject view)
         {
-            view = null;
-            return false;
+            if (!entity.IsValid || view == null)
+                return -1;
+
+            int viewId = view.GetInstanceID();
+            _viewByEntity[entity] = view;
+            _entityByViewId[viewId] = entity;
+            return viewId;
         }
-        public bool TryGetEntity(int viewId, out EntityHandle entity)
+
+        /// <summary>è§£é™¤æŒ‡å®š Entity ä¸ View çš„ç»‘å®šã€‚</summary>
+        public void Unbind(Entity entity)
         {
-            entity = default;
-            return false;
+            if (!_viewByEntity.TryGetValue(entity, out GameObject view))
+                return;
+
+            _viewByEntity.Remove(entity);
+            if (view != null)
+                _entityByViewId.Remove(view.GetInstanceID());
+        }
+
+        /// <summary>å°è¯•é€šè¿‡ Entity æŸ¥æ‰¾å¯¹åº” Viewã€‚</summary>
+        public bool TryGetView(Entity entity, out GameObject view)
+        {
+            return _viewByEntity.TryGetValue(entity, out view) && view != null;
+        }
+
+        /// <summary>å°è¯•é€šè¿‡ View å®ä¾‹ ID æŸ¥æ‰¾å¯¹åº” Entityã€‚</summary>
+        public bool TryGetEntity(int viewId, out Entity entity)
+        {
+            return _entityByViewId.TryGetValue(viewId, out entity);
         }
     }
 }

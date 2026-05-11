@@ -6,10 +6,13 @@
 using System;
 using System.Collections.Generic;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 组件类型注册表，负责把组件类型映射为 Mask bit ID。
 /// </summary>
-public class ComponentTypeRegistry
+internal class ComponentTypeRegistry
 {
     private const int MaxComponentTypes = 256;
 
@@ -71,4 +74,6 @@ public class ComponentTypeRegistry
         mask.Set(GetOrRegister<T3>());
         return mask;
     }
+}
+
 }

@@ -5,6 +5,9 @@
 
 using System;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// ECS 层使用的输入按钮标记。
 /// </summary>
@@ -30,4 +33,6 @@ public enum InputButtonFlags : ulong
     MouseMiddle = 1UL << 18,
     MouseBack = 1UL << 19,
     MouseForward = 1UL << 20,
+}
+
 }

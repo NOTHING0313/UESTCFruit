@@ -5,6 +5,9 @@
 
 using System.Collections.Generic;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 按逻辑帧和玩家编号缓存输入快照，供帧同步、预测和回滚重放使用。
 /// </summary>
@@ -71,4 +74,6 @@ public sealed class InputSnapshotBuffer : IInputProvider
     {
         _inputsByFrame.Clear();
     }
+}
+
 }

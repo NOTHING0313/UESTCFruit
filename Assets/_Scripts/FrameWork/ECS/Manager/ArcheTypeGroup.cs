@@ -5,22 +5,25 @@
 
 using System.Collections.Generic;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 单个 ArcheType 分组，内部使用 List + Dictionary 维护 Entity 与下标映射。
 /// </summary>
-public sealed class ArcheTypeGroup
+internal sealed class ArcheTypeGroup
 {
-    private readonly List<EntityInfo> _entities = new List<EntityInfo>();
-    private readonly Dictionary<EntityInfo, int> _indices = new Dictionary<EntityInfo, int>();
+    private readonly List<Entity> _entities = new List<Entity>();
+    private readonly Dictionary<Entity, int> _indices = new Dictionary<Entity, int>();
 
     /// <summary>当前分组中的 Entity 列表。</summary>
-    public List<EntityInfo> Entities => _entities;
+    public List<Entity> Entities => _entities;
 
     /// <summary>当前分组中的 Entity 数量。</summary>
     public int Count => _entities.Count;
 
     /// <summary>判断分组中是否已经存在指定 Entity。</summary>
-    public bool Contains(EntityInfo entity)
+    public bool Contains(Entity entity)
     {
         return entity.IsValid && _indices.ContainsKey(entity);
     }
@@ -29,7 +32,7 @@ public sealed class ArcheTypeGroup
     /// 向分组中添加 Entity。
     /// 如果 Entity 已存在，则不会重复添加。
     /// </summary>
-    public bool Add(EntityInfo entity)
+    public bool Add(Entity entity)
     {
         if (!entity.IsValid || _indices.ContainsKey(entity))
             return false;
@@ -42,13 +45,13 @@ public sealed class ArcheTypeGroup
     /// <summary>
     /// 使用尾元素回填的方式移除 Entity，避免 List.Remove 的线性查找和中间搬移。
     /// </summary>
-    public bool Remove(EntityInfo entity)
+    public bool Remove(Entity entity)
     {
         if (!entity.IsValid || !_indices.TryGetValue(entity, out int index))
             return false;
 
         int lastIndex = _entities.Count - 1;
-        EntityInfo lastEntity = _entities[lastIndex];
+        Entity lastEntity = _entities[lastIndex];
 
         _entities[index] = lastEntity;
         _indices[lastEntity] = index;
@@ -64,4 +67,6 @@ public sealed class ArcheTypeGroup
         _entities.Clear();
         _indices.Clear();
     }
+}
+
 }

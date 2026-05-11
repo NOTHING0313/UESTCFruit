@@ -1,3 +1,5 @@
+namespace ECSFrameWork
+{
 /*
  * 文件说明：按逻辑帧记录和消费外部模拟指令。
  * 设计约束：ECS Core 逻辑应尽量保持确定性；Unity 表现、输入采样、外部指令通过 Adapter 或 Buffer 接入。
@@ -26,39 +28,39 @@ public static class SimulationFrameCommandBufferExtensions
     }
 
     /// <summary>计划在指定逻辑帧开始前销毁 Entity。</summary>
-    public static void DestroyEntityAtFrame(this SimulationFrameCommandBuffer buffer, int frameNumber, EntityInfo entity)
+    public static void DestroyEntityAtFrame(this SimulationFrameCommandBuffer buffer, int frameNumber, Entity entity)
     {
         buffer.DestroyEntityAtFrame(frameNumber, SimulationFrameCommandTiming.BeforeTick, entity);
     }
 
     /// <summary>计划在指定逻辑帧、指定时机销毁 Entity。</summary>
-    public static void DestroyEntityAtFrame(this SimulationFrameCommandBuffer buffer, int frameNumber, SimulationFrameCommandTiming timing, EntityInfo entity)
+    public static void DestroyEntityAtFrame(this SimulationFrameCommandBuffer buffer, int frameNumber, SimulationFrameCommandTiming timing, Entity entity)
     {
         if (buffer != null)
             buffer.AddCommand(new DestroyEntityFrameCommand(frameNumber, entity), timing);
     }
 
     /// <summary>计划在指定逻辑帧开始前设置或添加组件。</summary>
-    public static void SetComponentAtFrame<T>(this SimulationFrameCommandBuffer buffer, int frameNumber, EntityInfo entity, in T component) where T : struct, IComponentData
+    public static void SetComponentAtFrame<T>(this SimulationFrameCommandBuffer buffer, int frameNumber, Entity entity, in T component) where T : struct, IComponentData
     {
         buffer.SetComponentAtFrame(frameNumber, SimulationFrameCommandTiming.BeforeTick, entity, in component);
     }
 
     /// <summary>计划在指定逻辑帧、指定时机设置或添加组件。</summary>
-    public static void SetComponentAtFrame<T>(this SimulationFrameCommandBuffer buffer, int frameNumber, SimulationFrameCommandTiming timing, EntityInfo entity, in T component) where T : struct, IComponentData
+    public static void SetComponentAtFrame<T>(this SimulationFrameCommandBuffer buffer, int frameNumber, SimulationFrameCommandTiming timing, Entity entity, in T component) where T : struct, IComponentData
     {
         if (buffer != null)
             buffer.AddCommand(new SetComponentFrameCommand<T>(frameNumber, entity, in component), timing);
     }
 
     /// <summary>计划在指定逻辑帧开始前移除组件。</summary>
-    public static void RemoveComponentAtFrame<T>(this SimulationFrameCommandBuffer buffer, int frameNumber, EntityInfo entity) where T : struct, IComponentData
+    public static void RemoveComponentAtFrame<T>(this SimulationFrameCommandBuffer buffer, int frameNumber, Entity entity) where T : struct, IComponentData
     {
         buffer.RemoveComponentAtFrame<T>(frameNumber, SimulationFrameCommandTiming.BeforeTick, entity);
     }
 
     /// <summary>计划在指定逻辑帧、指定时机移除组件。</summary>
-    public static void RemoveComponentAtFrame<T>(this SimulationFrameCommandBuffer buffer, int frameNumber, SimulationFrameCommandTiming timing, EntityInfo entity) where T : struct, IComponentData
+    public static void RemoveComponentAtFrame<T>(this SimulationFrameCommandBuffer buffer, int frameNumber, SimulationFrameCommandTiming timing, Entity entity) where T : struct, IComponentData
     {
         if (buffer != null)
             buffer.AddCommand(new RemoveComponentFrameCommand<T>(frameNumber, entity), timing);
@@ -102,4 +104,6 @@ public static class SimulationFrameCommandBufferExtensions
         if (buffer != null)
             buffer.AddCommand(new ClearSystemFrameCommand(frameNumber), timing);
     }
+}
+
 }

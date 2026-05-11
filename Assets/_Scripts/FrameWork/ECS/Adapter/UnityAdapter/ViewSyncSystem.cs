@@ -5,6 +5,9 @@
 
 using UnityEngine;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 将 ECS 中的 PositionComponent 同步到 Unity Transform。
 /// </summary>
@@ -29,9 +32,11 @@ public sealed class ViewSyncSystem : FixedStepSystemBase
     }
 
     /// <summary>同步单个实体对应的 Unity Transform。</summary>
-    private void SyncView(EntityInfo entity, ref PositionComponent position, ref ViewComponent view)
+    private void SyncView(Entity entity, ref PositionComponent position, ref ViewComponent view)
     {
         if (_viewManager != null && _viewManager.TryGetTransform(view.viewID, out Transform target))
             target.position = new Vector3(position.x, position.y, position.z);
     }
+}
+
 }

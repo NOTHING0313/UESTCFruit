@@ -11,7 +11,7 @@ World.FillQuery(query, entities, false);
 
 for (int i = 0; i < entities.Count; i++)
 {
-    EntityInfo entity = entities[i];
+    Entity entity = entities[i];
     ref PositionComponent position = ref World.GetComponent<PositionComponent>(entity);
     ref VelocityComponent velocity = ref World.GetComponent<VelocityComponent>(entity);
 }
@@ -38,12 +38,12 @@ World.ForEach<PlayerInputComponent, MoveSpeedComponent, VelocityComponent>(callb
 ### ComponentStore<T>
 
 ```csharp
-public bool TryGetDenseIndex(EntityInfo entity, out int denseIndex)
-public EntityInfo GetEntityByDenseIndex(int denseIndex)
+public bool TryGetDenseIndex(Entity entity, out int denseIndex)
+public Entity GetEntityByDenseIndex(int denseIndex)
 public ref T GetComponentByDenseIndex(int denseIndex)
 ```
 
-这些方法暴露 dense 数组访问能力，但仍然通过 EntityInfo 的 ID 和 Version 保证组件对应关系正确。
+这些方法暴露 dense 数组访问能力，但仍然通过 Entity 的 ID 和 Version 保证组件对应关系正确。
 
 ### ComponentManager
 

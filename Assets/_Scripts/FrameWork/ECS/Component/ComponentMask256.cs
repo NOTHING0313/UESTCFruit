@@ -5,6 +5,9 @@
 
 using System;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 最多支持 256 种组件类型的组件组合 Mask。
 /// </summary>
@@ -223,4 +226,6 @@ public struct ComponentMask256 : IEquatable<ComponentMask256>
         _word2 |= other._word2;
         _word3 |= other._word3;
     }
+}
+
 }

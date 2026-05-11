@@ -4,7 +4,11 @@
  * 设计约束：ECS Core 逻辑应尽量保持确定性；Unity 表现、输入采样、外部指令通过 Adapter 或 Buffer 接入。
  */
 
+using System;
 using System.Collections.Generic;
+
+namespace ECSFrameWork
+{
 
 /// <summary>
 /// ECS 逻辑世界入口，统一管理 Entity、Component、ArcheType、Query、System 与结构变更缓冲。
@@ -19,10 +23,11 @@ public class World
     private StructuralChangeBuffer _structuralChangeBuffer;
     private SystemChangeBuffer _systemChangeBuffer;
     private WorldEventBuffer _worldEventBuffer;
+    private Dictionary<Type, Entity> _singletonEntities;
 
     private WorldStates _currentState = WorldStates.Initialization;
 
-    public StructuralChangeBuffer Commands => _structuralChangeBuffer;
+    internal StructuralChangeBuffer Commands => _structuralChangeBuffer;
     public WorldStates CurrentState => _currentState;
 
     public int CreatedEntityCount => _entityManager.CreatedEntityCount;
@@ -38,6 +43,7 @@ public class World
     public int QueryCacheCount => _archeTypeManager.QueryCacheCount;
     public int ArcheTypeVersion => _archeTypeManager.ArcheTypeVersion;
     public int WorldEventCount => _worldEventBuffer.Count;
+    public int SingletonCount => _singletonEntities.Count;
 
     /// <summary>是否启用 System Tick 耗时统计；关闭后 System 仍正常执行，但不会更新 Profile。</summary>
     public bool EnableSystemProfile
@@ -70,6 +76,7 @@ public class World
         _componentManager = new ComponentManager(_entityManager, _archeTypeManager, _registry);
         _structuralChangeBuffer = new StructuralChangeBuffer();
         _worldEventBuffer = new WorldEventBuffer();
+        _singletonEntities = new Dictionary<Type, Entity>();
         _systemManager = new SystemManager(this);
     }
 
@@ -100,7 +107,7 @@ public class World
     /// <summary>
     /// 判断当前阶段是否允许立即执行 Entity/Component 结构修改。
     /// </summary>
-    public bool CanExcuteImmediately(ExcuteType excuteType)
+    internal bool CanExcuteImmediately(ExcuteType excuteType)
     {
         if (_currentState == WorldStates.Disposing)
             return false;
@@ -121,7 +128,7 @@ public class World
     /// <summary>
     /// 判断当前阶段是否允许立即修改 System 列表。
     /// </summary>
-    public bool CanExcuteSystemImmediately(ExcuteType excuteType)
+    internal bool CanExcuteSystemImmediately(ExcuteType excuteType)
     {
         if (_currentState == WorldStates.Disposing)
             return false;
@@ -217,7 +224,7 @@ public class World
     /// <summary>
     /// 按 Entity ID 从小到大枚举当前存活实体。
     /// </summary>
-    public IEnumerable<EntityInfo> GetAliveEntities()
+    public IEnumerable<Entity> GetAliveEntities()
     {
         return _entityManager.GetAliveEntities();
     }
@@ -241,18 +248,36 @@ public class World
     /// <summary>
     /// 创建新实体；World 正在释放时返回 Invalid。
     /// </summary>
-    public EntityInfo CreateEntity()
+    public Entity CreateEntity()
     {
         if (_currentState == WorldStates.Disposing)
-            return EntityInfo.Invalid;
+            return Entity.Invalid;
 
-        return _entityManager.GetEntityInfo();
+        return _entityManager.GetEntity();
+    }
+
+    /// <summary>
+    /// 创建 EntityBuilder，用于链式创建 Entity 并设置初始组件。
+    /// </summary>
+    public EntityBuilder CreateEntityBuilder()
+    {
+        return new EntityBuilder(this);
+    }
+
+    /// <summary>
+    /// 使用委托集中配置并创建 Entity。configure 为空时仅创建 Entity。
+    /// </summary>
+    public Entity BuildEntity(Action<EntityBuilder> configure)
+    {
+        EntityBuilder builder = CreateEntityBuilder();
+        configure?.Invoke(builder);
+        return builder.Build();
     }
 
     /// <summary>
     /// 判断实体句柄是否仍然有效且存活。
     /// </summary>
-    public bool IsAlive(EntityInfo entity)
+    public bool IsAlive(Entity entity)
     {
         return _entityManager.IsAlive(entity);
     }
@@ -260,7 +285,7 @@ public class World
     /// <summary>
     /// 销毁实体；Tick 中调用时进入 StructuralChangeBuffer。
     /// </summary>
-    public void DestroyEntity(EntityInfo entity)
+    public void DestroyEntity(Entity entity)
     {
         if (_currentState == WorldStates.Disposing)
             return;
@@ -280,11 +305,12 @@ public class World
     /// <summary>
     /// 立即销毁实体并移除其所有组件。
     /// </summary>
-    internal void DestroyEntityImmediately(EntityInfo entity)
+    internal void DestroyEntityImmediately(Entity entity)
     {
         if (!_entityManager.IsAlive(entity))
             return;
 
+        RemoveSingletonMappingsByEntity(entity);
         _componentManager.RemoveAllComponents(entity);
         _entityManager.DestroyEntity(entity);
     }
@@ -292,7 +318,7 @@ public class World
     /// <summary>
     /// 设置组件；新增组件在禁止立即结构修改的阶段进入 StructuralChangeBuffer。
     /// </summary>
-    public void SetComponent<T>(EntityInfo entity, in T component) where T : struct, IComponentData
+    public void SetComponent<T>(Entity entity, in T component) where T : struct, IComponentData
     {
         if (_currentState == WorldStates.Disposing)
             return;
@@ -320,7 +346,7 @@ public class World
     /// <summary>
     /// 立即设置组件并同步 ArcheType。
     /// </summary>
-    internal void SetComponentImmediately<T>(EntityInfo entity, in T component) where T : struct, IComponentData
+    internal void SetComponentImmediately<T>(Entity entity, in T component) where T : struct, IComponentData
     {
         if (!_entityManager.IsAlive(entity))
             return;
@@ -331,7 +357,7 @@ public class World
     /// <summary>
     /// 移除组件；禁止立即结构修改时进入 StructuralChangeBuffer。
     /// </summary>
-    public bool RemoveComponent<T>(EntityInfo entity) where T : struct, IComponentData
+    public bool RemoveComponent<T>(Entity entity) where T : struct, IComponentData
     {
         if (_currentState == WorldStates.Disposing)
             return false;
@@ -352,19 +378,24 @@ public class World
     /// <summary>
     /// 立即移除组件并同步 ArcheType。
     /// </summary>
-    internal bool RemoveComponentImmediately<T>(EntityInfo entity) where T : struct, IComponentData
+    internal bool RemoveComponentImmediately<T>(Entity entity) where T : struct, IComponentData
     {
         if (!_entityManager.IsAlive(entity))
             return false;
 
-        return _componentManager.RemoveComponent<T>(entity);
+        bool removed = _componentManager.RemoveComponent<T>(entity);
+
+        if (removed && _singletonEntities.TryGetValue(typeof(T), out Entity singletonEntity) && singletonEntity == entity)
+            _singletonEntities.Remove(typeof(T));
+
+        return removed;
     }
 
 
     /// <summary>
     /// 获取组件 ref 引用。
     /// </summary>
-    public ref T GetComponent<T>(EntityInfo entity) where T : struct, IComponentData
+    public ref T GetComponent<T>(Entity entity) where T : struct, IComponentData
     {
         return ref _componentManager.GetComponent<T>(entity);
     }
@@ -372,7 +403,7 @@ public class World
     /// <summary>
     /// 安全尝试读取组件数据。
     /// </summary>
-    public bool TryGetComponent<T>(EntityInfo entity, out T component) where T : struct, IComponentData
+    public bool TryGetComponent<T>(Entity entity, out T component) where T : struct, IComponentData
     {
         if (!_entityManager.IsAlive(entity))
         {
@@ -386,12 +417,135 @@ public class World
     /// <summary>
     /// 安全判断实体是否拥有指定组件。
     /// </summary>
-    public bool HasComponent<T>(EntityInfo entity) where T : struct, IComponentData
+    public bool HasComponent<T>(Entity entity) where T : struct, IComponentData
     {
         if (!_entityManager.IsAlive(entity))
             return false;
 
         return _componentManager.HasComponent<T>(entity);
+    }
+
+    /// <summary>
+    /// 设置指定类型的 Singleton Component。
+    /// 如果该 Singleton 已存在，则覆盖组件数据；如果不存在，则创建一个内部 Entity 承载该组件。
+    /// </summary>
+    public Entity SetSingleton<T>(in T component) where T : struct, IComponentData
+    {
+        if (_currentState == WorldStates.Disposing)
+            return Entity.Invalid;
+
+        Type type = typeof(T);
+
+        if (_singletonEntities.TryGetValue(type, out Entity entity) && _entityManager.IsAlive(entity))
+        {
+            SetComponent(entity, in component);
+            return entity;
+        }
+
+        entity = CreateEntity();
+
+        if (!entity.IsValid)
+            return Entity.Invalid;
+
+        _singletonEntities[type] = entity;
+        SetComponent(entity, in component);
+        return entity;
+    }
+
+    /// <summary>
+    /// 判断指定类型的 Singleton Component 是否存在且对应 Entity 仍然存活。
+    /// </summary>
+    public bool HasSingleton<T>() where T : struct, IComponentData
+    {
+        return TryGetSingletonEntity<T>(out Entity entity) && HasComponent<T>(entity);
+    }
+
+    /// <summary>
+    /// 获取指定类型 Singleton Component 的 ref 引用。
+    /// Singleton 不存在时抛出异常，调用前可先使用 HasSingleton 或 TryGetSingleton。
+    /// </summary>
+    public ref T GetSingleton<T>() where T : struct, IComponentData
+    {
+        if (!TryGetSingletonEntity<T>(out Entity entity) || !HasComponent<T>(entity))
+            throw new InvalidOperationException($"Singleton component does not exist: {typeof(T).Name}");
+
+        return ref GetComponent<T>(entity);
+    }
+
+    /// <summary>
+    /// 安全尝试获取指定类型 Singleton Component 的数据副本。
+    /// </summary>
+    public bool TryGetSingleton<T>(out T component) where T : struct, IComponentData
+    {
+        if (!TryGetSingletonEntity<T>(out Entity entity))
+        {
+            component = default;
+            return false;
+        }
+
+        return TryGetComponent(entity, out component);
+    }
+
+    /// <summary>
+    /// 安全尝试获取承载指定 Singleton Component 的 Entity。
+    /// </summary>
+    public bool TryGetSingletonEntity<T>(out Entity entity) where T : struct, IComponentData
+    {
+        Type type = typeof(T);
+
+        if (_singletonEntities.TryGetValue(type, out entity) && _entityManager.IsAlive(entity))
+            return true;
+
+        _singletonEntities.Remove(type);
+        entity = Entity.Invalid;
+        return false;
+    }
+
+    /// <summary>
+    /// 移除指定类型的 Singleton Component，并销毁其内部承载 Entity。
+    /// Tick 中调用时销毁会进入 StructuralChangeBuffer。
+    /// </summary>
+    public bool RemoveSingleton<T>() where T : struct, IComponentData
+    {
+        Type type = typeof(T);
+
+        if (!_singletonEntities.TryGetValue(type, out Entity entity) || !_entityManager.IsAlive(entity))
+        {
+            _singletonEntities.Remove(type);
+            return false;
+        }
+
+        _singletonEntities.Remove(type);
+        DestroyEntity(entity);
+        return true;
+    }
+
+    /// <summary>
+    /// 移除指向指定 Entity 的 Singleton 映射。
+    /// </summary>
+    private void RemoveSingletonMappingsByEntity(Entity entity)
+    {
+        if (_singletonEntities == null || _singletonEntities.Count == 0)
+            return;
+
+        List<Type> removeTypes = null;
+
+        foreach (KeyValuePair<Type, Entity> pair in _singletonEntities)
+        {
+            if (pair.Value != entity)
+                continue;
+
+            if (removeTypes == null)
+                removeTypes = new List<Type>();
+
+            removeTypes.Add(pair.Key);
+        }
+
+        if (removeTypes == null)
+            return;
+
+        for (int i = 0; i < removeTypes.Count; i++)
+            _singletonEntities.Remove(removeTypes[i]);
     }
 
     /// <summary>
@@ -529,6 +683,7 @@ public class World
 
         _structuralChangeBuffer.Clear();
         _worldEventBuffer.Clear();
+        _singletonEntities.Clear();
         _systemManager.ClearPendingSystemChanges();
         _systemManager.ClearSystemImmediately();
         _systemManager.ClearPendingSystemChanges();
@@ -538,7 +693,7 @@ public class World
     /// 执行 QueryDescription 查询，并把结果填充到外部 List 中。
     /// sorted 为 true 时，会按 Entity ID / Version 排序。
     /// </summary>
-    public int FillQuery(EntityQueryDescription query, List<EntityInfo> results, bool sorted = false)
+    public int FillQuery(EntityQueryDescription query, List<Entity> results, bool sorted = false)
     {
         if (results == null)
             return 0;
@@ -548,7 +703,7 @@ public class World
         _archeTypeManager.FillEntityByQuery(query, results);
 
         if (sorted)
-            results.Sort(EntityInfoComparer.Instance);
+            results.Sort(EntityComparer.Instance);
 
         return results.Count;
     }
@@ -568,6 +723,7 @@ public class World
             QueryCacheCount,
             ArcheTypeVersion,
             SystemCount,
+            SingletonCount,
             PendingCommandCount,
             PendingSystemCommandCount,
             _currentState
@@ -612,7 +768,7 @@ public enum WorldStates
 /// <remarks>
 /// 名称 ExcuteType 保留当前代码命名，后续若统一重命名为 ExecuteType，需要同步修改所有调用点。
 /// </remarks>
-public enum ExcuteType
+internal enum ExcuteType
 {
     /// <summary>不改变结构的普通操作。</summary>
     Default = 0,
@@ -627,3 +783,5 @@ public enum ExcuteType
     DestroyEntity = 3,
 }
 
+
+}

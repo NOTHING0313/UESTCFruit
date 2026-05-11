@@ -6,6 +6,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// Unity View 对象管理器，负责 viewID 与 GameObject / Transform 映射。
 /// </summary>
@@ -159,4 +162,6 @@ public sealed class ViewManager
         _nextViewID++;
         return viewID;
     }
+}
+
 }

@@ -1,6 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 验证 Query 条件缓存、NoAlloc Fill、缓存 Query 的 System 以及 ViewManager Provider 接入。
 /// </summary>
@@ -33,9 +36,9 @@ public sealed class ECSQuerySystemViewProviderTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Query Provider Test 1] Execute / Fill Reuse Cache</color>");
 
         World world = new World();
-        EntityInfo e1 = CreateMoveEntity(world, 1f, 0f, 0f, 1f, 0f, 0f);
-        EntityInfo e2 = CreateMoveEntity(world, 2f, 0f, 0f, 1f, 0f, 0f);
-        List<EntityInfo> results = new List<EntityInfo>(8);
+        Entity e1 = CreateMoveEntity(world, 1f, 0f, 0f, 1f, 0f, 0f);
+        Entity e2 = CreateMoveEntity(world, 2f, 0f, 0f, 1f, 0f, 0f);
+        List<Entity> results = new List<Entity>(8);
 
         EntityQueryDescription query = world.Query().With<PositionComponent>().With<VelocityComponent>().BuildDescription();
 
@@ -43,7 +46,7 @@ public sealed class ECSQuerySystemViewProviderTestBootstrap : MonoBehaviour
         int cacheAfterFirst = world.QueryCacheCount;
         int secondCount = world.FillQuery(query, results, false);
         int cacheAfterSecond = world.QueryCacheCount;
-        List<EntityInfo> executeResults = world.Query().With<VelocityComponent>().With<PositionComponent>().Execute();
+        List<Entity> executeResults = world.Query().With<VelocityComponent>().With<PositionComponent>().Execute();
 
         Expect(firstCount == 2 && ContainsEntity(results, e1) && ContainsEntity(results, e2), $"First Fill should return two entities. Actual = {firstCount}");
         Expect(secondCount == 2, $"Second Fill should still return two entities. Actual = {secondCount}");
@@ -51,7 +54,7 @@ public sealed class ECSQuerySystemViewProviderTestBootstrap : MonoBehaviour
         Expect(cacheAfterSecond == 1, $"Second Fill should reuse QueryCache item. Actual = {cacheAfterSecond}");
         Expect(world.QueryCacheCount == 1 && executeResults.Count == 2, $"Execute with same mask order changed should reuse cache. Cache = {world.QueryCacheCount}, Count = {executeResults.Count}");
 
-        EntityInfo e3 = world.CreateEntity();
+        Entity e3 = world.CreateEntity();
         world.SetComponent(e3, new PositionComponent(3f, 0f, 0f));
         world.SetComponent(e3, new VelocityComponent(1f, 0f, 0f));
         world.SetComponent(e3, new MoveSpeedComponent(1f));
@@ -67,14 +70,14 @@ public sealed class ECSQuerySystemViewProviderTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Query Provider Test 2] ExecuteSorted Stable Order</color>");
 
         World world = new World();
-        EntityInfo e1 = CreateMoveEntity(world, 1f, 0f, 0f, 0f, 0f, 0f);
-        EntityInfo e2 = CreateMoveEntity(world, 2f, 0f, 0f, 0f, 0f, 0f);
-        EntityInfo e3 = CreateMoveEntity(world, 3f, 0f, 0f, 0f, 0f, 0f);
+        Entity e1 = CreateMoveEntity(world, 1f, 0f, 0f, 0f, 0f, 0f);
+        Entity e2 = CreateMoveEntity(world, 2f, 0f, 0f, 0f, 0f, 0f);
+        Entity e3 = CreateMoveEntity(world, 3f, 0f, 0f, 0f, 0f, 0f);
 
         world.RemoveComponent<VelocityComponent>(e2);
         world.SetComponent(e2, new VelocityComponent(0f, 0f, 0f));
 
-        List<EntityInfo> sorted = world.Query().With<PositionComponent>().With<VelocityComponent>().ExecuteSorted();
+        List<Entity> sorted = world.Query().With<PositionComponent>().With<VelocityComponent>().ExecuteSorted();
         bool ordered = sorted.Count == 3 && sorted[0] == e1 && sorted[1] == e2 && sorted[2] == e3;
 
         Expect(ordered, "ExecuteSorted should sort entities by ID / Version even when archetype internal order changes.");
@@ -86,7 +89,7 @@ public sealed class ECSQuerySystemViewProviderTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Query Provider Test 3] MovementSystem Cached Query</color>");
 
         World world = new World();
-        EntityInfo entity = CreateMoveEntity(world, 0f, 0f, 0f, 2f, 0f, -1f);
+        Entity entity = CreateMoveEntity(world, 0f, 0f, 0f, 2f, 0f, -1f);
         world.AddSystem(new MovementSystem());
 
         TickWorld(world, 1, 0.5f);
@@ -102,8 +105,8 @@ public sealed class ECSQuerySystemViewProviderTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Query Provider Test 4] InputMoveSystem Cached Query</color>");
 
         World world = new World();
-        EntityInfo entity = world.CreateEntity();
-        world.SetComponent(entity, new PlayerInputComponent(1, 0, 1f, -1f));
+        Entity entity = world.CreateEntity();
+        world.SetComponent(entity, new PlayerInputSnapshotComponent(1, 0, 1f, -1f));
         world.SetComponent(entity, new MoveSpeedComponent(3f));
         world.SetComponent(entity, new VelocityComponent(0f, 0f, 0f));
         world.AddSystem(new InputMoveSystem());
@@ -114,7 +117,7 @@ public sealed class ECSQuerySystemViewProviderTestBootstrap : MonoBehaviour
         Expect(NearlyEqual(velocity.x, 3f) && NearlyEqual(velocity.z, -3f), $"InputMoveSystem should write velocity from input. Actual = ({velocity.x}, {velocity.z})");
         Expect(world.QueryCacheCount == 1, $"InputMoveSystem should create one cached query. Actual = {world.QueryCacheCount}");
 
-        world.SetComponent(entity, new PlayerInputComponent(2, 0, 1f, 1f));
+        world.SetComponent(entity, new PlayerInputSnapshotComponent(2, 0, 1f, 1f));
         TickWorld(world, 3, 1f);
         velocity = world.GetComponent<VelocityComponent>(entity);
 
@@ -127,11 +130,11 @@ public sealed class ECSQuerySystemViewProviderTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Query Provider Test 5] Damage / DeadCleanup Cached Query</color>");
 
         World world = new World();
-        EntityInfo target = world.CreateEntity();
+        Entity target = world.CreateEntity();
         world.SetComponent(target, new HealthComponent(10, 10));
 
-        EntityInfo request = world.CreateEntity();
-        world.SetComponent(request, new DamageRequestComponent(EntityInfo.Invalid, target, 12));
+        Entity request = world.CreateEntity();
+        world.SetComponent(request, new DamageRequestComponent(Entity.Invalid, target, 12));
 
         world.AddSystem(new DamageResolveSystem());
         world.AddSystem(new DeadCleanupSystem());
@@ -203,7 +206,7 @@ public sealed class ECSQuerySystemViewProviderTestBootstrap : MonoBehaviour
         world.AddSystem(new ViewSyncSystem(viewManager));
         world.AddSystem(new ViewDestroySystem(viewManager));
 
-        EntityInfo entity = world.CreateEntity();
+        Entity entity = world.CreateEntity();
         world.SetComponent(entity, new PositionComponent(1f, 2f, 3f));
         world.SetComponent(entity, new PrefabViewRequestComponent(2001));
 
@@ -232,9 +235,9 @@ public sealed class ECSQuerySystemViewProviderTestBootstrap : MonoBehaviour
     }
 
     /// <summary>创建拥有 Position 和 Velocity 的移动测试实体。</summary>
-    private EntityInfo CreateMoveEntity(World world, float px, float py, float pz, float vx, float vy, float vz)
+    private Entity CreateMoveEntity(World world, float px, float py, float pz, float vx, float vy, float vz)
     {
-        EntityInfo entity = world.CreateEntity();
+        Entity entity = world.CreateEntity();
         world.SetComponent(entity, new PositionComponent(px, py, pz));
         world.SetComponent(entity, new VelocityComponent(vx, vy, vz));
         return entity;
@@ -248,7 +251,7 @@ public sealed class ECSQuerySystemViewProviderTestBootstrap : MonoBehaviour
     }
 
     /// <summary>判断列表中是否存在指定 Entity。</summary>
-    private bool ContainsEntity(List<EntityInfo> entities, EntityInfo entity)
+    private bool ContainsEntity(List<Entity> entities, Entity entity)
     {
         for (int i = 0; i < entities.Count; i++)
         {
@@ -317,4 +320,6 @@ public sealed class ECSQuerySystemViewProviderTestBootstrap : MonoBehaviour
             _instances.Clear();
         }
     }
+}
+
 }

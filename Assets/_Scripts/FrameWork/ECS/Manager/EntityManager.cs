@@ -6,10 +6,13 @@
 using System;
 using System.Collections.Generic;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// Entity 生命周期管理器，负责 ID 分配、Version 刷新、存活标记和 ID 复用。
 /// </summary>
-public class EntityManager
+internal class EntityManager
 {
     private EntityData[] _datas = Array.Empty<EntityData>();
     private Stack<int> freeIDs = new Stack<int>();
@@ -50,9 +53,9 @@ public class EntityManager
     }
 
     /// <summary>
-    /// 创建或复用一个实体 ID，并返回带版本号的 EntityInfo。
+    /// 创建或复用一个实体 ID，并返回带版本号的 Entity。
     /// </summary>
-    public EntityInfo GetEntityInfo()
+    public Entity GetEntity()
     {
         int id;
         EntityData data;
@@ -80,13 +83,13 @@ public class EntityManager
 
         _datas[id] = data;
 
-        return new EntityInfo(id, data.Version);
+        return new Entity(id, data.Version);
     }
 
     /// <summary>
-    /// 校验 EntityInfo 是否仍然对应一个存活实体。
+    /// 校验 Entity 是否仍然对应一个存活实体。
     /// </summary>
-    public bool IsAlive(EntityInfo entity)
+    public bool IsAlive(Entity entity)
     {
         if (!entity.IsValid)
             return false;
@@ -105,21 +108,21 @@ public class EntityManager
     /// <summary>
     /// 按 Entity ID 从小到大枚举当前存活的实体。
     /// </summary>
-    public IEnumerable<EntityInfo> GetAliveEntities()
+    public IEnumerable<Entity> GetAliveEntities()
     {
         for (int i = 0; i < dataCount; i++)
         {
             EntityData data = _datas[i];
 
             if (data != null && data.isAlive)
-                yield return new EntityInfo(i, data.Version);
+                yield return new Entity(i, data.Version);
         }
     }
 
     /// <summary>
     /// 获取实体当前持有组件组合对应的 ComponentMask256。
     /// </summary>
-    public ComponentMask256 GetMask(EntityInfo entity)
+    public ComponentMask256 GetMask(Entity entity)
     {
         if (!IsAlive(entity))
             return default;
@@ -130,7 +133,7 @@ public class EntityManager
     /// <summary>
     /// 给实体当前 Mask 设置指定组件类型位。
     /// </summary>
-    public void SetMask(EntityInfo entity, int componentTypeId)
+    public void SetMask(Entity entity, int componentTypeId)
     {
         if (!IsAlive(entity))
             return;
@@ -141,7 +144,7 @@ public class EntityManager
     /// <summary>
     /// 从实体当前 Mask 中移除指定组件类型位。
     /// </summary>
-    public void RemoveMask(EntityInfo entity, int componentTypeId)
+    public void RemoveMask(Entity entity, int componentTypeId)
     {
         if (!IsAlive(entity))
             return;
@@ -152,7 +155,7 @@ public class EntityManager
     /// <summary>
     /// 清空实体当前 Mask。
     /// </summary>
-    public void ClearMask(EntityInfo entity)
+    public void ClearMask(Entity entity)
     {
         if (!IsAlive(entity))
             return;
@@ -163,7 +166,7 @@ public class EntityManager
     /// <summary>
     /// 销毁实体并回收实体 ID。
     /// </summary>
-    public bool DestroyEntity(EntityInfo entity)
+    public bool DestroyEntity(Entity entity)
     {
         if (!IsAlive(entity))
             return false;
@@ -176,4 +179,6 @@ public class EntityManager
         freeIDs.Push(entity.ID);
         return true;
     }
+}
+
 }

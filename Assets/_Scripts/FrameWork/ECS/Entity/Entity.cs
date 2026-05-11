@@ -5,15 +5,18 @@
 
 using System;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// Entity 句柄，使用 ID 与 Version 校验实体身份。
 /// </summary>
-public struct EntityInfo : IEquatable<EntityInfo>
+public readonly struct Entity : IEquatable<Entity>
 {
-    public static readonly EntityInfo Invalid = new EntityInfo(-1, 0);
+    public static readonly Entity Invalid = new Entity(-1, 0);
 
-    private int _id;
-    private int _version;
+    private readonly int _id;
+    private readonly int _version;
 
     public int ID => _id;
     public int Version => _version;
@@ -23,7 +26,7 @@ public struct EntityInfo : IEquatable<EntityInfo>
     /// <summary>
     /// 创建实体句柄，记录实体 ID 与版本号。
     /// </summary>
-    public EntityInfo(int id, int version)
+    public Entity(int id, int version)
     {
         _id = id;
         _version = version;
@@ -32,18 +35,18 @@ public struct EntityInfo : IEquatable<EntityInfo>
     /// <summary>
     /// 判断两个实体句柄是否指向同一个实体版本。
     /// </summary>
-    public bool Equals(EntityInfo other)
+    public bool Equals(Entity other)
     {
         return _id == other._id
             && _version == other._version;
     }
 
     /// <summary>
-    /// 按 object 入口判断是否为相同 EntityInfo。
+    /// 按 object 入口判断是否为相同 Entity。
     /// </summary>
     public override bool Equals(object obj)
     {
-        return obj is EntityInfo other && Equals(other);
+        return obj is Entity other && Equals(other);
     }
 
     /// <summary>
@@ -58,17 +61,17 @@ public struct EntityInfo : IEquatable<EntityInfo>
     }
 
     /// <summary>
-    /// 比较两个 EntityInfo 是否相等。
+    /// 比较两个 Entity 是否相等。
     /// </summary>
-    public static bool operator ==(EntityInfo left, EntityInfo right)
+    public static bool operator ==(Entity left, Entity right)
     {
         return left.Equals(right);
     }
 
     /// <summary>
-    /// 比较两个 EntityInfo 是否不相等。
+    /// 比较两个 Entity 是否不相等。
     /// </summary>
-    public static bool operator !=(EntityInfo left, EntityInfo right)
+    public static bool operator !=(Entity left, Entity right)
     {
         return !left.Equals(right);
     }
@@ -78,6 +81,8 @@ public struct EntityInfo : IEquatable<EntityInfo>
     /// </summary>
     public override string ToString()
     {
-        return $"EntityInfo(ID: {_id}, Version: {_version})";
+        return $"Entity(ID: {_id}, Version: {_version})";
     }
+}
+
 }

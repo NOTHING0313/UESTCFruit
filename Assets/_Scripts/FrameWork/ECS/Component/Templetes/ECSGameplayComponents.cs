@@ -1,3 +1,5 @@
+namespace ECSFrameWork
+{
 /*
  * 文件说明：ECSGameplayComponents 提供 World Core 交付阶段的最小业务组件，用于验证 Buff、伤害、死亡清理等逻辑闭环。
  * 设计约束：这些组件是示例级基础组件，后续项目可以扩展或替换，但仍建议保持纯数据结构。
@@ -60,20 +62,22 @@ public struct DeadTagComponent : IComponentData
 /// </summary>
 public struct DamageRequestComponent : IComponentData
 {
-    /// <summary>伤害来源 Entity；允许为 EntityInfo.Invalid。</summary>
-    public EntityInfo source;
+    /// <summary>伤害来源 Entity；允许为 Entity.Invalid。</summary>
+    public Entity source;
 
     /// <summary>伤害目标 Entity。</summary>
-    public EntityInfo target;
+    public Entity target;
 
     /// <summary>伤害数值；小于 0 时会被 DamageResolveSystem 按 0 处理。</summary>
     public int amount;
 
     /// <summary>创建伤害请求组件。</summary>
-    public DamageRequestComponent(EntityInfo source, EntityInfo target, int amount)
+    public DamageRequestComponent(Entity source, Entity target, int amount)
     {
         this.source = source;
         this.target = target;
         this.amount = amount;
     }
+}
+
 }

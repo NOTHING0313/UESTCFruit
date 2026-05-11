@@ -5,6 +5,9 @@
 
 using System.Collections.Generic;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 链式 Entity 查询构建器。
 /// 它只负责构建 Query 条件，并在执行时通过 World 访问当前最新的 ArcheType 分组。
@@ -57,21 +60,21 @@ public sealed class EntityQueryBuilder
     }
 
     /// <summary>执行查询，返回未排序的当前结果快照。</summary>
-    public List<EntityInfo> Execute()
+    public List<Entity> Execute()
     {
         return Execute(false);
     }
 
     /// <summary>执行查询，返回按 Entity ID / Version 排序后的稳定结果快照。</summary>
-    public List<EntityInfo> ExecuteSorted()
+    public List<Entity> ExecuteSorted()
     {
         return Execute(true);
     }
 
     /// <summary>执行查询，并通过 sorted 参数决定是否对结果进行稳定排序。</summary>
-    public List<EntityInfo> Execute(bool sorted)
+    public List<Entity> Execute(bool sorted)
     {
-        List<EntityInfo> results = new List<EntityInfo>();
+        List<Entity> results = new List<Entity>();
         Fill(results, sorted);
         return results;
     }
@@ -80,13 +83,13 @@ public sealed class EntityQueryBuilder
     /// 兼容旧测试和旧调用习惯的快照查询入口。
     /// 新代码优先使用 Execute / ExecuteSorted / Fill。
     /// </summary>
-    public List<EntityInfo> ToList(bool sorted = false)
+    public List<Entity> ToList(bool sorted = false)
     {
         return Execute(sorted);
     }
 
     /// <summary>无额外结果 List 分配地执行查询，把结果写入外部传入的 results。</summary>
-    public int Fill(List<EntityInfo> results, bool sorted = false)
+    public int Fill(List<Entity> results, bool sorted = false)
     {
         if (results == null)
             return 0;
@@ -94,4 +97,6 @@ public sealed class EntityQueryBuilder
         EntityQueryDescription query = BuildDescription();
         return _world.FillQuery(query, results, sorted);
     }
+}
+
 }

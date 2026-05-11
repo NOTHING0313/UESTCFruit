@@ -5,6 +5,9 @@
 
 using System.Collections.Generic;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 帧指令：在指定逻辑帧创建 Entity，并可附加一组初始组件。
 /// </summary>
@@ -12,7 +15,7 @@ public sealed class CreateEntityFrameCommand : ISimulationFrameCommand, IRebuild
 {
     private interface IEntityInitializer
     {
-        void Apply(World world, EntityInfo entity);
+        void Apply(World world, Entity entity);
     }
 
     private sealed class ComponentInitializer<T> : IEntityInitializer where T : struct, IComponentData
@@ -24,7 +27,7 @@ public sealed class CreateEntityFrameCommand : ISimulationFrameCommand, IRebuild
             _component = component;
         }
 
-        public void Apply(World world, EntityInfo entity)
+        public void Apply(World world, Entity entity)
         {
             world.SetComponent(entity, in _component);
         }
@@ -33,13 +36,13 @@ public sealed class CreateEntityFrameCommand : ISimulationFrameCommand, IRebuild
     private readonly List<IEntityInitializer> _initializers = new List<IEntityInitializer>();
 
     public int FrameNumber { get; }
-    public EntityInfo LastCreatedEntity { get; private set; }
+    public Entity LastCreatedEntity { get; private set; }
 
     /// <summary>创建指定逻辑帧执行的 Entity 创建指令。</summary>
     public CreateEntityFrameCommand(int frameNumber)
     {
         FrameNumber = frameNumber;
-        LastCreatedEntity = EntityInfo.Invalid;
+        LastCreatedEntity = Entity.Invalid;
     }
 
     /// <summary>使用新的目标帧号重建该指令；CreateEntityFrameCommand 因为包含初始化器集合，重建时会复用初始化器。</summary>
@@ -66,7 +69,7 @@ public sealed class CreateEntityFrameCommand : ISimulationFrameCommand, IRebuild
         if (world == null)
             return;
 
-        EntityInfo entity = world.CreateEntity();
+        Entity entity = world.CreateEntity();
         LastCreatedEntity = entity;
 
         if (!entity.IsValid)
@@ -85,9 +88,9 @@ public sealed class CreateEntityFrameCommand : ISimulationFrameCommand, IRebuild
 public readonly struct DestroyEntityFrameCommand : ISimulationFrameCommand, IRebuildableSimulationFrameCommand
 {
     public int FrameNumber { get; }
-    public EntityInfo Entity { get; }
+    public Entity Entity { get; }
 
-    public DestroyEntityFrameCommand(int frameNumber, EntityInfo entity)
+    public DestroyEntityFrameCommand(int frameNumber, Entity entity)
     {
         FrameNumber = frameNumber;
         Entity = entity;
@@ -113,9 +116,9 @@ public readonly struct SetComponentFrameCommand<T> : ISimulationFrameCommand, IR
     private readonly T _component;
 
     public int FrameNumber { get; }
-    public EntityInfo Entity { get; }
+    public Entity Entity { get; }
 
-    public SetComponentFrameCommand(int frameNumber, EntityInfo entity, in T component)
+    public SetComponentFrameCommand(int frameNumber, Entity entity, in T component)
     {
         FrameNumber = frameNumber;
         Entity = entity;
@@ -140,9 +143,9 @@ public readonly struct SetComponentFrameCommand<T> : ISimulationFrameCommand, IR
 public readonly struct RemoveComponentFrameCommand<T> : ISimulationFrameCommand, IRebuildableSimulationFrameCommand where T : struct, IComponentData
 {
     public int FrameNumber { get; }
-    public EntityInfo Entity { get; }
+    public Entity Entity { get; }
 
-    public RemoveComponentFrameCommand(int frameNumber, EntityInfo entity)
+    public RemoveComponentFrameCommand(int frameNumber, Entity entity)
     {
         FrameNumber = frameNumber;
         Entity = entity;
@@ -234,4 +237,6 @@ public readonly struct ClearSystemFrameCommand : ISimulationFrameCommand, IRebui
         if (world != null)
             world.ClearSystem();
     }
+}
+
 }

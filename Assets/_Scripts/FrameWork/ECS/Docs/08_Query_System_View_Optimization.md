@@ -9,7 +9,7 @@
 推荐 System 写法：
 
 ```csharp
-private readonly List<EntityInfo> _entities = new List<EntityInfo>(128);
+private readonly List<Entity> _entities = new List<Entity>(128);
 private EntityQueryDescription _query;
 
 protected override void OnSystemCreate()
@@ -23,14 +23,14 @@ public override void Tick(in SimulationContext context)
 
     for (int i = 0; i < _entities.Count; i++)
     {
-        EntityInfo entity = _entities[i];
+        Entity entity = _entities[i];
     }
 }
 ```
 
 ## 2. Execute / ExecuteSorted / Fill 的选择
 
-- `Execute()`：返回未排序快照，会分配新的 `List<EntityInfo>`，适合测试或临时逻辑。
+- `Execute()`：返回未排序快照，会分配新的 `List<Entity>`，适合测试或临时逻辑。
 - `ExecuteSorted()`：返回稳定排序快照，适合结果顺序会影响逻辑结果的场景。
 - `Fill(results, sorted)` / `World.FillQuery(...)`：复用外部 List，适合高频 System。
 
@@ -39,7 +39,7 @@ public override void Tick(in SimulationContext context)
 当前示例 System 已经改为：
 
 1. 在 `OnSystemCreate()` 构建 QueryDescription。
-2. 在字段中持有复用的 `List<EntityInfo>`。
+2. 在字段中持有复用的 `List<Entity>`。
 3. 在 `Tick()` 中调用 `World.FillQuery()`。
 4. 在 `OnSystemDestroy()` 清理临时容器。
 

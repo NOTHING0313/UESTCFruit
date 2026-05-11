@@ -1,18 +1,21 @@
 /*
- * 文件说明：WorldInputApplier 从 IInputProvider 读取指定逻辑帧的输入，并写入对应 Entity 的 PlayerInputComponent。
+ * 文件说明：WorldInputApplier 从 IInputProvider 读取指定逻辑帧的输入，并写入对应 Entity 的 PlayerInputSnapshotComponent。
  * 设计约束：ECS Core 逻辑应尽量保持确定性；Unity 表现、输入采样、外部指令通过 Adapter 或 Buffer 接入。
  */
 
 using System.Collections.Generic;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
-/// 按逻辑帧从输入提供者读取输入快照，并写入对应玩家 Entity 的 PlayerInputComponent。
+/// 按逻辑帧从输入提供者读取输入快照，并写入对应玩家 Entity 的 PlayerInputSnapshotComponent。
 /// </summary>
 public sealed class WorldInputApplier
 {
     private readonly World _world;
     private readonly IInputProvider _inputProvider;
-    private readonly Dictionary<int, EntityInfo> _playerEntities = new Dictionary<int, EntityInfo>();
+    private readonly Dictionary<int, Entity> _playerEntities = new Dictionary<int, Entity>();
     private readonly List<int> _sortedPlayerIDs = new List<int>();
     private bool _playerIDListDirty = true;
 
@@ -26,7 +29,7 @@ public sealed class WorldInputApplier
     }
 
     /// <summary>绑定玩家编号与其对应的 ECS Entity。</summary>
-    public void RegisterPlayerEntity(int playerID, EntityInfo entity)
+    public void RegisterPlayerEntity(int playerID, Entity entity)
     {
         if (playerID < 0)
             return;
@@ -65,7 +68,7 @@ public sealed class WorldInputApplier
         for (int i = 0; i < _sortedPlayerIDs.Count; i++)
         {
             int playerID = _sortedPlayerIDs[i];
-            EntityInfo entity = _playerEntities[playerID];
+            Entity entity = _playerEntities[playerID];
 
             if (!_world.IsAlive(entity))
                 continue;
@@ -73,7 +76,7 @@ public sealed class WorldInputApplier
             if (!_inputProvider.TryGetInput(frameNumber, playerID, out PlayerInputSnapshot snapshot))
                 continue;
 
-            PlayerInputComponent input = PlayerInputComponent.FromSnapshot(in snapshot);
+            PlayerInputSnapshotComponent input = PlayerInputSnapshotComponent.FromSnapshot(in snapshot);
             _world.SetComponent(entity, in input);
         }
     }
@@ -91,4 +94,6 @@ public sealed class WorldInputApplier
         _sortedPlayerIDs.Sort();
         _playerIDListDirty = false;
     }
+}
+
 }

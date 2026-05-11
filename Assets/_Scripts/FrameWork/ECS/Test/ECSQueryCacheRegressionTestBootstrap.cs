@@ -1,6 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+namespace ECSFrameWork
+{
+
 public class ECSQueryCacheRegressionTestBootstrap : MonoBehaviour
 {
     private int _failedCount;
@@ -28,20 +31,20 @@ public class ECSQueryCacheRegressionTestBootstrap : MonoBehaviour
 
         World world = new World();
 
-        EntityInfo e1 = CreatePV(world);
-        EntityInfo e2 = CreatePV(world);
-        EntityInfo e3 = world.CreateEntity();
-        EntityInfo e4 = world.CreateEntity();
-        EntityInfo e5 = CreatePV(world);
+        Entity e1 = CreatePV(world);
+        Entity e2 = CreatePV(world);
+        Entity e3 = world.CreateEntity();
+        Entity e4 = world.CreateEntity();
+        Entity e5 = CreatePV(world);
 
         world.SetComponent(e2, new QueryDeadTagComponent());
         world.SetComponent(e3, new QueryPositionComponent { x = 3f, y = 0f, z = 0f });
         world.SetComponent(e4, new QueryVelocityComponent { x = 4f, y = 0f, z = 0f });
         world.SetComponent(e5, new QueryFrozenTagComponent());
 
-        List<EntityInfo> pv = world.Query().With<QueryPositionComponent>().With<QueryVelocityComponent>().Execute();
-        List<EntityInfo> pvWithoutDead = world.Query().With<QueryPositionComponent>().With<QueryVelocityComponent>().Without<QueryDeadTagComponent>().Execute();
-        List<EntityInfo> pvWithoutDeadFrozen = world.Query().With<QueryPositionComponent>().With<QueryVelocityComponent>().Without<QueryDeadTagComponent>().Without<QueryFrozenTagComponent>().Execute();
+        List<Entity> pv = world.Query().With<QueryPositionComponent>().With<QueryVelocityComponent>().Execute();
+        List<Entity> pvWithoutDead = world.Query().With<QueryPositionComponent>().With<QueryVelocityComponent>().Without<QueryDeadTagComponent>().Execute();
+        List<Entity> pvWithoutDeadFrozen = world.Query().With<QueryPositionComponent>().With<QueryVelocityComponent>().Without<QueryDeadTagComponent>().Without<QueryFrozenTagComponent>().Execute();
 
         Expect(pv.Count == 3, $"Position + Velocity query should return 3. Actual = {pv.Count}");
         Expect(ContainsEntity(pv, e1) && ContainsEntity(pv, e2) && ContainsEntity(pv, e5), "Position + Velocity query should contain e1, e2 and e5.");
@@ -56,13 +59,13 @@ public class ECSQueryCacheRegressionTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Query Test 2] Same Mask Different Order Reuses Cache</color>");
 
         World world = new World();
-        EntityInfo e1 = CreatePV(world);
+        Entity e1 = CreatePV(world);
 
         Expect(world.QueryCacheCount == 0, $"Initial QueryCacheCount should be 0. Actual = {world.QueryCacheCount}");
 
-        List<EntityInfo> first = world.Query().With<QueryPositionComponent>().With<QueryVelocityComponent>().Execute();
+        List<Entity> first = world.Query().With<QueryPositionComponent>().With<QueryVelocityComponent>().Execute();
         int cacheCountAfterFirst = world.QueryCacheCount;
-        List<EntityInfo> second = world.Query().With<QueryVelocityComponent>().With<QueryPositionComponent>().Execute();
+        List<Entity> second = world.Query().With<QueryVelocityComponent>().With<QueryPositionComponent>().Execute();
 
         Expect(first.Count == 1 && ContainsEntity(first, e1), "First query should return e1.");
         Expect(second.Count == 1 && ContainsEntity(second, e1), "Second query should return e1.");
@@ -96,17 +99,17 @@ public class ECSQueryCacheRegressionTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Query Test 4] Cache Invalidates When New Matching ArcheType Appears</color>");
 
         World world = new World();
-        EntityInfo e1 = CreatePV(world);
+        Entity e1 = CreatePV(world);
 
-        List<EntityInfo> first = world.Query().With<QueryPositionComponent>().Execute();
+        List<Entity> first = world.Query().With<QueryPositionComponent>().Execute();
         int versionAfterFirstQuery = world.ArcheTypeVersion;
         int cacheCountAfterFirstQuery = world.QueryCacheCount;
 
-        EntityInfo e2 = world.CreateEntity();
+        Entity e2 = world.CreateEntity();
         world.SetComponent(e2, new QueryPositionComponent { x = 2f, y = 0f, z = 0f });
         world.SetComponent(e2, new QueryColliderComponent { radius = 1f });
 
-        List<EntityInfo> second = world.Query().With<QueryPositionComponent>().Execute();
+        List<Entity> second = world.Query().With<QueryPositionComponent>().Execute();
 
         Expect(first.Count == 1 && ContainsEntity(first, e1), "Initial Position query should return e1 only.");
         Expect(world.ArcheTypeVersion > versionAfterFirstQuery, $"ArcheTypeVersion should increase after new matching archetype. Before = {versionAfterFirstQuery}, After = {world.ArcheTypeVersion}");
@@ -119,14 +122,14 @@ public class ECSQueryCacheRegressionTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Query Test 5] Cache Invalidates After Remove Exclude Component</color>");
 
         World world = new World();
-        EntityInfo entity = CreatePV(world);
+        Entity entity = CreatePV(world);
         world.SetComponent(entity, new QueryDeadTagComponent());
 
-        List<EntityInfo> beforeRemove = world.Query().With<QueryPositionComponent>().With<QueryVelocityComponent>().Without<QueryDeadTagComponent>().Execute();
+        List<Entity> beforeRemove = world.Query().With<QueryPositionComponent>().With<QueryVelocityComponent>().Without<QueryDeadTagComponent>().Execute();
         int versionBeforeRemove = world.ArcheTypeVersion;
 
         bool removed = world.RemoveComponent<QueryDeadTagComponent>(entity);
-        List<EntityInfo> afterRemove = world.Query().With<QueryPositionComponent>().With<QueryVelocityComponent>().Without<QueryDeadTagComponent>().Execute();
+        List<Entity> afterRemove = world.Query().With<QueryPositionComponent>().With<QueryVelocityComponent>().Without<QueryDeadTagComponent>().Execute();
 
         Expect(beforeRemove.Count == 0, $"Before removing DeadTag, query should return 0. Actual = {beforeRemove.Count}");
         Expect(removed, "RemoveComponent<DeadTag> should return true.");
@@ -139,31 +142,31 @@ public class ECSQueryCacheRegressionTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Query Test 6] Execute Snapshot Before Immediate Structural Changes</color>");
 
         World world = new World();
-        EntityInfo e1 = CreatePV(world);
-        EntityInfo e2 = CreatePV(world);
+        Entity e1 = CreatePV(world);
+        Entity e2 = CreatePV(world);
 
-        List<EntityInfo> snapshot = world.Query().With<QueryPositionComponent>().With<QueryVelocityComponent>().Execute();
+        List<Entity> snapshot = world.Query().With<QueryPositionComponent>().With<QueryVelocityComponent>().Execute();
 
         for (int i = 0; i < snapshot.Count; i++)
         {
             world.RemoveComponent<QueryVelocityComponent>(snapshot[i]);
         }
 
-        List<EntityInfo> after = world.Query().With<QueryPositionComponent>().With<QueryVelocityComponent>().Execute();
+        List<Entity> after = world.Query().With<QueryPositionComponent>().With<QueryVelocityComponent>().Execute();
 
         Expect(snapshot.Count == 2 && ContainsEntity(snapshot, e1) && ContainsEntity(snapshot, e2), "Snapshot should contain both entities before removal.");
         Expect(after.Count == 0, $"After removing Velocity from snapshot entities, Position + Velocity query should return 0. Actual = {after.Count}");
     }
 
-    private EntityInfo CreatePV(World world)
+    private Entity CreatePV(World world)
     {
-        EntityInfo entity = world.CreateEntity();
+        Entity entity = world.CreateEntity();
         world.SetComponent(entity, new QueryPositionComponent { x = 1f, y = 2f, z = 3f });
         world.SetComponent(entity, new QueryVelocityComponent { x = 4f, y = 5f, z = 6f });
         return entity;
     }
 
-    private bool ContainsEntity(List<EntityInfo> entities, EntityInfo entity)
+    private bool ContainsEntity(List<Entity> entities, Entity entity)
     {
         for (int i = 0; i < entities.Count; i++)
         {
@@ -211,4 +214,6 @@ public struct QueryDeadTagComponent : IComponentData
 
 public struct QueryFrozenTagComponent : IComponentData
 {
+}
+
 }

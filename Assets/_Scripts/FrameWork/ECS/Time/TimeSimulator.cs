@@ -6,6 +6,9 @@
 using UnityEngine;
 using Utility;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// Unity 层时间驱动器，负责在 Update 中采样输入并推进 SimulateRunner。
 /// </summary>
@@ -147,4 +150,6 @@ public class TimeSimulator : Singleton<TimeSimulator>
         _runner.AfterTick -= OnAfterTick;
         _runner = null;
     }
+}
+
 }

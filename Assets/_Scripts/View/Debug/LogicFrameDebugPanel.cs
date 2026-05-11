@@ -4,12 +4,26 @@ using UnityEngine;
 namespace View
 {
     /// <summary>
-    /// µ÷ÊÔÃæ°å¿Õ¿Ç£¨4ºÅÊµÏÖ£¬¹ÒÔØµ½ Canvas£©¡£
-    /// ºóĞøÍ¨¹ı IDebugProbe Ë¢ĞÂÊı¾İÏÔÊ¾Ö¡ºÅ¡¢ÊµÌåÊıµÈ¡£
+    /// é€»è¾‘å¸§è°ƒè¯•é¢æ¿ç©ºå£³ã€‚
+    /// åç»­å¯ä»¥æ¥å…¥ Text / TMP_Textï¼ŒæŠŠ IDebugProbe ä¸­çš„å¸§å·ã€å®ä½“æ•°é‡ã€æ ¡éªŒå€¼ç­‰æ•°æ®æ˜¾ç¤ºåˆ° Canvasã€‚
     /// </summary>
     public sealed class LogicFrameDebugPanel : MonoBehaviour
     {
-        public void Initialize(IDebugProbe probe) { }
-        public void Refresh() { }
+        private IDebugProbe _probe;
+
+        /// <summary>ç»‘å®šè°ƒè¯•æ•°æ®è¯»å–æ¥å£ã€‚</summary>
+        public void Initialize(IDebugProbe probe)
+        {
+            _probe = probe;
+        }
+
+        /// <summary>åˆ·æ–°è°ƒè¯•é¢æ¿æ•°æ®ã€‚</summary>
+        public void Refresh()
+        {
+            if (_probe == null)
+                return;
+
+            Debug.Log($"[LogicFrameDebugPanel] Frame={_probe.CurrentFrame}, EntityCount={_probe.EntityCount}, Checksum={_probe.CurrentChecksum}");
+        }
     }
 }

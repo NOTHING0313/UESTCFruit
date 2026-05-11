@@ -5,13 +5,16 @@
 
 using System.Collections.Generic;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 处理 EntityDestroyRequestComponent 的实体销毁系统。
 /// </summary>
 public sealed class EntityDestroySystem : FixedStepSystemBase
 {
     private readonly ViewManager _viewManager;
-    private readonly List<EntityInfo> _entities = new List<EntityInfo>(128);
+    private readonly List<Entity> _entities = new List<Entity>(128);
     private EntityQueryDescription _destroyQuery;
 
     public override SystemTickSequence sequence => SystemTickSequence.entityCleanup;
@@ -34,7 +37,7 @@ public sealed class EntityDestroySystem : FixedStepSystemBase
 
         for (int i = 0; i < _entities.Count; i++)
         {
-            EntityInfo entity = _entities[i];
+            Entity entity = _entities[i];
 
             if (World.TryGetComponent(entity, out ViewComponent view))
                 _viewManager?.DestroyView(view.viewID);
@@ -48,4 +51,6 @@ public sealed class EntityDestroySystem : FixedStepSystemBase
     {
         _entities.Clear();
     }
+}
+
 }

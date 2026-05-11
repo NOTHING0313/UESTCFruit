@@ -1,3 +1,5 @@
+namespace ECSFrameWork
+{
 /// <summary>
 /// World 当前运行状态的只读统计快照。
 /// 该结构只用于 Debug、测试、性能观测和 Editor 面板展示，不参与 ECS 逻辑。
@@ -28,6 +30,9 @@ public readonly struct WorldStatistics
     /// <summary>当前注册的 System 数量。</summary>
     public readonly int systemCount;
 
+    /// <summary>当前 Singleton Component 映射数量。</summary>
+    public readonly int singletonCount;
+
     /// <summary>当前等待播放的结构变化命令数量。</summary>
     public readonly int pendingStructuralChangeCount;
 
@@ -38,7 +43,7 @@ public readonly struct WorldStatistics
     public readonly WorldStates currentState;
 
     /// <summary>创建 World 统计快照。</summary>
-    public WorldStatistics(int createdEntityCount, int aliveEntityCount, int freeEntityCount, int componentStoreCount, int archeTypeCount, int queryCacheCount, int archeTypeVersion, int systemCount, int pendingStructuralChangeCount, int pendingSystemChangeCount, WorldStates currentState)
+    public WorldStatistics(int createdEntityCount, int aliveEntityCount, int freeEntityCount, int componentStoreCount, int archeTypeCount, int queryCacheCount, int archeTypeVersion, int systemCount, int singletonCount, int pendingStructuralChangeCount, int pendingSystemChangeCount, WorldStates currentState)
     {
         this.createdEntityCount = createdEntityCount;
         this.aliveEntityCount = aliveEntityCount;
@@ -48,6 +53,7 @@ public readonly struct WorldStatistics
         this.queryCacheCount = queryCacheCount;
         this.archeTypeVersion = archeTypeVersion;
         this.systemCount = systemCount;
+        this.singletonCount = singletonCount;
         this.pendingStructuralChangeCount = pendingStructuralChangeCount;
         this.pendingSystemChangeCount = pendingSystemChangeCount;
         this.currentState = currentState;
@@ -56,6 +62,8 @@ public readonly struct WorldStatistics
     /// <summary>返回便于 Debug.Log 查看的一行统计文本。</summary>
     public override string ToString()
     {
-        return $"WorldStatistics(CreatedEntities={createdEntityCount}, AliveEntities={aliveEntityCount}, FreeEntities={freeEntityCount}, Stores={componentStoreCount}, ArcheTypes={archeTypeCount}, Queries={queryCacheCount}, ArcheTypeVersion={archeTypeVersion}, Systems={systemCount}, StructuralChanges={pendingStructuralChangeCount}, SystemChanges={pendingSystemChangeCount}, State={currentState})";
+        return $"WorldStatistics(CreatedEntities={createdEntityCount}, AliveEntities={aliveEntityCount}, FreeEntities={freeEntityCount}, Stores={componentStoreCount}, ArcheTypes={archeTypeCount}, Queries={queryCacheCount}, ArcheTypeVersion={archeTypeVersion}, Systems={systemCount}, Singletons={singletonCount}, StructuralChanges={pendingStructuralChangeCount}, SystemChanges={pendingSystemChangeCount}, State={currentState})";
     }
+}
+
 }

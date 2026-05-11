@@ -1,6 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 验证 SystemProfileInfo 与 Stopwatch 计时统计接口。
 /// </summary>
@@ -151,4 +154,6 @@ public sealed class ProfilePassiveSystem : FixedStepSystemBase
     {
         TickCount++;
     }
+}
+
 }

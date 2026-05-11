@@ -5,12 +5,15 @@
 
 using System.Collections.Generic;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 清理带有 DeadTagComponent 的实体。
 /// </summary>
 public sealed class DeadCleanupSystem : FixedStepSystemBase
 {
-    private readonly List<EntityInfo> _deadEntities = new List<EntityInfo>(128);
+    private readonly List<Entity> _deadEntities = new List<Entity>(128);
     private EntityQueryDescription _deadQuery;
 
     public override SystemTickSequence sequence => SystemTickSequence.cleanup;
@@ -35,4 +38,6 @@ public sealed class DeadCleanupSystem : FixedStepSystemBase
     {
         _deadEntities.Clear();
     }
+}
+
 }

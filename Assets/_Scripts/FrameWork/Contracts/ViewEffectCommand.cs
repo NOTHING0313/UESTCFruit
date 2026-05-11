@@ -1,4 +1,4 @@
-using ECS;   // EntityHandle
+using ECSFrameWork;   // Entity
 
 namespace Contracts
 {
@@ -9,11 +9,11 @@ namespace Contracts
     public readonly struct ViewEffectCommand
     {
         public readonly int EffectId;
-        public readonly EntityHandle Source;
-        public readonly EntityHandle Target;
+        public readonly Entity Source;
+        public readonly Entity Target;
         public readonly int Frame;
 
-        public ViewEffectCommand(int effectId, EntityHandle source, EntityHandle target, int frame)
+        public ViewEffectCommand(int effectId, Entity source, Entity target, int frame)
         {
             EffectId = effectId;
             Source = source;

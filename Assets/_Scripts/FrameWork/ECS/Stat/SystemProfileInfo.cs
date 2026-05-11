@@ -1,3 +1,5 @@
+namespace ECSFrameWork
+{
 /// <summary>
 /// 单个 System 的 Tick 耗时统计信息。
 /// 该对象只用于 Debug、性能观测和测试，不参与 ECS 逻辑结果。
@@ -55,4 +57,6 @@ public sealed class SystemProfileInfo
     {
         return $"SystemProfileInfo(Name={systemName}, Last={lastMilliseconds:F4}ms, Avg={averageMilliseconds:F4}ms, Max={maxMilliseconds:F4}ms, TickCount={tickCount})";
     }
+}
+
 }

@@ -1,12 +1,14 @@
+namespace ECSFrameWork
+{
 /*
- * 文件说明：PlayerInputComponent 是当前逻辑帧输入在 ECS World 中的组件投影，供 System 在 Tick 内读取。
+ * 文件说明：PlayerInputSnapshotComponent 是当前逻辑帧输入在 ECS World 中的组件投影，供 System 在 Tick 内读取。
  * 设计约束：ECS Core 逻辑应尽量保持确定性；Unity 表现、输入采样、外部指令通过 Adapter 或 Buffer 接入。
  */
 
 /// <summary>
 /// 玩家输入快照组件，由 UnityInputAdapter 或网络输入模块写入，由 ECS System 消费。
 /// </summary>
-public struct PlayerInputComponent : IComponentData
+public struct PlayerInputSnapshotComponent : IComponentData
 {
     public int inputFrame;
     public int playerID;
@@ -26,7 +28,7 @@ public struct PlayerInputComponent : IComponentData
     public InputButtonFlags releasedButtons;
 
     /// <summary>创建不绑定具体逻辑帧的输入数据，主要用于测试或非帧同步模式。</summary>
-    public PlayerInputComponent(float moveX, float moveY)
+    public PlayerInputSnapshotComponent(float moveX, float moveY)
     {
         inputFrame = 0;
         playerID = 0;
@@ -47,7 +49,7 @@ public struct PlayerInputComponent : IComponentData
     }
 
     /// <summary>创建绑定具体逻辑帧和玩家编号的输入数据。</summary>
-    public PlayerInputComponent(int inputFrame, int playerID, float moveX, float moveY)
+    public PlayerInputSnapshotComponent(int inputFrame, int playerID, float moveX, float moveY)
     {
         this.inputFrame = inputFrame;
         this.playerID = playerID;
@@ -68,7 +70,7 @@ public struct PlayerInputComponent : IComponentData
     }
 
     /// <summary>根据输入快照创建组件数据。</summary>
-    public PlayerInputComponent(in PlayerInputSnapshot snapshot)
+    public PlayerInputSnapshotComponent(in PlayerInputSnapshot snapshot)
     {
         inputFrame = snapshot.frameNumber;
         playerID = snapshot.playerID;
@@ -90,9 +92,9 @@ public struct PlayerInputComponent : IComponentData
 
 
     /// <summary>根据输入快照创建组件数据。</summary>
-    public static PlayerInputComponent FromSnapshot(in PlayerInputSnapshot snapshot)
+    public static PlayerInputSnapshotComponent FromSnapshot(in PlayerInputSnapshot snapshot)
     {
-        return new PlayerInputComponent(in snapshot);
+        return new PlayerInputSnapshotComponent(in snapshot);
     }
 
     /// <summary>判断该输入是否可用于指定逻辑帧；inputFrame 为 0 时表示测试或非帧同步输入。</summary>
@@ -118,4 +120,6 @@ public struct PlayerInputComponent : IComponentData
     {
         return (releasedButtons & button) != 0;
     }
+}
+
 }

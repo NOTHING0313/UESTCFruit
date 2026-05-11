@@ -6,10 +6,13 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// System 管理器，负责 System 生命周期、执行顺序和延迟增删。
 /// </summary>
-public class SystemManager
+internal class SystemManager
 {
     private readonly List<IFixedStepSystem> _systems;
     private readonly Dictionary<IFixedStepSystem, SystemProfileInfo> _profiles;
@@ -302,4 +305,6 @@ public class SystemManager
             _systems.Insert(index, system);
         }
     }
+}
+
 }

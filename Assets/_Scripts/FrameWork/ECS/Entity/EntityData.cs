@@ -1,3 +1,5 @@
+namespace ECSFrameWork
+{
 /*
  * 文件说明：Entity 句柄、版本号和实体运行时数据。
  * 设计约束：ECS Core 逻辑应尽量保持确定性；Unity 表现、输入采样、外部指令通过 Adapter 或 Buffer 接入。
@@ -6,7 +8,7 @@
 /// <summary>
 /// Entity 运行时元数据，保存存活状态、版本号和组件 Mask。
 /// </summary>
-public class EntityData
+internal class EntityData
 {
     private bool _isAlive;
     private int _version;
@@ -55,4 +57,6 @@ public class EntityData
     {
         _archeType.Clear();
     }
+}
+
 }

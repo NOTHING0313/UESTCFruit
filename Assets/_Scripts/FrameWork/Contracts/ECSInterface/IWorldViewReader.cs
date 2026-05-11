@@ -1,12 +1,16 @@
 using System.Collections.Generic;
+using ECSFrameWork;
 
-/// <summary>
-/// 表现层读取 World 状态的只读接口。
-/// </summary>
-public interface IWorldViewReader
+namespace Contracts
 {
-    bool TryGetViewId(EntityInfo entity, out int viewId);
-    bool TryGetPosition(EntityInfo entity, out PositionComponent position);
-    bool TryGetHealth(EntityInfo entity, out HealthComponent health);
-    IEnumerable<EntityInfo> GetAliveEntities();
+    /// <summary>
+    /// 表现层读取 World 状态的只读接口。
+    /// </summary>
+    public interface IWorldViewReader
+    {
+        bool TryGetViewId(Entity entity, out int viewId);
+        bool TryGetPosition(Entity entity, out PositionComponent position);
+        bool TryGetHealth(Entity entity, out HealthComponent health);
+        IEnumerable<Entity> GetAliveEntities();
+    }
 }

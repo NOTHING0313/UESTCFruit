@@ -1,3 +1,5 @@
+namespace ECSFrameWork
+{
 /*
  * 文件说明：ECSUnityComponents 提供 Unity 接入层和基础移动测试所需的示例组件。
  * 设计约束：PositionComponent 是逻辑位置真值，Transform 只应由 ViewSyncSystem 根据该组件同步。
@@ -101,7 +103,7 @@ public struct PlayerTagComponent : IComponentData
 }
 
 /// <summary>
-/// 移动速度组件，通常由输入系统结合 PlayerInputComponent 计算 VelocityComponent。
+/// 移动速度组件，通常由输入系统结合 PlayerInputSnapshotComponent 计算 VelocityComponent。
 /// </summary>
 public struct MoveSpeedComponent : IComponentData
 {
@@ -113,4 +115,6 @@ public struct MoveSpeedComponent : IComponentData
     {
         this.value = value;
     }
+}
+
 }

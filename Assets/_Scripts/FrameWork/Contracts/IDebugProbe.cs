@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using ECS;
+using ECSFrameWork;
 using BuffSystem;
 
 namespace Contracts
@@ -14,6 +14,6 @@ namespace Contracts
         bool IsRollbacking { get; }
         int EntityCount { get; }
         uint CurrentChecksum { get; }
-        IReadOnlyList<BuffViewData> GetBuffs(EntityHandle entity);
+        IReadOnlyList<BuffViewData> GetBuffs(Entity entity);
     }
 }

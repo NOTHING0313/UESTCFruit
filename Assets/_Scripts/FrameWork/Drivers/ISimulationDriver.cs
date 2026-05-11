@@ -1,14 +1,15 @@
-using Contracts;   // PlayerInput
+using ECSFrameWork;
+using Contracts;   // PlayerInputSnapshot
 
 namespace Drivers
 {
     /// <summary>
-    /// ·ÂÕæÇı¶¯Æ÷³éÏó½Ó¿Ú£¨4ºÅÌá¹©£¬ÄÚ²¿Ê¹ÓÃ£©¡£
-    /// ÓÃÓÚÇĞ»»ÊµÊ±Ä£Ê½ / »Ø¹öÄ£Ê½£¬ÉÏ²ã Bootstrap Ö»ÒÀÀµ´Ë½Ó¿Ú¡£
+    /// Ó¿Ú£4á¹©Ú²Ê¹Ã£
+    /// Ğ»ÊµÊ±Ä£Ê½ / Ø¹Ä£Ê½Ï² Bootstrap Ö»Ë½Ó¿Ú¡
     /// </summary>
     public interface ISimulationDriver
     {
         int CurrentFrame { get; }
-        void Step(in PlayerInput input);
+        void Step(in PlayerInputSnapshot input);
     }
 }

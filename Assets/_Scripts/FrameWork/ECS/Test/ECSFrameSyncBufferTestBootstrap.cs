@@ -1,5 +1,8 @@
 using UnityEngine;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 测试按帧输入缓存、外部帧指令缓存，以及它们在 World.Tick 前的消费顺序。
 /// </summary>
@@ -29,8 +32,8 @@ public sealed class ECSFrameSyncBufferTestBootstrap : MonoBehaviour
         InputSnapshotBuffer inputBuffer = new InputSnapshotBuffer();
         WorldInputApplier inputApplier = new WorldInputApplier(world, inputBuffer);
 
-        EntityInfo entity = world.CreateEntity();
-        world.SetComponent(entity, new PlayerInputComponent(0f, 0f));
+        Entity entity = world.CreateEntity();
+        world.SetComponent(entity, new PlayerInputSnapshotComponent(0f, 0f));
         world.SetComponent(entity, new MoveSpeedComponent(2f));
         world.SetComponent(entity, new VelocityComponent(0f, 0f, 0f));
         world.SetComponent(entity, new PositionComponent(0f, 0f, 0f));
@@ -68,7 +71,7 @@ public sealed class ECSFrameSyncBufferTestBootstrap : MonoBehaviour
         SimulationFrameCommandBuffer commandBuffer = new SimulationFrameCommandBuffer();
         SimulationFrameCommandApplier commandApplier = new SimulationFrameCommandApplier(world, commandBuffer);
 
-        EntityInfo entity = world.CreateEntity();
+        Entity entity = world.CreateEntity();
         world.SetComponent(entity, new MoveSpeedComponent(1f));
 
         commandBuffer.SetComponentAtFrame(2, entity, new MoveSpeedComponent(5f));
@@ -91,7 +94,7 @@ public sealed class ECSFrameSyncBufferTestBootstrap : MonoBehaviour
         SimulationFrameCommandBuffer commandBuffer = new SimulationFrameCommandBuffer();
         SimulationFrameCommandApplier commandApplier = new SimulationFrameCommandApplier(world, commandBuffer);
 
-        EntityInfo entity = world.CreateEntity();
+        Entity entity = world.CreateEntity();
         world.SetComponent(entity, new MoveSpeedComponent(1f));
         commandBuffer.SetComponentAtFrame(2, entity, new MoveSpeedComponent(5f));
 
@@ -116,7 +119,7 @@ public sealed class ECSFrameSyncBufferTestBootstrap : MonoBehaviour
         SimulationFrameCommandBuffer commandBuffer = new SimulationFrameCommandBuffer();
         SimulationFrameCommandApplier commandApplier = new SimulationFrameCommandApplier(world, commandBuffer);
 
-        EntityInfo entity = world.CreateEntity();
+        Entity entity = world.CreateEntity();
         world.SetComponent(entity, new PositionComponent(0f, 0f, 0f));
 
         commandBuffer.DestroyEntityAtFrame(3, entity);
@@ -157,4 +160,6 @@ public sealed class ECSFrameSyncBufferTestBootstrap : MonoBehaviour
             Debug.LogError($"[FAIL] {message}");
         }
     }
+}
+
 }

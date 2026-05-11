@@ -1,6 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+namespace ECSFrameWork
+{
+
 public class ECSLifecycleBufferTestBootstrap : MonoBehaviour
 {
     private int _failedCount;
@@ -28,7 +31,7 @@ public class ECSLifecycleBufferTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Lifecycle Test 1] SetComponent During Tick</color>");
 
         World world = new World();
-        EntityInfo entity = world.CreateEntity();
+        Entity entity = world.CreateEntity();
         world.SetComponent(entity, new LifePositionComponent { x = 1f, y = 0f, z = 0f });
 
         LifeSetComponentSystem system = new LifeSetComponentSystem(entity);
@@ -48,7 +51,7 @@ public class ECSLifecycleBufferTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Lifecycle Test 2] RemoveComponent During Tick</color>");
 
         World world = new World();
-        EntityInfo entity = world.CreateEntity();
+        Entity entity = world.CreateEntity();
         world.SetComponent(entity, new LifePositionComponent { x = 1f, y = 0f, z = 0f });
         world.SetComponent(entity, new LifeRemoveMeComponent());
 
@@ -70,7 +73,7 @@ public class ECSLifecycleBufferTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Lifecycle Test 3] DestroyEntity During Tick</color>");
 
         World world = new World();
-        EntityInfo entity = world.CreateEntity();
+        Entity entity = world.CreateEntity();
         world.SetComponent(entity, new LifePositionComponent { x = 1f, y = 0f, z = 0f });
         world.SetComponent(entity, new LifeDestroyMeComponent());
 
@@ -231,12 +234,12 @@ public abstract class LifeTestSystemBase : FixedStepSystemBase
 
 public class LifeSetComponentSystem : LifeTestSystemBase
 {
-    private readonly EntityInfo _entity;
+    private readonly Entity _entity;
     public bool ExistingComponentChangedImmediately { get; private set; }
     public bool NewComponentDeferredDuringTick { get; private set; }
     public int PendingCommandCountDuringTick { get; private set; }
 
-    public LifeSetComponentSystem(EntityInfo entity)
+    public LifeSetComponentSystem(Entity entity)
     {
         _entity = entity;
     }
@@ -254,11 +257,11 @@ public class LifeSetComponentSystem : LifeTestSystemBase
 
 public class LifeRemoveComponentSystem : LifeTestSystemBase
 {
-    private readonly EntityInfo _entity;
+    private readonly Entity _entity;
     public bool RemoveRequestReturnedTrue { get; private set; }
     public bool StillHasComponentAfterRemoveRequest { get; private set; }
 
-    public LifeRemoveComponentSystem(EntityInfo entity)
+    public LifeRemoveComponentSystem(Entity entity)
     {
         _entity = entity;
     }
@@ -273,10 +276,10 @@ public class LifeRemoveComponentSystem : LifeTestSystemBase
 
 public class LifeCheckRemoveVisibilitySystem : LifeTestSystemBase
 {
-    private readonly EntityInfo _entity;
+    private readonly Entity _entity;
     public bool SawComponentInSameTick { get; private set; }
 
-    public LifeCheckRemoveVisibilitySystem(EntityInfo entity)
+    public LifeCheckRemoveVisibilitySystem(Entity entity)
     {
         _entity = entity;
     }
@@ -290,10 +293,10 @@ public class LifeCheckRemoveVisibilitySystem : LifeTestSystemBase
 
 public class LifeDestroyEntitySystem : LifeTestSystemBase
 {
-    private readonly EntityInfo _entity;
+    private readonly Entity _entity;
     public bool StillAliveAfterDestroyRequest { get; private set; }
 
-    public LifeDestroyEntitySystem(EntityInfo entity)
+    public LifeDestroyEntitySystem(Entity entity)
     {
         _entity = entity;
     }
@@ -308,10 +311,10 @@ public class LifeDestroyEntitySystem : LifeTestSystemBase
 
 public class LifeCheckAliveSystem : LifeTestSystemBase
 {
-    private readonly EntityInfo _entity;
+    private readonly Entity _entity;
     public bool SawAliveInSameTick { get; private set; }
 
-    public LifeCheckAliveSystem(EntityInfo entity)
+    public LifeCheckAliveSystem(Entity entity)
     {
         _entity = entity;
     }
@@ -392,4 +395,6 @@ public class LifeAddNestedOnCreateSystem : LifeTestSystemBase
     {
         TickCount++;
     }
+}
+
 }

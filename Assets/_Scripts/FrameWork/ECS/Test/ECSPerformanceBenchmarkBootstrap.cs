@@ -4,6 +4,9 @@ using UnityEngine;
 using Debug = UnityEngine.Debug;
 using Stopwatch = System.Diagnostics.Stopwatch;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// ECS 性能基准测试入口。
 /// 用于粗略观察 Entity 创建、Component 写入、Query Fill、World.Tick 和 Entity 销毁的耗时。
@@ -46,7 +49,7 @@ public sealed class ECSPerformanceBenchmarkBootstrap : MonoBehaviour
         world.EnableSystemProfile = enableSystemProfile;
         ApplyCapacityPrewarm(world);
 
-        EntityInfo[] entities = new EntityInfo[entityCount];
+        Entity[] entities = new Entity[entityCount];
         BenchmarkEntityCreation(world, entities);
         BenchmarkQueryFill(world);
         BenchmarkComponentAccessPaths(world);
@@ -104,14 +107,14 @@ public sealed class ECSPerformanceBenchmarkBootstrap : MonoBehaviour
     }
 
     /// <summary>测试 Entity 创建和基础 Component 写入耗时。</summary>
-    private void BenchmarkEntityCreation(World world, EntityInfo[] entities)
+    private void BenchmarkEntityCreation(World world, Entity[] entities)
     {
         long memoryBefore = GC.GetTotalMemory(true);
         Stopwatch stopwatch = Stopwatch.StartNew();
 
         for (int i = 0; i < entities.Length; i++)
         {
-            EntityInfo entity = world.CreateEntity();
+            Entity entity = world.CreateEntity();
             entities[i] = entity;
 
             world.SetComponent(entity, new PositionComponent(i, 0f, 0f));
@@ -130,7 +133,7 @@ public sealed class ECSPerformanceBenchmarkBootstrap : MonoBehaviour
     private void BenchmarkQueryFill(World world)
     {
         EntityQueryDescription moveQuery = world.Query().With<PositionComponent>().With<VelocityComponent>().BuildDescription();
-        List<EntityInfo> results = new List<EntityInfo>(entityCount);
+        List<Entity> results = new List<Entity>(entityCount);
 
         world.FillQuery(moveQuery, results, false);
         bool countValid = results.Count == entityCount;
@@ -165,7 +168,7 @@ public sealed class ECSPerformanceBenchmarkBootstrap : MonoBehaviour
     private void BenchmarkComponentAccessPaths(World world)
     {
         EntityQueryDescription moveQuery = world.Query().With<PositionComponent>().With<VelocityComponent>().BuildDescription();
-        List<EntityInfo> results = new List<EntityInfo>(entityCount);
+        List<Entity> results = new List<Entity>(entityCount);
 
         world.FillQuery(moveQuery, results, false);
         _benchmarkSink = 0f;
@@ -180,7 +183,7 @@ public sealed class ECSPerformanceBenchmarkBootstrap : MonoBehaviour
 
             for (int i = 0; i < results.Count; i++)
             {
-                EntityInfo entity = results[i];
+                Entity entity = results[i];
                 ref PositionComponent position = ref world.GetComponent<PositionComponent>(entity);
                 ref VelocityComponent velocity = ref world.GetComponent<VelocityComponent>(entity);
                 _benchmarkSink += position.x + velocity.x;
@@ -237,11 +240,11 @@ public sealed class ECSPerformanceBenchmarkBootstrap : MonoBehaviour
             world.EnsureComponentCapacity<HealthComponent>(entityCount);
         }
 
-        EntityInfo[] entities = new EntityInfo[entityCount];
+        Entity[] entities = new Entity[entityCount];
 
         for (int i = 0; i < entities.Length; i++)
         {
-            EntityInfo entity = world.CreateEntity();
+            Entity entity = world.CreateEntity();
             entities[i] = entity;
             world.SetComponent(entity, new PositionComponent(i, 0f, 0f));
         }
@@ -303,7 +306,7 @@ public sealed class ECSPerformanceBenchmarkBootstrap : MonoBehaviour
     }
 
     /// <summary>测试 Entity 销毁及其组件移除耗时。</summary>
-    private void BenchmarkEntityDestroy(World world, EntityInfo[] entities)
+    private void BenchmarkEntityDestroy(World world, Entity[] entities)
     {
         long memoryBefore = GC.GetTotalMemory(true);
         Stopwatch stopwatch = Stopwatch.StartNew();
@@ -319,19 +322,19 @@ public sealed class ECSPerformanceBenchmarkBootstrap : MonoBehaviour
     }
 
     /// <summary>Benchmark 单组件 ForEach 读取回调。</summary>
-    private void ReadPositionForBenchmark(EntityInfo entity, ref PositionComponent position)
+    private void ReadPositionForBenchmark(Entity entity, ref PositionComponent position)
     {
         _benchmarkSink += position.x;
     }
 
     /// <summary>Benchmark 双组件 ForEach 读取回调。</summary>
-    private void ReadPositionVelocityForBenchmark(EntityInfo entity, ref PositionComponent position, ref VelocityComponent velocity)
+    private void ReadPositionVelocityForBenchmark(Entity entity, ref PositionComponent position, ref VelocityComponent velocity)
     {
         _benchmarkSink += position.x + velocity.x;
     }
 
     /// <summary>Benchmark 三组件 ForEach 读取回调。</summary>
-    private void ReadPositionVelocityHealthForBenchmark(EntityInfo entity, ref PositionComponent position, ref VelocityComponent velocity, ref HealthComponent health)
+    private void ReadPositionVelocityHealthForBenchmark(Entity entity, ref PositionComponent position, ref VelocityComponent velocity, ref HealthComponent health)
     {
         _benchmarkSink += position.x + velocity.x + health.current;
     }
@@ -419,4 +422,6 @@ public sealed class ECSPerformanceBenchmarkBootstrap : MonoBehaviour
             return $"[ECS Benchmark] {_name} => Total={_milliseconds:F4}ms, Avg={_milliseconds / _operations:F6}ms/op, Ops={_operations}, MemoryDelta={FormatBytes(_memoryDelta)}";
         }
     }
+}
+
 }

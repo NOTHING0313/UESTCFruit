@@ -1,7 +1,10 @@
 using UnityEngine;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
-/// 可视化测试 ECS 输入链路：UnityInputAdapter -> PlayerInputComponent -> InputMoveSystem -> MovementSystem -> ViewSyncSystem。
+/// 可视化测试 ECS 输入链路：UnityInputAdapter -> PlayerInputSnapshotComponent -> InputMoveSystem -> MovementSystem -> ViewSyncSystem。
 /// </summary>
 public sealed class ECSInputVisualTestBootstrap : MonoBehaviour
 {
@@ -24,7 +27,7 @@ public sealed class ECSInputVisualTestBootstrap : MonoBehaviour
     private World _world;
     private ViewManager _viewManager;
     private SimulateRunner _runner;
-    private EntityInfo _playerEntity;
+    private Entity _playerEntity;
     private GameObject _runtimeCubeTemplate;
 
     private void Start()
@@ -84,7 +87,7 @@ public sealed class ECSInputVisualTestBootstrap : MonoBehaviour
         _playerEntity = _world.CreateMovingEntityWithView(CubePrefabID, spawnPosition, Vector3.zero);
 
         _world.SetComponent(_playerEntity, new PlayerTagComponent());
-        _world.SetComponent(_playerEntity, new PlayerInputComponent(0f, 0f));
+        _world.SetComponent(_playerEntity, new PlayerInputSnapshotComponent(0f, 0f));
         _world.SetComponent(_playerEntity, new MoveSpeedComponent(moveSpeed));
     }
 
@@ -146,4 +149,6 @@ public sealed class ECSInputVisualTestBootstrap : MonoBehaviour
             _runtimeCubeTemplate = null;
         }
     }
+}
+
 }

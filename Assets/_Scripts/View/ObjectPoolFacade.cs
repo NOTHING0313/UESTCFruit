@@ -4,7 +4,8 @@ using UnityEngine;
 namespace View
 {
     /// <summary>
-    /// ¶ÔÏó³ØÃÅÃæ¿Õ¿Ç£¨4ºÅÊµÏÖ£¬ºóĞø½ÓÈë GameObjectPoolCenter£©¡£
+    /// å¯¹è±¡æ± é—¨é¢ç©ºå£³ã€‚
+    /// åç»­å¯ä»¥åœ¨è¿™é‡Œæ¥å…¥é¡¹ç›®å·²æœ‰çš„ GameObjectPoolCenter / UIPoolï¼Œç»Ÿä¸€ç»™è¡¨ç°å±‚å–ç”¨å¯¹è±¡ã€‚
     /// </summary>
     public sealed class ObjectPoolFacade : IObjectPoolFacade
     {

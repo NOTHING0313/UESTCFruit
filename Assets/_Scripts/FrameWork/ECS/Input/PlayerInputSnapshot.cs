@@ -1,3 +1,5 @@
+namespace ECSFrameWork
+{
 /*
  * 文件说明：PlayerInputSnapshot 是可缓存、可传输、可回放的玩家输入快照。
  * 设计约束：ECS Core 逻辑应尽量保持确定性；Unity 表现、输入采样、外部指令通过 Adapter 或 Buffer 接入。
@@ -63,4 +65,6 @@ public struct PlayerInputSnapshot
     {
         return (releasedButtons & button) != 0;
     }
+}
+
 }

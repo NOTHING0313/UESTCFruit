@@ -6,10 +6,13 @@
 using System;
 using System.Collections.Generic;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 组件管理器，负责创建 ComponentStore、转发组件读写，并同步 Entity Mask 与 ArcheType 分组。
 /// </summary>
-public class ComponentManager
+internal class ComponentManager
 {
     private readonly Dictionary<Type, IComponentStore> _stores = new Dictionary<Type, IComponentStore>();
     private readonly ComponentTypeRegistry _registry;
@@ -77,7 +80,7 @@ public class ComponentManager
     /// <summary>
     /// 为实体设置组件数据，并在新增组件时更新实体 Mask 与 ArcheType 分组。
     /// </summary>
-    public void SetComponent<T>(EntityInfo entity, in T component) where T : struct, IComponentData
+    public void SetComponent<T>(Entity entity, in T component) where T : struct, IComponentData
     {
         if (_entityManager == null || !_entityManager.IsAlive(entity))
             return;
@@ -102,7 +105,7 @@ public class ComponentManager
     /// <summary>
     /// 获取实体组件数据的 ref 引用。
     /// </summary>
-    public ref T GetComponent<T>(EntityInfo entity) where T : struct, IComponentData
+    public ref T GetComponent<T>(Entity entity) where T : struct, IComponentData
     {
         if (!TryGetStore<T>(out ComponentStore<T> store))
             throw new InvalidOperationException($"Component store does not exist: {typeof(T).Name}");
@@ -113,7 +116,7 @@ public class ComponentManager
     /// <summary>
     /// 安全尝试获取实体组件数据。
     /// </summary>
-    public bool TryGetComponent<T>(EntityInfo entity, out T component) where T : struct, IComponentData
+    public bool TryGetComponent<T>(Entity entity, out T component) where T : struct, IComponentData
     {
         if (_entityManager == null || !_entityManager.IsAlive(entity))
         {
@@ -133,7 +136,7 @@ public class ComponentManager
     /// <summary>
     /// 安全判断实体是否持有指定组件。
     /// </summary>
-    public bool HasComponent<T>(EntityInfo entity) where T : struct, IComponentData
+    public bool HasComponent<T>(Entity entity) where T : struct, IComponentData
     {
         if (_entityManager == null || !_entityManager.IsAlive(entity))
             return false;
@@ -161,7 +164,7 @@ public class ComponentManager
 
         for (int i = 0; i < count; i++)
         {
-            EntityInfo entity = store.GetEntityByDenseIndex(i);
+            Entity entity = store.GetEntityByDenseIndex(i);
             ref T component = ref store.GetComponentByDenseIndex(i);
 
             action(entity, ref component);
@@ -202,7 +205,7 @@ public class ComponentManager
 
         for (int i = 0; i < count; i++)
         {
-            EntityInfo entity = store1.GetEntityByDenseIndex(i);
+            Entity entity = store1.GetEntityByDenseIndex(i);
 
             if (!store2.TryGetDenseIndex(entity, out int index2))
                 continue;
@@ -227,7 +230,7 @@ public class ComponentManager
 
         for (int i = 0; i < count; i++)
         {
-            EntityInfo entity = store2.GetEntityByDenseIndex(i);
+            Entity entity = store2.GetEntityByDenseIndex(i);
 
             if (!store1.TryGetDenseIndex(entity, out int index1))
                 continue;
@@ -279,7 +282,7 @@ public class ComponentManager
 
         for (int i = 0; i < count; i++)
         {
-            EntityInfo entity = store1.GetEntityByDenseIndex(i);
+            Entity entity = store1.GetEntityByDenseIndex(i);
 
             if (!store2.TryGetDenseIndex(entity, out int index2))
                 continue;
@@ -308,7 +311,7 @@ public class ComponentManager
 
         for (int i = 0; i < count; i++)
         {
-            EntityInfo entity = store2.GetEntityByDenseIndex(i);
+            Entity entity = store2.GetEntityByDenseIndex(i);
 
             if (!store1.TryGetDenseIndex(entity, out int index1))
                 continue;
@@ -337,7 +340,7 @@ public class ComponentManager
 
         for (int i = 0; i < count; i++)
         {
-            EntityInfo entity = store3.GetEntityByDenseIndex(i);
+            Entity entity = store3.GetEntityByDenseIndex(i);
 
             if (!store1.TryGetDenseIndex(entity, out int index1))
                 continue;
@@ -359,7 +362,7 @@ public class ComponentManager
     /// <summary>
     /// 移除实体上的指定组件，并同步更新实体 Mask 与 ArcheType 分组。
     /// </summary>
-    public bool RemoveComponent<T>(EntityInfo entity) where T : struct, IComponentData
+    public bool RemoveComponent<T>(Entity entity) where T : struct, IComponentData
     {
         if (_entityManager == null || !_entityManager.IsAlive(entity))
             return false;
@@ -383,7 +386,7 @@ public class ComponentManager
     /// <summary>
     /// 移除实体持有的所有组件，并把实体从 ArcheType 分组中移除。
     /// </summary>
-    public void RemoveAllComponents(EntityInfo entity)
+    public void RemoveAllComponents(Entity entity)
     {
         if (_entityManager == null || !_entityManager.IsAlive(entity))
             return;
@@ -433,4 +436,6 @@ public class ComponentManager
         store = null;
         return false;
     }
+}
+
 }

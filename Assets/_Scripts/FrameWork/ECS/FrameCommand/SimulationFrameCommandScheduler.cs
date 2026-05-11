@@ -1,3 +1,5 @@
+namespace ECSFrameWork
+{
 /*
  * 文件说明：SimulationFrameCommandScheduler 基于 SimulateRunner 当前帧号提供相对帧调度 API，避免外部调用者手动计算 frameNumber。
  * 设计约束：ECS Core 逻辑应尽量保持确定性；Unity 表现、输入采样、外部指令通过 Adapter 或 Buffer 接入。
@@ -105,4 +107,6 @@ public sealed class SimulationFrameCommandScheduler
 public interface IRebuildableSimulationFrameCommand : ISimulationFrameCommand
 {
     ISimulationFrameCommand Rebuild(int frameNumber);
+}
+
 }

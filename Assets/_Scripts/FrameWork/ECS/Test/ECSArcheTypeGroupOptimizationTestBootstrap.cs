@@ -1,6 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// ArcheTypeGroup 优化回归测试，验证 List + Dictionary 的 Swap Remove 不会产生重复、遗漏或 Query 缓存失效问题。
 /// </summary>
@@ -28,14 +31,14 @@ public class ECSArcheTypeGroupOptimizationTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[ArcheTypeGroup Test 1] Remove Component SwapBack Keeps Query Correct</color>");
 
         World world = new World();
-        List<EntityInfo> entities = CreatePositionVelocityEntities(world, 16);
+        List<Entity> entities = CreatePositionVelocityEntities(world, 16);
 
         world.RemoveComponent<VelocityComponent>(entities[0]);
         world.RemoveComponent<VelocityComponent>(entities[7]);
         world.RemoveComponent<VelocityComponent>(entities[15]);
 
-        List<EntityInfo> pv = world.Query().With<PositionComponent>().With<VelocityComponent>().Execute();
-        List<EntityInfo> positionOnly = world.Query().With<PositionComponent>().Without<VelocityComponent>().Execute();
+        List<Entity> pv = world.Query().With<PositionComponent>().With<VelocityComponent>().Execute();
+        List<Entity> positionOnly = world.Query().With<PositionComponent>().Without<VelocityComponent>().Execute();
 
         Expect(pv.Count == 13, $"PV query should contain 13 entities after removing 3 velocities. Actual = {pv.Count}");
         Expect(positionOnly.Count == 3, $"Position without Velocity query should contain 3 entities. Actual = {positionOnly.Count}");
@@ -49,7 +52,7 @@ public class ECSArcheTypeGroupOptimizationTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[ArcheTypeGroup Test 2] Add Remove Back Does Not Duplicate Entity</color>");
 
         World world = new World();
-        EntityInfo entity = world.CreateEntity();
+        Entity entity = world.CreateEntity();
         world.SetComponent(entity, new PositionComponent(1f, 0f, 0f));
         world.SetComponent(entity, new VelocityComponent(1f, 0f, 0f));
 
@@ -57,7 +60,7 @@ public class ECSArcheTypeGroupOptimizationTestBootstrap : MonoBehaviour
         world.SetComponent(entity, new VelocityComponent(2f, 0f, 0f));
         world.SetComponent(entity, new VelocityComponent(3f, 0f, 0f));
 
-        List<EntityInfo> pv = world.Query().With<PositionComponent>().With<VelocityComponent>().Execute();
+        List<Entity> pv = world.Query().With<PositionComponent>().With<VelocityComponent>().Execute();
         int occurrence = CountOccurrence(pv, entity);
 
         bool hasVelocity = world.TryGetComponent(entity, out VelocityComponent velocity);
@@ -73,12 +76,12 @@ public class ECSArcheTypeGroupOptimizationTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[ArcheTypeGroup Test 3] Destroy Entities Keeps ArcheTypeGroup Correct</color>");
 
         World world = new World();
-        List<EntityInfo> entities = CreatePositionVelocityEntities(world, 32);
+        List<Entity> entities = CreatePositionVelocityEntities(world, 32);
 
         for (int i = 0; i < entities.Count; i += 2)
             world.DestroyEntity(entities[i]);
 
-        List<EntityInfo> pv = world.Query().With<PositionComponent>().With<VelocityComponent>().Execute();
+        List<Entity> pv = world.Query().With<PositionComponent>().With<VelocityComponent>().Execute();
 
         Expect(pv.Count == 16, $"PV query should contain 16 alive entities after destroying half. Actual = {pv.Count}");
         Expect(HasNoDuplicate(pv), "PV query should not contain duplicated entities after DestroyEntity.");
@@ -100,15 +103,15 @@ public class ECSArcheTypeGroupOptimizationTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[ArcheTypeGroup Test 4] Query Cache Refreshes After ArcheTypeGroup Change</color>");
 
         World world = new World();
-        EntityInfo entity = world.CreateEntity();
+        Entity entity = world.CreateEntity();
         world.SetComponent(entity, new PositionComponent(1f, 0f, 0f));
 
-        List<EntityInfo> before = world.Query().With<PositionComponent>().With<VelocityComponent>().Execute();
+        List<Entity> before = world.Query().With<PositionComponent>().With<VelocityComponent>().Execute();
         int cacheCountBefore = world.QueryCacheCount;
         int versionBefore = world.ArcheTypeVersion;
 
         world.SetComponent(entity, new VelocityComponent(1f, 0f, 0f));
-        List<EntityInfo> after = world.Query().With<PositionComponent>().With<VelocityComponent>().Execute();
+        List<Entity> after = world.Query().With<PositionComponent>().With<VelocityComponent>().Execute();
 
         Expect(before.Count == 0, $"Before adding Velocity, PV query should return 0. Actual = {before.Count}");
         Expect(cacheCountBefore == 1, $"First PV query should create one query cache item. Actual = {cacheCountBefore}");
@@ -117,13 +120,13 @@ public class ECSArcheTypeGroupOptimizationTestBootstrap : MonoBehaviour
         Expect(after.Count == 1 && ContainsEntity(after, entity), $"After adding Velocity, PV query should return the entity. Actual = {after.Count}");
     }
 
-    private List<EntityInfo> CreatePositionVelocityEntities(World world, int count)
+    private List<Entity> CreatePositionVelocityEntities(World world, int count)
     {
-        List<EntityInfo> entities = new List<EntityInfo>(count);
+        List<Entity> entities = new List<Entity>(count);
 
         for (int i = 0; i < count; i++)
         {
-            EntityInfo entity = world.CreateEntity();
+            Entity entity = world.CreateEntity();
             world.SetComponent(entity, new PositionComponent(i, 0f, 0f));
             world.SetComponent(entity, new VelocityComponent(1f, 0f, 0f));
             entities.Add(entity);
@@ -132,7 +135,7 @@ public class ECSArcheTypeGroupOptimizationTestBootstrap : MonoBehaviour
         return entities;
     }
 
-    private bool ContainsEntity(List<EntityInfo> entities, EntityInfo entity)
+    private bool ContainsEntity(List<Entity> entities, Entity entity)
     {
         for (int i = 0; i < entities.Count; i++)
         {
@@ -143,7 +146,7 @@ public class ECSArcheTypeGroupOptimizationTestBootstrap : MonoBehaviour
         return false;
     }
 
-    private int CountOccurrence(List<EntityInfo> entities, EntityInfo entity)
+    private int CountOccurrence(List<Entity> entities, Entity entity)
     {
         int count = 0;
 
@@ -156,9 +159,9 @@ public class ECSArcheTypeGroupOptimizationTestBootstrap : MonoBehaviour
         return count;
     }
 
-    private bool HasNoDuplicate(List<EntityInfo> entities)
+    private bool HasNoDuplicate(List<Entity> entities)
     {
-        HashSet<EntityInfo> set = new HashSet<EntityInfo>();
+        HashSet<Entity> set = new HashSet<Entity>();
 
         for (int i = 0; i < entities.Count; i++)
         {
@@ -179,4 +182,6 @@ public class ECSArcheTypeGroupOptimizationTestBootstrap : MonoBehaviour
             Debug.LogError($"[FAIL] {message}");
         }
     }
+}
+
 }

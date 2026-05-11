@@ -5,10 +5,13 @@
 
 using System.Collections.Generic;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// ArcheType 分组管理器，按 ComponentMask256 维护 Entity 分组并支持 Query 匹配。
 /// </summary>
-public class ArcheTypeManager
+internal class ArcheTypeManager
 {
     private readonly Dictionary<ComponentMask256, ArcheTypeGroup> _archeGroups = new Dictionary<ComponentMask256, ArcheTypeGroup>();
     private readonly EntityQueryCache _queryCache = new EntityQueryCache();
@@ -37,7 +40,7 @@ public class ArcheTypeManager
     /// <summary>
     /// 根据组件 Mask 变化，把实体从旧 ArcheType 分组移动到新分组，并更新缓存版本。
     /// </summary>
-    public void ChangeGroup(EntityInfo entity, ComponentMask256 oldMask = default, ComponentMask256 newMask = default)
+    public void ChangeGroup(Entity entity, ComponentMask256 oldMask = default, ComponentMask256 newMask = default)
     {
         if (!entity.IsValid || oldMask == newMask)
             return;
@@ -74,13 +77,13 @@ public class ArcheTypeManager
     }
 
     /// <summary>执行 QueryDescription 查询，并通过 QueryCache 获取匹配的 ArcheType 分组。</summary>
-    public IEnumerable<EntityInfo> GetEntityByQuery(EntityQueryDescription query)
+    public IEnumerable<Entity> GetEntityByQuery(EntityQueryDescription query)
     {
         List<ArcheTypeGroup> groups = _queryCache.GetGroups(query, _archeGroups, _version);
 
         for (int i = 0; i < groups.Count; i++)
         {
-            List<EntityInfo> entities = groups[i].Entities;
+            List<Entity> entities = groups[i].Entities;
 
             for (int j = 0; j < entities.Count; j++)
                 yield return entities[j];
@@ -88,7 +91,7 @@ public class ArcheTypeManager
     }
 
     /// <summary>用 includeMask 和 excludeMask 构造 QueryDescription 并执行查询。</summary>
-    public IEnumerable<EntityInfo> GetEntityByMask(ComponentMask256 includeMask, ComponentMask256 excludeMask = default)
+    public IEnumerable<Entity> GetEntityByMask(ComponentMask256 includeMask, ComponentMask256 excludeMask = default)
     {
         return GetEntityByQuery(new EntityQueryDescription(includeMask, excludeMask));
     }
@@ -97,7 +100,7 @@ public class ArcheTypeManager
     /// 执行 QueryDescription 查询，并把当前匹配到的 Entity 写入 results。
     /// QueryCache 缓存的是匹配的 ArcheType 分组，不缓存具体 Entity 结果。
     /// </summary>
-    public int FillEntityByQuery(EntityQueryDescription query, List<EntityInfo> results)
+    public int FillEntityByQuery(EntityQueryDescription query, List<Entity> results)
     {
         if (results == null)
             return 0;
@@ -106,7 +109,7 @@ public class ArcheTypeManager
 
         for (int i = 0; i < groups.Count; i++)
         {
-            List<EntityInfo> entities = groups[i].Entities;
+            List<Entity> entities = groups[i].Entities;
 
             for (int j = 0; j < entities.Count; j++)
                 results.Add(entities[j]);
@@ -120,4 +123,6 @@ public class ArcheTypeManager
     {
         _queryCache.Clear();
     }
+}
+
 }

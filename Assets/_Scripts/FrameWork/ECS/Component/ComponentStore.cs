@@ -5,12 +5,15 @@
 
 using System;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 单组件类型的 Sparse Set 存储。
 /// </summary>
-public class ComponentStore<T> : IComponentStore where T : struct, IComponentData
+internal class ComponentStore<T> : IComponentStore where T : struct, IComponentData
 {
-    private EntityInfo[] _denseEntity = Array.Empty<EntityInfo>();
+    private Entity[] _denseEntity = Array.Empty<Entity>();
     private T[] _denseComponent = Array.Empty<T>();
     private int[] _sparse = Array.Empty<int>();
 
@@ -54,7 +57,7 @@ public class ComponentStore<T> : IComponentStore where T : struct, IComponentDat
     /// <summary>
     /// 写入组件数据；如果是新增组件则返回 true，如果只是覆盖已有数据则返回 false。
     /// </summary>
-    public bool Set(EntityInfo entity, in T component)
+    public bool Set(Entity entity, in T component)
     {
         if (!entity.IsValid)
             return false;
@@ -84,7 +87,7 @@ public class ComponentStore<T> : IComponentStore where T : struct, IComponentDat
     /// <summary>
     /// 返回实体对应组件数据的 ref 引用；实体没有该组件时抛出异常。
     /// </summary>
-    public ref T Get(EntityInfo entity)
+    public ref T Get(Entity entity)
     {
         int denseIndex = GetDenseIndex(entity);
 
@@ -97,7 +100,7 @@ public class ComponentStore<T> : IComponentStore where T : struct, IComponentDat
     /// <summary>
     /// 尝试读取实体对应的组件数据，失败时返回 false 并输出 default。
     /// </summary>
-    public bool TryGet(EntityInfo entity, out T component)
+    public bool TryGet(Entity entity, out T component)
     {
         int denseIndex = GetDenseIndex(entity);
 
@@ -115,7 +118,7 @@ public class ComponentStore<T> : IComponentStore where T : struct, IComponentDat
     /// 尝试获取实体在 dense 数组中的下标。
     /// 该方法会校验 Entity ID 与 Version，用于高频 ForEach 遍历时避免重复组件查找。
     /// </summary>
-    public bool TryGetDenseIndex(EntityInfo entity, out int denseIndex)
+    public bool TryGetDenseIndex(Entity entity, out int denseIndex)
     {
         denseIndex = GetDenseIndex(entity);
         return denseIndex >= 0;
@@ -125,7 +128,7 @@ public class ComponentStore<T> : IComponentStore where T : struct, IComponentDat
     /// 获取 dense 数组指定下标对应的 Entity。
     /// 调用方必须保证 denseIndex 在 [0, Count) 范围内。
     /// </summary>
-    public EntityInfo GetEntityByDenseIndex(int denseIndex)
+    public Entity GetEntityByDenseIndex(int denseIndex)
     {
         if (denseIndex < 0 || denseIndex >= _count)
             throw new ArgumentOutOfRangeException(nameof(denseIndex));
@@ -148,7 +151,7 @@ public class ComponentStore<T> : IComponentStore where T : struct, IComponentDat
     /// <summary>
     /// 判断实体是否持有当前 Store 管理的组件类型。
     /// </summary>
-    public bool Has(EntityInfo entity)
+    public bool Has(Entity entity)
     {
         return GetDenseIndex(entity) >= 0;
     }
@@ -156,7 +159,7 @@ public class ComponentStore<T> : IComponentStore where T : struct, IComponentDat
     /// <summary>
     /// 从 Store 中移除实体组件，并用尾元素回填保证 dense 数组连续。
     /// </summary>
-    public bool Remove(EntityInfo entity)
+    public bool Remove(Entity entity)
     {
         int denseIndex = GetDenseIndex(entity);
 
@@ -170,7 +173,7 @@ public class ComponentStore<T> : IComponentStore where T : struct, IComponentDat
             _denseEntity[denseIndex] = _denseEntity[lastIndex];
             _denseComponent[denseIndex] = _denseComponent[lastIndex];
 
-            EntityInfo movedEntity = _denseEntity[denseIndex];
+            Entity movedEntity = _denseEntity[denseIndex];
             _sparse[movedEntity.ID] = denseIndex;
         }
 
@@ -187,7 +190,7 @@ public class ComponentStore<T> : IComponentStore where T : struct, IComponentDat
     /// <summary>
     /// 通过 sparse 数组定位实体在 dense 数组中的位置，并校验 Entity 版本。
     /// </summary>
-    private int GetDenseIndex(EntityInfo entity)
+    private int GetDenseIndex(Entity entity)
     {
         if (!entity.IsValid)
             return -1;
@@ -200,7 +203,7 @@ public class ComponentStore<T> : IComponentStore where T : struct, IComponentDat
         if (denseIndex < 0 || denseIndex >= _count)
             return -1;
 
-        EntityInfo storedEntity = _denseEntity[denseIndex];
+        Entity storedEntity = _denseEntity[denseIndex];
 
         if (!storedEntity.IsValid)
             return -1;
@@ -242,7 +245,7 @@ public class ComponentStore<T> : IComponentStore where T : struct, IComponentDat
 /// <summary>
 /// ComponentStore 的非泛型访问接口，用于 ComponentManager 批量管理不同组件类型的 Store。
 /// </summary>
-public interface IComponentStore
+internal interface IComponentStore
 {
     Type ComponentType { get; }
     int RegisterID { get; }
@@ -250,9 +253,11 @@ public interface IComponentStore
     /// <summary>
     /// 判断实体是否持有当前 Store 管理的组件类型。
     /// </summary>
-    bool Has(EntityInfo entity);
+    bool Has(Entity entity);
     /// <summary>
     /// 从 Store 中移除实体组件，并用尾元素回填保证 dense 数组连续。
     /// </summary>
-    bool Remove(EntityInfo entity);
+    bool Remove(Entity entity);
+}
+
 }

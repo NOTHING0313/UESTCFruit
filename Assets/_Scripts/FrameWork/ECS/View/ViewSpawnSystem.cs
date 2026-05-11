@@ -6,13 +6,16 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 根据 PrefabViewRequestComponent 创建 Unity View 的 System。
 /// </summary>
 public sealed class ViewSpawnSystem : FixedStepSystemBase
 {
     private readonly ViewManager _viewManager;
-    private readonly List<EntityInfo> _entities = new List<EntityInfo>(128);
+    private readonly List<Entity> _entities = new List<Entity>(128);
 
     private EntityQueryDescription _spawnQuery;
     private EntityQueryDescription _redundantRequestQuery;
@@ -45,7 +48,7 @@ public sealed class ViewSpawnSystem : FixedStepSystemBase
 
         for (int i = 0; i < _entities.Count; i++)
         {
-            EntityInfo entity = _entities[i];
+            Entity entity = _entities[i];
 
             ref PositionComponent position = ref World.GetComponent<PositionComponent>(entity);
             ref PrefabViewRequestComponent request = ref World.GetComponent<PrefabViewRequestComponent>(entity);
@@ -79,4 +82,6 @@ public sealed class ViewSpawnSystem : FixedStepSystemBase
     {
         _entities.Clear();
     }
+}
+
 }

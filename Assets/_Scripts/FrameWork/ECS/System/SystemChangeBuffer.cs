@@ -5,10 +5,13 @@
 
 using System.Collections.Generic;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// System 增删延迟缓冲。
 /// </summary>
-public sealed class SystemChangeBuffer
+internal sealed class SystemChangeBuffer
 {
     private enum CommandType
     {
@@ -137,4 +140,6 @@ public sealed class SystemChangeBuffer
 
         _commands.Add(command);
     }
+}
+
 }

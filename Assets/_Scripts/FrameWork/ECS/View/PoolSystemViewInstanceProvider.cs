@@ -8,6 +8,9 @@ using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 基于 PoolSystem.GameObjectPoolCenter 的 View 实例提供器。
 /// 如果项目中不存在 PoolSystem，会自动回退到 Instantiate / Destroy。
@@ -158,4 +161,6 @@ public sealed class PoolSystemViewInstanceProvider : IViewInstanceProvider
 
         return null;
     }
+}
+
 }

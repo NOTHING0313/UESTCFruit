@@ -5,10 +5,13 @@
 
 using System.Collections.Generic;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// Query 到匹配 ArcheType 分组的缓存。
 /// </summary>
-public sealed class EntityQueryCache
+internal sealed class EntityQueryCache
 {
     private sealed class CacheItem
     {
@@ -58,4 +61,6 @@ public sealed class EntityQueryCache
     {
         _cache.Clear();
     }
+}
+
 }

@@ -5,14 +5,17 @@
 
 using System.Collections.Generic;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// StructuralChangeBuffer 类型。
 /// </summary>
-public sealed class StructuralChangeBuffer
+internal sealed class StructuralChangeBuffer
 {
     private interface IStructuralCommand
     {
-        EntityInfo Entity { get; }
+        Entity Entity { get; }
         /// <summary>
         /// 执行结构命令。
         /// </summary>
@@ -21,8 +24,8 @@ public sealed class StructuralChangeBuffer
 
     private readonly List<IStructuralCommand> _componentCommands = new List<IStructuralCommand>();
     private readonly List<IStructuralCommand> _nextComponentCommands = new List<IStructuralCommand>();
-    private readonly List<EntityInfo> _destroyEntities = new List<EntityInfo>();
-    private readonly List<EntityInfo> _nextDestroyEntities = new List<EntityInfo>();
+    private readonly List<Entity> _destroyEntities = new List<Entity>();
+    private readonly List<Entity> _nextDestroyEntities = new List<Entity>();
 
     private bool _isPlayingBack;
 
@@ -31,7 +34,7 @@ public sealed class StructuralChangeBuffer
     /// <summary>
     /// 记录延迟设置组件命令；实体已等待销毁时忽略。
     /// </summary>
-    public void SetComponent<T>(EntityInfo entity, in T component) where T : struct, IComponentData
+    public void SetComponent<T>(Entity entity, in T component) where T : struct, IComponentData
     {
         if (!entity.IsValid || ContainsDestroyEntity(entity))
             return;
@@ -42,7 +45,7 @@ public sealed class StructuralChangeBuffer
     /// <summary>
     /// 记录延迟移除组件命令；实体已等待销毁时忽略。
     /// </summary>
-    public void RemoveComponent<T>(EntityInfo entity) where T : struct, IComponentData
+    public void RemoveComponent<T>(Entity entity) where T : struct, IComponentData
     {
         if (!entity.IsValid || ContainsDestroyEntity(entity))
             return;
@@ -53,7 +56,7 @@ public sealed class StructuralChangeBuffer
     /// <summary>
     /// 记录延迟销毁实体命令，并移除该实体尚未播放的组件命令。
     /// </summary>
-    public void DestroyEntity(EntityInfo entity)
+    public void DestroyEntity(Entity entity)
     {
         if (!entity.IsValid || ContainsDestroyEntity(entity))
             return;
@@ -86,7 +89,7 @@ public sealed class StructuralChangeBuffer
 
             for (int i = 0; i < _destroyEntities.Count; i++)
             {
-                EntityInfo entity = _destroyEntities[i];
+                Entity entity = _destroyEntities[i];
 
                 if (!world.IsAlive(entity))
                     continue;
@@ -143,7 +146,7 @@ public sealed class StructuralChangeBuffer
     /// <summary>
     /// 把销毁实体命令加入当前队列；播放期间产生的命令进入下一轮队列。
     /// </summary>
-    private void AddDestroyEntity(EntityInfo entity)
+    private void AddDestroyEntity(Entity entity)
     {
         if (_isPlayingBack)
         {
@@ -157,7 +160,7 @@ public sealed class StructuralChangeBuffer
     /// <summary>
     /// 判断实体是否已经处于等待销毁队列中。
     /// </summary>
-    private bool ContainsDestroyEntity(EntityInfo entity)
+    private bool ContainsDestroyEntity(Entity entity)
     {
         return ContainsEntity(_destroyEntities, entity) || ContainsEntity(_nextDestroyEntities, entity);
     }
@@ -165,7 +168,7 @@ public sealed class StructuralChangeBuffer
     /// <summary>
     /// 移除指定实体尚未播放的组件相关命令。
     /// </summary>
-    private void RemoveComponentCommands(EntityInfo entity)
+    private void RemoveComponentCommands(Entity entity)
     {
         _componentCommands.RemoveAll(command => command.Entity == entity);
         _nextComponentCommands.RemoveAll(command => command.Entity == entity);
@@ -174,7 +177,7 @@ public sealed class StructuralChangeBuffer
     /// <summary>
     /// 判断实体列表中是否包含指定实体。
     /// </summary>
-    private static bool ContainsEntity(List<EntityInfo> entities, EntityInfo entity)
+    private static bool ContainsEntity(List<Entity> entities, Entity entity)
     {
         for (int i = 0; i < entities.Count; i++)
         {
@@ -187,15 +190,15 @@ public sealed class StructuralChangeBuffer
 
     private sealed class SetComponentCommand<T> : IStructuralCommand where T : struct, IComponentData
     {
-        private readonly EntityInfo _entity;
+        private readonly Entity _entity;
         private readonly T _component;
 
-        public EntityInfo Entity => _entity;
+        public Entity Entity => _entity;
 
         /// <summary>
         /// 创建延迟设置组件命令。
         /// </summary>
-        public SetComponentCommand(EntityInfo entity, in T component)
+        public SetComponentCommand(Entity entity, in T component)
         {
             _entity = entity;
             _component = component;
@@ -212,14 +215,14 @@ public sealed class StructuralChangeBuffer
 
     private sealed class RemoveComponentCommand<T> : IStructuralCommand where T : struct, IComponentData
     {
-        private readonly EntityInfo _entity;
+        private readonly Entity _entity;
 
-        public EntityInfo Entity => _entity;
+        public Entity Entity => _entity;
 
         /// <summary>
         /// 创建延迟移除组件命令。
         /// </summary>
-        public RemoveComponentCommand(EntityInfo entity)
+        public RemoveComponentCommand(Entity entity)
         {
             _entity = entity;
         }
@@ -232,4 +235,6 @@ public sealed class StructuralChangeBuffer
             world.RemoveComponentImmediately<T>(_entity);
         }
     }
+}
+
 }

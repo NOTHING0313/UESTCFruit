@@ -1,5 +1,8 @@
 using UnityEngine;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 测试 ECS 输入链路：输入组件 -> 速度组件 -> 位置组件 -> Unity View 同步。
 /// </summary>
@@ -25,15 +28,15 @@ public sealed class ECSInputSystemTestBootstrap : MonoBehaviour
             Debug.LogError($"[ECS Input System Test] Failed count = {_failedCount}");
     }
 
-    /// <summary>验证 PlayerInputComponent 会被 InputMoveSystem 转换成 VelocityComponent。</summary>
+    /// <summary>验证 PlayerInputSnapshotComponent 会被 InputMoveSystem 转换成 VelocityComponent。</summary>
     private void TestInputMoveSystemSetsVelocity()
     {
         Debug.Log("<color=cyan>[Test 1] InputMoveSystem Sets Velocity</color>");
 
         TestEnvironment env = CreateEnvironment(false);
-        EntityInfo entity = env.World.CreateEntity();
+        Entity entity = env.World.CreateEntity();
 
-        env.World.SetComponent(entity, new PlayerInputComponent(1f, -0.5f));
+        env.World.SetComponent(entity, new PlayerInputSnapshotComponent(1f, -0.5f));
         env.World.SetComponent(entity, new MoveSpeedComponent(4f));
         env.World.SetComponent(entity, new VelocityComponent(0f, 0f, 0f));
         env.World.AddSystem(new InputMoveSystem());
@@ -56,11 +59,11 @@ public sealed class ECSInputSystemTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Test 2] InputMoveSystem Drives Movement</color>");
 
         TestEnvironment env = CreateEnvironment(false);
-        EntityInfo entity = env.World.CreateEntity();
+        Entity entity = env.World.CreateEntity();
 
         env.World.SetComponent(entity, new PositionComponent(0f, 0f, 0f));
         env.World.SetComponent(entity, new VelocityComponent(0f, 0f, 0f));
-        env.World.SetComponent(entity, new PlayerInputComponent(0f, 1f));
+        env.World.SetComponent(entity, new PlayerInputSnapshotComponent(0f, 1f));
         env.World.SetComponent(entity, new MoveSpeedComponent(2f));
         env.World.AddSystem(new InputMoveSystem());
         env.World.AddSystem(new MovementSystem());
@@ -83,10 +86,10 @@ public sealed class ECSInputSystemTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Test 3] Input Movement Syncs To View</color>");
 
         TestEnvironment env = CreateEnvironment(true);
-        EntityInfo entity = env.World.CreateMovingEntityWithView(CubePrefabID, Vector3.zero, Vector3.zero);
+        Entity entity = env.World.CreateMovingEntityWithView(CubePrefabID, Vector3.zero, Vector3.zero);
 
         env.World.SetComponent(entity, new PlayerTagComponent());
-        env.World.SetComponent(entity, new PlayerInputComponent(1f, 0f));
+        env.World.SetComponent(entity, new PlayerInputSnapshotComponent(1f, 0f));
         env.World.SetComponent(entity, new MoveSpeedComponent(2f));
 
         env.Tick(1, 0.5f);
@@ -115,9 +118,9 @@ public sealed class ECSInputSystemTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Test 4] Zero Input Stops Movement</color>");
 
         TestEnvironment env = CreateEnvironment(true);
-        EntityInfo entity = env.World.CreateMovingEntityWithView(CubePrefabID, Vector3.zero, Vector3.zero);
+        Entity entity = env.World.CreateMovingEntityWithView(CubePrefabID, Vector3.zero, Vector3.zero);
 
-        env.World.SetComponent(entity, new PlayerInputComponent(1f, 0f));
+        env.World.SetComponent(entity, new PlayerInputSnapshotComponent(1f, 0f));
         env.World.SetComponent(entity, new MoveSpeedComponent(2f));
 
         env.Tick(2, 0.5f);
@@ -125,7 +128,7 @@ public sealed class ECSInputSystemTestBootstrap : MonoBehaviour
         ref PositionComponent beforePosition = ref env.World.GetComponent<PositionComponent>(entity);
         Vector3 previousPosition = new Vector3(beforePosition.x, beforePosition.y, beforePosition.z);
 
-        env.World.SetComponent(entity, new PlayerInputComponent(0f, 0f));
+        env.World.SetComponent(entity, new PlayerInputSnapshotComponent(0f, 0f));
         env.Tick(1, 0.5f);
 
         ref PositionComponent afterPosition = ref env.World.GetComponent<PositionComponent>(entity);
@@ -147,9 +150,9 @@ public sealed class ECSInputSystemTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Test 5] Frame Bound Input Ignores Stale Frame</color>");
 
         TestEnvironment env = CreateEnvironment(false);
-        EntityInfo entity = env.World.CreateEntity();
+        Entity entity = env.World.CreateEntity();
 
-        env.World.SetComponent(entity, new PlayerInputComponent(5, 0, 1f, 0f));
+        env.World.SetComponent(entity, new PlayerInputSnapshotComponent(5, 0, 1f, 0f));
         env.World.SetComponent(entity, new MoveSpeedComponent(3f));
         env.World.SetComponent(entity, new VelocityComponent(9f, 0f, 9f));
         env.World.AddSystem(new InputMoveSystem());
@@ -285,4 +288,6 @@ public sealed class ECSInputSystemTestBootstrap : MonoBehaviour
             }
         }
     }
+}
+
 }

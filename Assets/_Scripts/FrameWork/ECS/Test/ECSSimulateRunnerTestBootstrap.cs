@@ -1,6 +1,9 @@
 using System;
 using UnityEngine;
 
+namespace ECSFrameWork
+{
+
 public class ECSSimulateRunnerTestBootstrap : MonoBehaviour
 {
     private int _failedCount;
@@ -198,4 +201,6 @@ public class RunnerOrderedSystem : FixedStepSystemBase
     {
         RunnerOrderRecorder.Add(_name);
     }
+}
+
 }

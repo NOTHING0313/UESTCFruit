@@ -1,18 +1,18 @@
-using Contracts;
 using BuffSystem;
-using ECS;
+using Contracts;
+using ECSFrameWork;
 
 namespace View
 {
     /// <summary>
-    /// ±íÏÖ²ãÇÅ½ÓÆ÷¿Õ¿Ç£¨4ºÅÊµÏÖ£¬ºóĞøÌî³ä£©¡£
-    /// ¸ù¾İÂß¼­ÊÀ½ç×´Ì¬Í¬²½ GameObject£¬µ±Ç°·½·¨¾ùÎª¿Õ¡£
+    /// è¡¨ç°å±‚æ¡¥æ¥å™¨ç©ºå£³ã€‚
+    /// åç»­å¯åœ¨è¿™é‡Œè¯»å– World å’Œ BuffSystemï¼ŒæŠŠé€»è¾‘çŠ¶æ€åŒæ­¥åˆ° Unity GameObjectã€åŠ¨ç”»å’Œç‰¹æ•ˆã€‚
     /// </summary>
     public sealed class ViewBridge : IViewBridge
     {
         public void Sync(World world, IBuffSystem buffSystem, int frame) { }
-        public void SpawnView(EntityHandle entity, int prefabId) { }
-        public void DespawnView(EntityHandle entity) { }
+        public void SpawnView(Entity entity, int prefabId) { }
+        public void DespawnView(Entity entity) { }
         public void PlayEffect(in ViewEffectCommand command) { }
     }
 }

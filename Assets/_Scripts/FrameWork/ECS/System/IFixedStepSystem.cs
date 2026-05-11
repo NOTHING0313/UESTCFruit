@@ -1,3 +1,5 @@
+namespace ECSFrameWork
+{
 /*
  * 文件说明：IFixedStepSystem 定义 ECS 固定逻辑帧系统的统一接口、生命周期接口和执行顺序枚举。
  * 设计约束：System 应尽量无状态；需要被回滚或同步的状态应放入 Component。
@@ -81,4 +83,6 @@ public enum SystemTickSequence
 
     /// <summary>实体最终清理阶段。</summary>
     entityCleanup = 300,
+}
+
 }

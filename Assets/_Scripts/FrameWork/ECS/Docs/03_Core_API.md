@@ -18,7 +18,7 @@ World world = new World();
 ## 2. Entity API
 
 ```csharp
-EntityInfo entity = world.CreateEntity();
+Entity entity = world.CreateEntity();
 bool alive = world.IsAlive(entity);
 world.DestroyEntity(entity);
 ```
@@ -56,7 +56,7 @@ world.RemoveComponent<HealthComponent>(entity);
 ## 4. Query API
 
 ```csharp
-foreach (EntityInfo entity in world.Query().With<PositionComponent>().With<VelocityComponent>().ExecuteSorted())
+foreach (Entity entity in world.Query().With<PositionComponent>().With<VelocityComponent>().ExecuteSorted())
 {
     ref PositionComponent position = ref world.GetComponent<PositionComponent>(entity);
     ref VelocityComponent velocity = ref world.GetComponent<VelocityComponent>(entity);
@@ -104,3 +104,42 @@ public abstract class FixedStepSystemBase : IFixedStepSystem
 ```
 
 这样可以直接使用受保护的 `World` 字段。
+
+
+## EntityBuilder 链式创建
+
+`EntityBuilder` 用于简化 Entity 初始化：
+
+```csharp
+Entity entity = world.CreateEntityBuilder()
+    .With(new PositionComponent(0, 0, 0))
+    .With(new VelocityComponent(1, 0, 0))
+    .Build();
+```
+
+等价于手动调用 `CreateEntity` 后多次 `SetComponent`，但代码更集中。
+
+```csharp
+public EntityBuilder CreateEntityBuilder();
+public Entity BuildEntity(Action<EntityBuilder> configure);
+```
+
+## EntityPrefab / EntityFactory 创建入口
+
+`EntityPrefab` 用于保存一组默认组件，`EntityFactory` 用于统一注册和创建多个实体模板。
+
+```csharp
+EntityPrefab unitPrefab = new EntityPrefab("Unit")
+    .With(new HealthComponent(100, 100))
+    .With(new MoveSpeedComponent(5));
+
+EntityFactory factory = new EntityFactory(world);
+factory.RegisterPrefab("Unit", unitPrefab);
+
+Entity unit = factory.Create("Unit", builder =>
+{
+    builder.With(new PositionComponent(10, 0, 0));
+});
+```
+
+`EntityPrefab` 中同类型组件重复写入时，后写入的组件会覆盖前写入的组件。`EntityFactory.Create(key, overrideBuilder)` 会先应用 Prefab 默认组件，再执行运行时覆盖。

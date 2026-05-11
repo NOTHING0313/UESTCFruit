@@ -1,3 +1,5 @@
+namespace ECSFrameWork
+{
 /*
  * 文件说明：MovementSystem 根据 VelocityComponent 推进 PositionComponent。
  * 设计约束：该系统使用 World.ForEach<T1,T2> 直接遍历组件 Store，避免每帧构建 Query 结果 List 和重复 GetComponent 查找。
@@ -27,10 +29,12 @@ public class MovementSystem : FixedStepSystemBase
     }
 
     /// <summary>移动单个实体，只修改 PositionComponent，不改变 Entity/Component 结构。</summary>
-    private void MoveEntity(EntityInfo entity, ref PositionComponent position, ref VelocityComponent velocity)
+    private void MoveEntity(Entity entity, ref PositionComponent position, ref VelocityComponent velocity)
     {
         position.x += velocity.x * _tickLength;
         position.y += velocity.y * _tickLength;
         position.z += velocity.z * _tickLength;
     }
+}
+
 }

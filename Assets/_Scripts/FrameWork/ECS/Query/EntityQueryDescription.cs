@@ -5,6 +5,9 @@
 
 using System;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// Entity 查询条件值对象。
 /// </summary>
@@ -67,4 +70,6 @@ public readonly struct EntityQueryDescription : IEquatable<EntityQueryDescriptio
     {
         return !left.Equals(right);
     }
+}
+
 }

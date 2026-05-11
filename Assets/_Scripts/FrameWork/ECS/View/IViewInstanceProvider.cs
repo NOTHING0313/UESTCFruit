@@ -5,6 +5,9 @@
 
 using UnityEngine;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// View 实例创建与释放接口。
 /// </summary>
@@ -18,4 +21,6 @@ public interface IViewInstanceProvider
 
     /// <summary>清理 Provider 内部资源；默认情况下不应清空全局对象池。</summary>
     void Clear();
+}
+
 }

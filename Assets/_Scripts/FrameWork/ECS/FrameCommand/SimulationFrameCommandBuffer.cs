@@ -5,6 +5,9 @@
 
 using System.Collections.Generic;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 按逻辑帧和执行时机缓存外部模拟指令，供帧同步、回滚和重放按帧消费。
 /// </summary>
@@ -99,4 +102,6 @@ public sealed class SimulationFrameCommandBuffer
 
         return lists;
     }
+}
+
 }

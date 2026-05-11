@@ -1,6 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+namespace ECSFrameWork
+{
+
 public class ECSCoreEntityComponentTestBootstrap : MonoBehaviour
 {
     private int _failedCount;
@@ -29,8 +32,8 @@ public class ECSCoreEntityComponentTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Core Test 1] Create Entity And Counts</color>");
 
         World world = new World();
-        EntityInfo e1 = world.CreateEntity();
-        EntityInfo e2 = world.CreateEntity();
+        Entity e1 = world.CreateEntity();
+        Entity e2 = world.CreateEntity();
 
         Expect(e1.IsValid, "First entity should be valid.");
         Expect(e2.IsValid, "Second entity should be valid.");
@@ -45,7 +48,7 @@ public class ECSCoreEntityComponentTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Core Test 2] Set / Get / TryGet / Has Component</color>");
 
         World world = new World();
-        EntityInfo entity = world.CreateEntity();
+        Entity entity = world.CreateEntity();
 
         world.SetComponent(entity, new CorePositionComponent { x = 1f, y = 2f, z = 3f });
 
@@ -66,7 +69,7 @@ public class ECSCoreEntityComponentTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Core Test 3] Overwrite Existing Component Does Not Change ArcheType</color>");
 
         World world = new World();
-        EntityInfo entity = world.CreateEntity();
+        Entity entity = world.CreateEntity();
 
         world.SetComponent(entity, new CorePositionComponent { x = 1f, y = 0f, z = 0f });
         int versionBeforeOverwrite = world.ArcheTypeVersion;
@@ -84,16 +87,16 @@ public class ECSCoreEntityComponentTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Core Test 4] Remove Component And Query</color>");
 
         World world = new World();
-        EntityInfo entity = world.CreateEntity();
+        Entity entity = world.CreateEntity();
 
         world.SetComponent(entity, new CorePositionComponent { x = 1f, y = 0f, z = 0f });
         world.SetComponent(entity, new CoreVelocityComponent { x = 1f, y = 0f, z = 0f });
 
-        List<EntityInfo> before = world.Query().With<CorePositionComponent>().With<CoreVelocityComponent>().Execute();
+        List<Entity> before = world.Query().With<CorePositionComponent>().With<CoreVelocityComponent>().Execute();
         int versionBeforeRemove = world.ArcheTypeVersion;
 
         bool removed = world.RemoveComponent<CoreVelocityComponent>(entity);
-        List<EntityInfo> after = world.Query().With<CorePositionComponent>().With<CoreVelocityComponent>().Execute();
+        List<Entity> after = world.Query().With<CorePositionComponent>().With<CoreVelocityComponent>().Execute();
 
         Expect(removed, "RemoveComponent should return true for existing component.");
         Expect(before.Count == 1, $"Before remove, Position + Velocity query should return 1. Actual = {before.Count}");
@@ -107,7 +110,7 @@ public class ECSCoreEntityComponentTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Core Test 5] Destroy Entity Removes Components And Invalidates Handle</color>");
 
         World world = new World();
-        EntityInfo entity = world.CreateEntity();
+        Entity entity = world.CreateEntity();
 
         world.SetComponent(entity, new CorePositionComponent { x = 1f, y = 0f, z = 0f });
         world.SetComponent(entity, new CoreVelocityComponent { x = 1f, y = 0f, z = 0f });
@@ -126,12 +129,12 @@ public class ECSCoreEntityComponentTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Core Test 6] Entity ID Reuse Refreshes Version</color>");
 
         World world = new World();
-        EntityInfo oldEntity = world.CreateEntity();
+        Entity oldEntity = world.CreateEntity();
         int oldID = oldEntity.ID;
         int oldVersion = oldEntity.Version;
 
         world.DestroyEntity(oldEntity);
-        EntityInfo reusedEntity = world.CreateEntity();
+        Entity reusedEntity = world.CreateEntity();
 
         Expect(reusedEntity.ID == oldID, $"Reused entity should reuse ID {oldID}. Actual = {reusedEntity.ID}");
         Expect(reusedEntity.Version > oldVersion, $"Reused entity version should be greater than old version. Old = {oldVersion}, New = {reusedEntity.Version}");
@@ -144,7 +147,7 @@ public class ECSCoreEntityComponentTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Core Test 7] Dead Entity Safe APIs</color>");
 
         World world = new World();
-        EntityInfo entity = world.CreateEntity();
+        Entity entity = world.CreateEntity();
         world.SetComponent(entity, new CorePositionComponent { x = 1f, y = 0f, z = 0f });
         world.DestroyEntity(entity);
 
@@ -163,20 +166,20 @@ public class ECSCoreEntityComponentTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[Core Test 8] Dispose Ignores Further Operations</color>");
 
         World world = new World();
-        EntityInfo entity = world.CreateEntity();
+        Entity entity = world.CreateEntity();
         world.SetComponent(entity, new CorePositionComponent { x = 1f, y = 0f, z = 0f });
         world.AddSystem(new CoreCountingSystem());
 
         world.Dispose();
 
-        EntityInfo invalid = world.CreateEntity();
+        Entity invalid = world.CreateEntity();
         world.SetComponent(entity, new CoreVelocityComponent { x = 1f, y = 0f, z = 0f });
         world.DestroyEntity(entity);
         world.AddSystem(new CoreCountingSystem());
         world.Tick(new SimulationContext(1, 1f, false));
 
         Expect(world.CurrentState == WorldStates.Disposing, "World should remain in Disposing state after Dispose.");
-        Expect(!invalid.IsValid, "CreateEntity during Disposing should return EntityInfo.Invalid.");
+        Expect(!invalid.IsValid, "CreateEntity during Disposing should return Entity.Invalid.");
         Expect(world.PendingCommandCount == 0, $"No structural command should be recorded during Disposing. Actual = {world.PendingCommandCount}");
         Expect(world.PendingSystemCommandCount == 0, $"No system command should be recorded during Disposing. Actual = {world.PendingSystemCommandCount}");
     }
@@ -216,4 +219,6 @@ public class CoreCountingSystem : FixedStepSystemBase
     {
         TickCount++;
     }
+}
+
 }

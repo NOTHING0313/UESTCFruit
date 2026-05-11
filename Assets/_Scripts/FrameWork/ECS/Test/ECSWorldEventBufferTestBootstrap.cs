@@ -1,6 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 验证 WorldEventBuffer 的写入、读取、清理，以及 System 内事件产生流程。
 /// </summary>
@@ -46,7 +49,7 @@ public sealed class ECSWorldEventBufferTestBootstrap : MonoBehaviour
         Debug.Log("<color=cyan>[WorldEvent Test 2] Different Event Types Are Separated</color>");
 
         World world = new World();
-        EntityInfo entity = world.CreateEntity();
+        Entity entity = world.CreateEntity();
 
         world.AddWorldEvent(new TestWorldEvent(1, 10));
         world.AddWorldEvent(new EntityDeadWorldEvent(1, entity));
@@ -103,7 +106,7 @@ public sealed class ECSWorldEventBufferTestBootstrap : MonoBehaviour
         World world = new World();
         world.AddSystem(new TestEventWriteSystem());
 
-        EntityInfo entity = world.CreateEntity();
+        Entity entity = world.CreateEntity();
         world.SetComponent(entity, new HealthComponent(5, 5));
 
         world.Tick(new SimulationContext(7, 0.02f, false));
@@ -124,9 +127,9 @@ public sealed class ECSWorldEventBufferTestBootstrap : MonoBehaviour
         World world = new World();
         world.AddSystem(new DamageResolveSystem());
 
-        EntityInfo source = world.CreateEntity();
-        EntityInfo target = world.CreateEntity();
-        EntityInfo request = world.CreateEntity();
+        Entity source = world.CreateEntity();
+        Entity target = world.CreateEntity();
+        Entity request = world.CreateEntity();
 
         world.SetComponent(target, new HealthComponent(10, 10));
         world.SetComponent(request, new DamageRequestComponent(source, target, 4));
@@ -147,7 +150,7 @@ public sealed class ECSWorldEventBufferTestBootstrap : MonoBehaviour
 
         world.ClearWorldEvents();
 
-        EntityInfo killRequest = world.CreateEntity();
+        Entity killRequest = world.CreateEntity();
         world.SetComponent(killRequest, new DamageRequestComponent(source, target, 20));
         world.Tick(new SimulationContext(12, 0.02f, false));
 
@@ -198,4 +201,6 @@ public sealed class ECSWorldEventBufferTestBootstrap : MonoBehaviour
             Debug.LogError($"[FAIL] {message}");
         }
     }
+}
+
 }

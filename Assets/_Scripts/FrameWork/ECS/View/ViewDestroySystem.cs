@@ -5,13 +5,16 @@
 
 using System.Collections.Generic;
 
+namespace ECSFrameWork
+{
+
 /// <summary>
 /// 根据 ViewDestroyRequestComponent 清理 Unity View 的 System。
 /// </summary>
 public sealed class ViewDestroySystem : FixedStepSystemBase
 {
     private readonly ViewManager _viewManager;
-    private readonly List<EntityInfo> _entities = new List<EntityInfo>(128);
+    private readonly List<Entity> _entities = new List<Entity>(128);
 
     private EntityQueryDescription _viewDestroyQuery;
     private EntityQueryDescription _requestOnlyQuery;
@@ -44,7 +47,7 @@ public sealed class ViewDestroySystem : FixedStepSystemBase
 
         for (int i = 0; i < _entities.Count; i++)
         {
-            EntityInfo entity = _entities[i];
+            Entity entity = _entities[i];
             ref ViewComponent view = ref World.GetComponent<ViewComponent>(entity);
 
             _viewManager?.DestroyView(view.viewID);
@@ -68,4 +71,6 @@ public sealed class ViewDestroySystem : FixedStepSystemBase
     {
         _entities.Clear();
     }
+}
+
 }

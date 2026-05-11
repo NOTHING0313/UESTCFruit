@@ -1,5 +1,5 @@
 using Contracts;
-using ECS;
+using ECSFrameWork;
 using System.Collections.Generic;
 
 namespace BuffSystem
@@ -9,8 +9,8 @@ namespace BuffSystem
         public void Tick(World world, SimulationContext context) { }
         public void AddBuff(AddBuffCommand command) { }
         public void RemoveBuff(RemoveBuffCommand command) { }
-        public bool TryGetBuff(EntityHandle target, int configId, EntityHandle source, out BuffViewData data) { data = default; return false; }
-        public IReadOnlyList<BuffViewData> GetBuffs(EntityHandle target) => new List<BuffViewData>();
+        public bool TryGetBuff(Entity target, int configId, Entity source, out BuffViewData data) { data = default; return false; }
+        public IReadOnlyList<BuffViewData> GetBuffs(Entity target) => new List<BuffViewData>();
         public void Dispose() { }
     }
 }
