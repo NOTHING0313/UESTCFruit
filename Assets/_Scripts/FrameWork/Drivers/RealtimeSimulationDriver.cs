@@ -1,36 +1,24 @@
-using ECSFrameWork;
-using BuffSystem;
-using Contracts;
+锘縰sing ECSFrameWork;
 
 namespace Drivers
 {
     /// <summary>
-    /// 实时（无回滚）驱动器（4号实现，第一天即可用）。
-    /// 直接按固定帧步推进 World 和 BuffSystemCore，不保存历史快照。
+    /// Fixed-frame local simulation driver. Systems, including ECSBuffSystem, run through World.Tick.
     /// </summary>
     public sealed class RealtimeSimulationDriver : ISimulationDriver
     {
-        private readonly World _world;
-        private readonly BuffSystemCore _buffSystem;
-        private readonly float _fixedDeltaTime;
-        private int _frame;
+        private readonly SimulateRunner _runner;
 
-        public int CurrentFrame => _frame;
+        public int CurrentFrame => _runner == null ? 0 : _runner.FrameCount;
 
-        public RealtimeSimulationDriver(World world, BuffSystemCore buffSystem, float fixedDeltaTime = 1f / 60f)
+        public RealtimeSimulationDriver(World world, float fixedDeltaTime = 1f / 60f, int maxCompensationTickCount = 1)
         {
-            _world = world;
-            _buffSystem = buffSystem;
-            _fixedDeltaTime = fixedDeltaTime;
-            _frame = 0;
+            _runner = new SimulateRunner(world, fixedDeltaTime, maxCompensationTickCount);
         }
 
         public void Step(in PlayerInputSnapshot input)
         {
-            var context = new SimulationContext(_frame, _fixedDeltaTime, false);
-            _world.Tick(context);
-            _buffSystem.Tick(_world, context);
-            _frame++;
+            _runner?.StepNextFrame(false);
         }
     }
 }

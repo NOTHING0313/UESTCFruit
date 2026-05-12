@@ -1,34 +1,35 @@
 using Sirenix.OdinInspector;
 using System;
 using System.Collections.Generic;
-
 using UnityEngine;
+
 namespace BuffSystem
 {
     [CreateAssetMenu(menuName = "BuffSystem/BuffTags", fileName = "BuffTagsData")]
     public sealed class BuffTags : ScriptableObject
     {
         private static BuffTags _instance;
+
         public static BuffTags GetOrFind()
         {
             if (_instance != null) return _instance;
 
 #if UNITY_EDITOR
-            // ±à¼­Æ÷£º´Ó¹¤³ÌÀïÕÒÈÎÒâÒ»¸ö BuffTags ×Ê²ú£¨²¢»º´æ£©
-            var guids = UnityEditor.AssetDatabase.FindAssets("t:BuffSystem.BuffTags");
+            // ç¼–è¾‘å™¨ä¸‹ä»å·¥ç¨‹èµ„äº§ä¸­æŸ¥æ‰¾ä»»æ„ä¸€ä¸ª BuffTags é…ç½®å¹¶ç¼“å­˜ã€‚
+            string[] guids = UnityEditor.AssetDatabase.FindAssets($"t:{nameof(BuffTags)}");
             if (guids != null && guids.Length > 0)
             {
-                var path = UnityEditor.AssetDatabase.GUIDToAssetPath(guids[0]);
+                string path = UnityEditor.AssetDatabase.GUIDToAssetPath(guids[0]);
                 _instance = UnityEditor.AssetDatabase.LoadAssetAtPath<BuffTags>(path);
             }
 #else
-        // ÔËĞĞÊ±£º½¨Òé·Å½ø Resources ¹Ì¶¨Â·¾¶
-        _instance = Resources.Load<BuffTags>("BuffTagsData");
+            // è¿è¡Œæ—¶ä» Resources å›ºå®šè·¯å¾„åŠ è½½ï¼Œä¿æŒç°æœ‰èµ„æºå¼•ç”¨è§„åˆ™ä¸å˜ã€‚
+            _instance = Resources.Load<BuffTags>("BuffTagsData");
 #endif
             return _instance;
         }
 
-        [SerializeField, LabelText("Ô¤ÉèBuffTag"), InfoBox("Ç°ÃæÌîÊ¹ÓÃÃû×Ö£¨ÍÆ¼öÖĞÎÄ£©£¬ºóÃæÌîÊµ¼ÊÃû×Ö£¨±ØĞëÓ¢ÎÄ£©", InfoMessageType.Info), OnCollectionChanged(nameof(RebuildDropdown))]
+        [SerializeField, LabelText("é¢„è®¾ Buff æ ‡ç­¾"), InfoBox("å·¦ä¾§å¡«å†™æ˜¾ç¤ºåç§°ï¼ˆæ¨èä¸­æ–‡ï¼‰ï¼Œå³ä¾§å¡«å†™è¿è¡Œæ—¶æ ‡ç­¾åï¼ˆå¿…é¡»ç¨³å®šï¼Œå»ºè®®è‹±æ–‡ï¼‰ã€‚", InfoMessageType.Info), OnCollectionChanged(nameof(RebuildDropdown))]
         private List<TagPair<string>> _buffTags = new();
 
         [NonSerialized] private readonly ValueDropdownList<string> _defaultBuffTags = new();
@@ -36,7 +37,7 @@ namespace BuffSystem
         public List<TagPair<string>> BuffTagPairs => _buffTags;
 
 #if UNITY_EDITOR
-        private void OnValidate() => RebuildDropdown(); // ±à¼­Æ÷¸Ä¶¯Ê±×Ô¶¯Ë¢ĞÂ¸üÎÈ
+        private void OnValidate() => RebuildDropdown();
 #endif
 
         private void RebuildDropdown()
@@ -44,19 +45,21 @@ namespace BuffSystem
             _defaultBuffTags.Clear();
             if (_buffTags == null) return;
 
-            foreach (var t in _buffTags)
+            foreach (TagPair<string> tag in _buffTags)
             {
-                if (string.IsNullOrEmpty(t.Second)) continue; // value ±ØĞëÓĞĞ§
-                _defaultBuffTags.Add(t.First, t.Second);
+                if (string.IsNullOrEmpty(tag.Second)) continue;
+                _defaultBuffTags.Add(tag.First, tag.Second);
             }
         }
     }
+
     [Serializable]
     public struct TagPair<T>
     {
-        [LabelText("Ê¹ÓÃÃû×Ö")]
+        [LabelText("æ˜¾ç¤ºåç§°")]
         public T First;
-        [LabelText("Êµ¼ÊÃû×Ö")]
+
+        [LabelText("è¿è¡Œæ—¶æ ‡ç­¾å")]
         public T Second;
     }
 }

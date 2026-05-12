@@ -1,170 +1,356 @@
 using Sirenix.OdinInspector;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
+
 namespace BuffSystem
 {
-    public enum BuffInstanceType { normal, parallel }
+    /// <summary>
+    /// Buff ç­–åˆ’é…ç½®èµ„äº§ï¼›ä»…ä½œä¸º Authoring è¾“å…¥ï¼Œè¿è¡Œæ—¶ä¼šè½¬æ¢ä¸ºçº¯æ•°æ® BuffDefinitionã€‚
+    /// </summary>
     [CreateAssetMenu(menuName = "BuffSystem/BuffConfigData", fileName = "BuffConfigData")]
     public class BuffConfigData : ScriptableObject
     {
-        [BoxGroup("»ù´¡ĞÅÏ¢"), LabelText("ID")]
+        private const float PreviewTickLength = 0.02f;
+        private const int ParallelStackWarningThreshold = 32;
+
+        [BoxGroup("åŸºç¡€ä¿¡æ¯"), LabelText("ID"), Tooltip("Buff çš„å”¯ä¸€é…ç½®ç¼–å·ï¼Œå¿…é¡»å¤§äº 0ã€‚")]
+        [ValidateInput(nameof(IsValidId), "ID å¿…é¡»å¤§äº 0ã€‚")]
         public int ID;
-        [BoxGroup("»ù´¡ĞÅÏ¢"), LabelText("Ãû³Æ")]
+
+        [BoxGroup("åŸºç¡€ä¿¡æ¯"), LabelText("åç§°"), Tooltip("ç»™ç­–åˆ’ã€è°ƒè¯•å’Œè¡¨ç°å±‚é˜…è¯»çš„ Buff åç§°ã€‚")]
+        [ValidateInput(nameof(IsValidName), "åç§°ä¸èƒ½ä¸ºç©ºã€‚")]
         public string Name;
-        [BoxGroup("»ù´¡ĞÅÏ¢"), LabelText("ÃèÊö"), Multiline]
+
+        [BoxGroup("åŸºç¡€ä¿¡æ¯"), LabelText("æè¿°"), Multiline, Tooltip("é¢å‘ç­–åˆ’æˆ– UI æ–‡æ¡ˆçš„è¯´æ˜ï¼Œä¸å‚ä¸è¿è¡Œæ—¶é€»è¾‘ã€‚")]
         public string Description;
-        [BoxGroup("»ù´¡ĞÅÏ¢"), LabelText("Í¼±ê")]
+
+        [BoxGroup("åŸºç¡€ä¿¡æ¯"), LabelText("å›¾æ ‡"), PreviewField(56), Tooltip("è¡¨ç°å±‚å¯ä½¿ç”¨çš„å›¾æ ‡å¼•ç”¨ï¼Œä¸å‚ä¸ ECS æ¨¡æ‹Ÿã€‚")]
         public Sprite Icon;
-        [BoxGroup("»ù´¡ĞÅÏ¢"), LabelText("ÓÅÏÈ¼¶"), Tooltip("ÊıÖµÔ½µÍ£¬ÓÅÏÈ¼¶Ô½¸ß")]
+
+        [BoxGroup("åŸºç¡€ä¿¡æ¯"), LabelText("ä¼˜å…ˆçº§"), Tooltip("åŒä¸€äº‹ä»¶å‘½ä¸­å¤šä¸ª Buff æ—¶ï¼Œä¼˜å…ˆçº§è¶Šå°è¶Šæ—©æ‰§è¡Œã€‚")]
         public int Priority;
-        [BoxGroup("»ù´¡ĞÅÏ¢"), LabelText("Tags"), ValueDropdown(nameof(GetDefaultTags), NumberOfItemsBeforeEnablingSearch = 8)]
-        public List<string> Tags;
+
+        [BoxGroup("åŸºç¡€ä¿¡æ¯"), LabelText("æ ‡ç­¾"), Tooltip("ç”¨äºé…ç½®ç­›é€‰å’Œæ‰¹é‡æŸ¥è¯¢çš„æ ‡ç­¾ã€‚")]
+        [ValueDropdown(nameof(GetDefaultTags), NumberOfItemsBeforeEnablingSearch = 8)]
+        public List<string> Tags = new List<string>();
+
+        [BoxGroup("ç”Ÿå‘½å‘¨æœŸ"), LabelText("æ˜¯å¦æ°¸ä¹…"), Tooltip("æ°¸ä¹… Buff ä¸ä¼šå› å‰©ä½™å¸§æ•°å½’é›¶è€Œè‡ªåŠ¨ç§»é™¤ã€‚")]
+        public bool IsForever = false;
+
+        [BoxGroup("ç”Ÿå‘½å‘¨æœŸ"), LabelText("æŒç»­æ—¶é—´ï¼ˆç§’ï¼‰"), MinValue(0), HideIf(nameof(IsForever))]
+        [Tooltip("éæ°¸ä¹… Buff çš„æŒç»­æ—¶é—´ï¼Œä¼šæŒ‰å›ºå®šå¸§é•¿åº¦è½¬æ¢ä¸º DurationFramesã€‚")]
+        [ValidateInput(nameof(IsValidDuration), "éæ°¸ä¹… Buff çš„æŒç»­æ—¶é—´å¿…é¡»å¤§äº 0ã€‚")]
+        public float Duration = 1f;
+
+        [BoxGroup("ç”Ÿå‘½å‘¨æœŸ"), LabelText("è§¦å‘ç±»å‹"), Tooltip("Tick è¡¨ç¤ºæŒ‰å›ºå®šå¸§é—´éš”è§¦å‘ï¼›EventTrigger è¡¨ç¤ºå“åº” IGameEventã€‚")]
+        public BuffTriggerType BuffTriggerType;
+
+        [BoxGroup("ç”Ÿå‘½å‘¨æœŸ"), LabelText("Tick é—´éš”ï¼ˆç§’ï¼‰"), MinValue(0), ShowIf(nameof(IsTick))]
+        [Tooltip("Tick ç±»å‹ Buff çš„è§¦å‘é—´éš”ï¼Œä¼šæŒ‰å›ºå®šå¸§é•¿åº¦è½¬æ¢ä¸º TickIntervalFramesã€‚")]
+        [ValidateInput(nameof(IsValidTickTime), "Tick ç±»å‹ Buff çš„ Tick é—´éš”å¿…é¡»å¤§äº 0ã€‚")]
+        public float TickTime = 0f;
+
+        [BoxGroup("å †å è§„åˆ™"), LabelText("Buff ç±»å‹"), Tooltip("æ™®é€š Buff ä½¿ç”¨ä¸€ä¸ª Runtime Entity ä¿å­˜å±‚æ•°ï¼›å¹¶è¡Œ Buff æ¯å±‚ä¸€ä¸ª Runtime Entityã€‚")]
+        public BuffInstanceType BuffType = BuffInstanceType.normal;
+
+        [BoxGroup("å †å è§„åˆ™"), LabelText("æ˜¯å¦æ— é™å±‚æ•°"), Tooltip("å¯ç”¨å MaxStack ä¸é™åˆ¶è¿è¡Œæ—¶å±‚æ•°ã€‚")]
+        public bool Unlimited = false;
+
+        [BoxGroup("å †å è§„åˆ™"), LabelText("æœ€å¤§å±‚æ•°"), MinValue(1), HideIf(nameof(Unlimited))]
+        [Tooltip("æ™®é€š Buff çš„æœ€å¤§å å±‚ï¼Œæˆ–å¹¶è¡Œ Buff çš„æœ€å¤§å¹¶è¡Œå±‚æ•°ã€‚")]
+        [ValidateInput(nameof(IsValidMaxStack), "æœ€å¤§å±‚æ•°å¿…é¡»å¤§äº 0ï¼Œé™¤éå¼€å¯æ— é™å±‚æ•°ã€‚")]
+        [ValidateInput(nameof(IsParallelStackCountSafe), "å¹¶è¡Œ Buff æœ€å¤§å±‚æ•°è¾ƒå¤§ï¼Œå¯èƒ½å¸¦æ¥ Runtime Entityã€æ’åºå’Œå›æ»šå¿«ç…§æˆæœ¬ã€‚", InfoMessageType.Warning)]
+        public int MaxStack = 1;
+
+        [BoxGroup("å †å è§„åˆ™"), LabelText("æ™®é€š Buff å å±‚ç­–ç•¥"), ShowIf(nameof(IsNormalBuff))]
+        [Tooltip("æ™®é€š Buff é‡å¤æ·»åŠ æ—¶å¦‚ä½•å¤„ç†å±‚æ•°å’ŒæŒç»­æ—¶é—´ã€‚")]
+        public NormalBuffStackPolicy NormalStackPolicy = NormalBuffStackPolicy.RefreshDuration;
+
+        [BoxGroup("å †å è§„åˆ™"), LabelText("å¹¶è¡Œ Buff å å±‚ç­–ç•¥"), HideIf(nameof(IsNormalBuff))]
+        [Tooltip("å¹¶è¡Œ Buff æ·»åŠ æ–°å±‚æ—¶å¦‚ä½•å¤„ç†å·²æœ‰å±‚ã€‚")]
+        public ParallelBuffStackUpPolicy ParallelStackUpPolicy = ParallelBuffStackUpPolicy.Append;
+
+        [BoxGroup("å †å è§„åˆ™"), LabelText("å¹¶è¡Œ Buff ç§»é™¤ç­–ç•¥"), HideIf(nameof(IsNormalBuff))]
+        [Tooltip("å¹¶è¡Œ Buff ç§»é™¤å±‚æ•°æ—¶ä¼˜å…ˆç§»é™¤å“ªä¸€å±‚ã€‚")]
+        public ParallelBuffStackDownPolicy ParallelStackDownPolicy = ParallelBuffStackDownPolicy.RemoveEarliest;
+
+        [BoxGroup("å †å è§„åˆ™"), LabelText("æ¯å±‚å»¶é•¿æ—¶é—´ï¼ˆç§’ï¼‰"), MinValue(0), ShowIf(nameof(UsesDurationExtension))]
+        [Tooltip("ä»…æ™®é€š Buff çš„ AddDuration ç­–ç•¥ä½¿ç”¨ã€‚")]
+        public float DurationExtendPerStack = 0f;
+
+        [BoxGroup("æ•ˆæœé…ç½®"), LabelText("EffectId"), Tooltip("è¿è¡Œæ—¶åªä¿å­˜è¿™ä¸ªæ•´æ•° IDï¼›æ¨èä» Effect ç›®å½•ä¸‹æ‹‰é€‰æ‹©ã€‚")]
+        [ValueDropdown(nameof(GetEffectIdDropdown), NumberOfItemsBeforeEnablingSearch = 8)]
+        [ValidateInput(nameof(IsValidEffectId), "EffectId å¿…é¡»å¤§äº 0ã€‚")]
+        [ValidateInput(nameof(IsEffectSupportedForTrigger), "é€‰æ‹©çš„ Effect æœªå£°æ˜æ”¯æŒå½“å‰è§¦å‘ç±»å‹ã€‚", InfoMessageType.Warning)]
+        public int EffectId = 0;
+
+        [BoxGroup("æ•ˆæœé…ç½®"), ShowInInspector, ReadOnly, LabelText("Effect æ˜¾ç¤ºå")]
+        [InfoBox("æœªæ‰¾åˆ° BuffEffectCatalogDataï¼Œå½“å‰å…è®¸æ‰‹åŠ¨å¡«å†™ EffectIdã€‚", InfoMessageType.Warning, nameof(IsEffectCatalogMissing))]
+        private string EffectDisplayName => GetEffectDisplayName();
+
+        [BoxGroup("æ•ˆæœé…ç½®"), LabelText("äº‹ä»¶è§¦å‘åˆ—è¡¨"), ShowIf(nameof(IsEventTrigger))]
+        [Tooltip("äº‹ä»¶ Buff åªæœ‰åœ¨æ”¶åˆ°åŒ¹é… EventId çš„ IGameEvent æ—¶æ‰ä¼šè§¦å‘ã€‚")]
+        [InfoBox("äº‹ä»¶ Buff åªæœ‰åœ¨æ”¶åˆ°åŒ¹é… EventId çš„ IGameEvent æ—¶æ‰ä¼šè§¦å‘ã€‚", InfoMessageType.Info, nameof(IsEventTrigger))]
+        [ValueDropdown(nameof(GetEventIdDropdown), NumberOfItemsBeforeEnablingSearch = 8)]
+        [ValidateInput(nameof(IsValidEventIds), "EventTrigger ç±»å‹ Buff å¿…é¡»è‡³å°‘é€‰æ‹©ä¸€ä¸ª EventIdã€‚")]
+        public List<int> EventIds = new List<int>();
+
+        [BoxGroup("è°ƒè¯•ä¿¡æ¯"), ShowInInspector, ReadOnly, LabelText("æŒç»­å¸§æ•°é¢„è§ˆ")]
+        private int DurationFramesPreview => IsForever ? 0 : SecondsToFrameCount(Duration, PreviewTickLength);
+
+        [BoxGroup("è°ƒè¯•ä¿¡æ¯"), ShowInInspector, ReadOnly, LabelText("Tick é—´éš”å¸§æ•°é¢„è§ˆ")]
+        private int TickIntervalFramesPreview => IsTick ? SecondsToFrameCount(TickTime, PreviewTickLength) : 0;
+
+        [BoxGroup("è°ƒè¯•ä¿¡æ¯"), ShowInInspector, ReadOnly, LabelText("å½“å‰è§¦å‘ç±»å‹è¯´æ˜")]
+        private string TriggerTypeDescription => GetTriggerTypeDescription();
+
+        [BoxGroup("è°ƒè¯•ä¿¡æ¯"), ShowInInspector, ReadOnly, LabelText("å½“å‰å †å ç­–ç•¥è¯´æ˜")]
+        private string StackPolicyDescription => GetStackPolicyDescription();
+
+        [BoxGroup("è°ƒè¯•ä¿¡æ¯"), ShowInInspector, ReadOnly, LabelText("å½“å‰é…ç½®æ ¡éªŒç»“æœ"), MultiLineProperty(5)]
+        private string ValidationSummary => BuildValidationSummary();
+
+        private bool IsTick => BuffTriggerType == BuffTriggerType.Tick;
+        private bool IsEventTrigger => BuffTriggerType == BuffTriggerType.EventTrigger;
+        private bool IsNormalBuff => BuffType == BuffInstanceType.normal;
+        private bool UsesDurationExtension => IsNormalBuff && NormalStackPolicy == NormalBuffStackPolicy.AddDuration;
 
         private static IEnumerable<ValueDropdownItem<string>> GetDefaultTags()
         {
-            var data = BuffTags.GetOrFind();
+            BuffTags data = BuffTags.GetOrFind();
             return data != null ? data.DefaultBuffTags : Array.Empty<ValueDropdownItem<string>>();
         }
-        [BoxGroup("ÉúÃüÖÜÆÚÅäÖÃ"), LabelText("ÎŞ²ãÊıÉÏÏŞ")]
-        public bool Unlimited = false;
-        [BoxGroup("ÉúÃüÖÜÆÚÅäÖÃ"), LabelText("×î´ó²ãÊı"), MinValue(0), HideIf("@Unlimited")]
-        public int MaxStack = 1;
-        [BoxGroup("ÉúÃüÖÜÆÚÅäÖÃ"), LabelText("ÓÀ¾ÃBuff")]
-        public bool IsForever = false;
-        [BoxGroup("ÉúÃüÖÜÆÚÅäÖÃ"), LabelText("³ÖĞøÊ±¼ä"), MinValue(0), HideIf("@IsForever")]
-        public float Duration = 1;
-        [BoxGroup("ÉúÃüÖÜÆÚÅäÖÃ"), LabelText("Buff´¥·¢ÀàĞÍ")]
-        public BuffTriggerType BuffTriggerType;
-        private bool IsTick => BuffTriggerType == BuffTriggerType.Tick;
-        [BoxGroup("ÉúÃüÖÜÆÚÅäÖÃ"), LabelText("ÖÜÆÚĞÍBuffµÄ´¥·¢ÖÜÆÚ"), ShowIf("@IsTick"), InfoBox("µ±Ç°´¥·¢ÖÜÆÚ´óÓÚbuff³ÖĞøÊ±¼ä", infoMessageType: InfoMessageType.Warning, VisibleIf = "@TickTime>Duration")]
-        public float TickTime = 0;
-        [BoxGroup("ÉúÃüÖÜÆÚÅäÖÃ")]
-        public BuffInstanceType BuffType = BuffInstanceType.normal;
-        [FoldoutGroup("ÉúÃüÖÜÆÚÅäÖÃ/Buff²ãÊı¸Ä±ä²ßÂÔ", VisibleIf = "@BuffType==BuffInstanceType.normal"), LabelText("Buff²ãÊıÔö¼Ó·½°¸")]
-        public string BuffStackUpStrategyID;
-        [FoldoutGroup("ÉúÃüÖÜÆÚÅäÖÃ/Buff²ãÊı¸Ä±ä²ßÂÔ"), LabelText("Ô¤Éè·½°¸")]
-        [ValueDropdown(nameof(BuffStackUpStrategyOptions), NumberOfItemsBeforeEnablingSearch = 8)]
-        [OnValueChanged(nameof(ApplyPresetToBuffStackUpStrategyId))]
-        [SerializeField]
-        private string _presetPick1;
-        private static IEnumerable<ValueDropdownItem<string>> BuffStackUpStrategyOptions =>
-            new ValueDropdownList<string>
-            {
-            { "ÖØÖÃ¼ÆÊ±", "ResetRuntimeBuffStackUpStrategy" },
-            { "µş¼ÓÊ±³¤", "AddDurationBuffStackUpStrategy" },
-            { "½öµş²ã", "AddStackOnlyBuffStackUpStrategy" },
-            { "»·ĞÎ½öµş²ã(Óë×î´ó²ãÊıÈ¡Óà)","CyclicallyAddStackOnlyBuffStackUpStrategy" },
-            { "µş²ã²¢ÖØÖÃ¼ÆÊ±", "AddStackAndResetRuntimeBuffStackUpStrategy" },
-            };
 
-        private void ApplyPresetToBuffStackUpStrategyId()
+        private IEnumerable<ValueDropdownItem<int>> GetEffectIdDropdown()
         {
-            if (!string.IsNullOrEmpty(_presetPick1))
-                BuffStackUpStrategyID = _presetPick1;
-        }
-        [FoldoutGroup("ÉúÃüÖÜÆÚÅäÖÃ/Buff²ãÊı¸Ä±ä²ßÂÔ"), LabelText("Buff²ãÊı¼õÉÙ·½°¸")]
-        public string BuffStackDownStrategyID;
-        [FoldoutGroup("ÉúÃüÖÜÆÚÅäÖÃ/Buff²ãÊı¸Ä±ä²ßÂÔ"), LabelText("Ô¤Éè·½°¸")]
-        [ValueDropdown(nameof(BuffStackDownStrategyOptions), NumberOfItemsBeforeEnablingSearch = 8)]
-        [OnValueChanged(nameof(ApplyPresetToBuffStackDownStrategyId))]
-        [SerializeField]
-        private string _presetPick2;
-        private IEnumerable<ValueDropdownItem<string>> BuffStackDownStrategyOptions =>
-            new ValueDropdownList<string>
+            BuffEffectCatalogData catalog = BuffEffectCatalogData.GetOrFind();
+
+            if (catalog == null || catalog.Entries == null || catalog.Entries.Count == 0)
             {
-                {"¼õÉÙ²ãÊı" ,"ReduceBuffStackDownStrategy"},
-                {"Çå¿Õ²ãÊı" ,"ClearBuffStackDownStrategy"},
-            };
-        private void ApplyPresetToBuffStackDownStrategyId()
-        {
-            if (!string.IsNullOrEmpty(_presetPick2))
-                BuffStackDownStrategyID = _presetPick2;
-        }
-        [FoldoutGroup("ÉúÃüÖÜÆÚÅäÖÃ/ParallelBuff²ãÊı¸Ä±ä²ßÂÔ", VisibleIf = "@BuffType!=BuffInstanceType.normal"), LabelText("ParallelBuff²ãÊıÔö¼Ó·½°¸")]
-        public string ParallelBuffStackUpStrategyID;
-        [FoldoutGroup("ÉúÃüÖÜÆÚÅäÖÃ/ParallelBuff²ãÊı¸Ä±ä²ßÂÔ"), LabelText("Ô¤Éè·½°¸")]
-        [ValueDropdown(nameof(ParallelBuffStackUpStrategyOptions), NumberOfItemsBeforeEnablingSearch = 8)]
-        [OnValueChanged(nameof(ApplyPresetToParallelBuffStackUpStrategyId))]
-        [SerializeField]
-        private string _presetPick3;
-        private IEnumerable<ValueDropdownItem<string>> ParallelBuffStackUpStrategyOptions =>
-            new ValueDropdownList<string>
-            {
-                {"ĞÂÔö²ã£¬Ã¿²ã¶ÀÁ¢³ÖĞøÊ±¼ä" ,"ParallelAppendStackUpStrategy"},
-                {"²»ĞÂÔö×Ü²ãÊı£¬ÓÅÏÈË¢ĞÂ×îÔçµ½ÆÚµÄ²ã" ,"ParallelRefreshEarliestUpStrategy"},
-                {"ËùÓĞÏÖÓĞ²ãÍ³Ò»ĞøÂú£¬ÔÙ°´ĞèÒª²¹ĞÂÔö²ã","ParallelRefreshAllUpStrategy" },
-                {"Âú²ãÊ±£¬²»¶ªÕâ´Îµş¼Ó£¬¶øÊÇÌæ»»×îÔçµ½ÆÚ²ã","ParallelReplaceEarliestWhenFullUpStrategy" }
-            };
-        private void ApplyPresetToParallelBuffStackUpStrategyId()
-        {
-            if (!string.IsNullOrEmpty(_presetPick3))
-                ParallelBuffStackUpStrategyID = _presetPick3;
-        }
-        [FoldoutGroup("ÉúÃüÖÜÆÚÅäÖÃ/ParallelBuff²ãÊı¸Ä±ä²ßÂÔ", VisibleIf = "@BuffType!=BuffInstanceType.normal"), LabelText("ParallelBuff²ãÊı¼õÉÙ·½°¸")]
-        public string ParallelBuffStackDownStrategyID;
-        [FoldoutGroup("ÉúÃüÖÜÆÚÅäÖÃ/ParallelBuff²ãÊı¸Ä±ä²ßÂÔ"), LabelText("Ô¤Éè·½°¸")]
-        [ValueDropdown(nameof(ParallelBuffStackDownStrategyOptions), NumberOfItemsBeforeEnablingSearch = 8)]
-        [OnValueChanged(nameof(ApplyPresetToParallelBuffStackDownStrategyId))]
-        [SerializeField]
-        private string _presetPick4;
-        private IEnumerable<ValueDropdownItem<string>> ParallelBuffStackDownStrategyOptions =>
-            new ValueDropdownList<string>
-            {
-                {"ÒÆ³ı×îÔçµ½ÆÚ²ã" ,"ParallelRemoveEarliestDownStrategy"},
-                {"ÒÆ³ı×îĞÂ¼ÓÈë²ã" ,"ParallelRemoveLatestDownStrategy"},
-                {"Çå¿Õ","ParallelClearAllDownStrategy" },
-            };
-        private void ApplyPresetToParallelBuffStackDownStrategyId()
-        {
-            if (!string.IsNullOrEmpty(_presetPick4))
-                ParallelBuffStackDownStrategyID = _presetPick4;
-        }
-
-
-
-
-
-
-        [BoxGroup("ÉúÃüÖÜÆÚÅäÖÃ"), LabelText("Ã¿²ãÔö¼ÓÊ±¼äµÈÓÚBuff³ÖĞøÊ±¼ä")]
-        public bool IsEqualDuration = true;
-        [BoxGroup("ÉúÃüÖÜÆÚÅäÖÃ"), LabelText("Ã¿²ãÔö¼ÓÊ±¼ä"), Tooltip("µ±²ãÊıÓ°ÏìBuff³ÖĞøÊ±¼äÊ±,Ã¿Ò»²ãÔö¼Ó¶àÉÙÊ±¼ä"), ShowIf("@!IsEqualDuration")]
-        public float DurationExtendPerStack = -1;
-
-        [BoxGroup("BuffĞ§¹ûÅäÖÃ"), LabelText("BuffĞ§¹û")]
-        public BuffEffect BuffEffect;
-        /// <summary>
-        /// ¿½±´Êı¾İ£¬·ÀÖ¹ÎÛÈ¾ÅäÖÃÎÄ¼ş
-        /// </summary>
-        /// <param name="emptyData"></param>
-        public virtual void CopyTo(BuffConfigData emptyData)
-        {
-            if (emptyData == null)
-            {
-                Debug.LogError("BuffConfigData CopyTo Error:EmptyData Is Null");
-                return;
+                yield return new ValueDropdownItem<int>($"æ‰‹åŠ¨å¡«å†™ï¼š{EffectId}", EffectId);
+                yield break;
             }
-            emptyData.ID = ID;
-            emptyData.Name = Name;
-            emptyData.Description = Description;
-            emptyData.Icon = Icon;
-            emptyData.Priority = Priority;
-            //Éî¿½±´£¬±ÜÃâÎÛÈ¾Êı¾İ
-            emptyData.Tags = Tags.ToList();
-            emptyData.MaxStack = MaxStack;
-            emptyData.IsForever = IsForever;
-            emptyData.Duration = Duration;
-            emptyData.Unlimited = Unlimited;
-            emptyData.TickTime = TickTime;
-            emptyData.BuffStackUpStrategyID = BuffStackUpStrategyID;
-            emptyData.BuffStackDownStrategyID = BuffStackDownStrategyID;
-            emptyData.DurationExtendPerStack = IsEqualDuration ? Duration : DurationExtendPerStack;
-            emptyData.BuffTriggerType = BuffTriggerType;
-            emptyData.BuffEffect = BuffEffect;
-            emptyData.BuffType = BuffType;
-            emptyData.ParallelBuffStackDownStrategyID = ParallelBuffStackDownStrategyID;
-            emptyData.ParallelBuffStackUpStrategyID = ParallelBuffStackUpStrategyID;
+
+            for (int i = 0; i < catalog.Entries.Count; i++)
+            {
+                BuffEffectCatalogEntry entry = catalog.Entries[i];
+
+                if (entry.EffectId <= 0)
+                    continue;
+
+                string displayName = string.IsNullOrEmpty(entry.DisplayName) ? "æœªå‘½å Effect" : entry.DisplayName;
+                yield return new ValueDropdownItem<int>($"{entry.EffectId} - {displayName}", entry.EffectId);
+            }
         }
+
+        private IEnumerable<ValueDropdownItem<int>> GetEventIdDropdown()
+        {
+            BuffEventCatalogData catalog = BuffEventCatalogData.GetOrFind();
+
+            if (catalog == null || catalog.Entries == null || catalog.Entries.Count == 0)
+            {
+                if (EventIds != null)
+                {
+                    for (int i = 0; i < EventIds.Count; i++)
+                        yield return new ValueDropdownItem<int>($"æ‰‹åŠ¨å¡«å†™ï¼š{EventIds[i]}", EventIds[i]);
+                }
+
+                yield break;
+            }
+
+            for (int i = 0; i < catalog.Entries.Count; i++)
+            {
+                BuffEventCatalogEntry entry = catalog.Entries[i];
+
+                if (entry.EventId <= 0)
+                    continue;
+
+                string displayName = string.IsNullOrEmpty(entry.DisplayName) ? entry.EventKey : entry.DisplayName;
+
+                if (string.IsNullOrEmpty(displayName))
+                    displayName = "æœªå‘½åäº‹ä»¶";
+
+                yield return new ValueDropdownItem<int>($"{entry.EventId} - {displayName}", entry.EventId);
+            }
+        }
+
+        public BuffDefinition ToDefinition(float tickLength)
+        {
+            int durationFrames = IsForever ? 0 : SecondsToFrameCount(Duration, tickLength);
+            int tickIntervalFrames = BuffTriggerType == BuffTriggerType.Tick
+                ? SecondsToFrameCount(TickTime, tickLength)
+                : 0;
+            int durationExtendFrames = SecondsToFrameCount(DurationExtendPerStack, tickLength);
+
+            return new BuffDefinition(
+                ID,
+                Name,
+                Priority,
+                MaxStack,
+                Unlimited,
+                IsForever,
+                durationFrames,
+                tickIntervalFrames,
+                durationExtendFrames,
+                BuffTriggerType,
+                BuffType,
+                NormalStackPolicy,
+                ParallelStackUpPolicy,
+                ParallelStackDownPolicy,
+                EffectId,
+                ToEventIdArray());
+        }
+
+        public virtual void CopyTo(BuffConfigData target)
+        {
+            if (target == null)
+                return;
+
+            target.ID = ID;
+            target.Name = Name;
+            target.Description = Description;
+            target.Icon = Icon;
+            target.Priority = Priority;
+            target.Tags = Tags == null ? new List<string>() : new List<string>(Tags);
+            target.IsForever = IsForever;
+            target.Duration = Duration;
+            target.BuffTriggerType = BuffTriggerType;
+            target.TickTime = TickTime;
+            target.BuffType = BuffType;
+            target.Unlimited = Unlimited;
+            target.MaxStack = MaxStack;
+            target.NormalStackPolicy = NormalStackPolicy;
+            target.ParallelStackUpPolicy = ParallelStackUpPolicy;
+            target.ParallelStackDownPolicy = ParallelStackDownPolicy;
+            target.DurationExtendPerStack = DurationExtendPerStack;
+            target.EffectId = EffectId;
+            target.EventIds = EventIds == null ? new List<int>() : new List<int>(EventIds);
+        }
+
+        private static int SecondsToFrameCount(float seconds, float tickLength)
+        {
+            if (seconds <= 0f)
+                return 0;
+
+            float safeTickLength = tickLength > 0f ? tickLength : 0.02f;
+            return Math.Max(1, (int)Math.Ceiling(seconds / safeTickLength));
+        }
+
+        private int[] ToEventIdArray()
+        {
+            if (EventIds == null || EventIds.Count == 0)
+                return Array.Empty<int>();
+
+            int[] eventIds = new int[EventIds.Count];
+
+            for (int i = 0; i < EventIds.Count; i++)
+                eventIds[i] = EventIds[i];
+
+            return eventIds;
+        }
+
+        private bool IsValidId() => ID > 0;
+        private bool IsValidName() => !string.IsNullOrWhiteSpace(Name);
+        private bool IsValidMaxStack() => Unlimited || MaxStack > 0;
+        private bool IsValidDuration() => IsForever || Duration > 0f;
+        private bool IsValidTickTime() => !IsTick || TickTime > 0f;
+        private bool IsValidEventIds() => !IsEventTrigger || (EventIds != null && EventIds.Count > 0);
+        private bool IsValidEffectId() => EffectId > 0;
+        private bool IsParallelStackCountSafe() => BuffType != BuffInstanceType.parallel || Unlimited || MaxStack <= ParallelStackWarningThreshold;
+
+        private bool IsEffectSupportedForTrigger()
+        {
+            BuffEffectCatalogData catalog = BuffEffectCatalogData.GetOrFind();
+
+            if (catalog == null || !catalog.TryGetEntry(EffectId, out BuffEffectCatalogEntry entry))
+                return true;
+
+            return entry.Supports(BuffTriggerType);
+        }
+
+        private bool IsEffectCatalogMissing() => BuffEffectCatalogData.GetOrFind() == null;
+
+        private string GetEffectDisplayName()
+        {
+            BuffEffectCatalogData catalog = BuffEffectCatalogData.GetOrFind();
+
+            if (catalog == null || !catalog.TryGetEntry(EffectId, out BuffEffectCatalogEntry entry))
+                return EffectId > 0 ? $"æ‰‹åŠ¨å¡«å†™ EffectIdï¼š{EffectId}" : "æœªé€‰æ‹© Effect";
+
+            return string.IsNullOrEmpty(entry.DisplayName) ? $"EffectIdï¼š{EffectId}" : entry.DisplayName;
+        }
+
+        private string GetTriggerTypeDescription()
+        {
+            switch (BuffTriggerType)
+            {
+                case BuffTriggerType.Tick:
+                    return "æŒ‰å›ºå®šå¸§é—´éš”è§¦å‘ OnTickã€‚";
+                case BuffTriggerType.EventTrigger:
+                    return "æ”¶åˆ°åŒ¹é… EventId çš„ IGameEvent åè§¦å‘äº‹ä»¶ Effectã€‚";
+                default:
+                    return "æœªçŸ¥è§¦å‘ç±»å‹ã€‚";
+            }
+        }
+
+        private string GetStackPolicyDescription()
+        {
+            if (BuffType == BuffInstanceType.parallel)
+                return $"å¹¶è¡Œ Buffï¼šæ–°å¢ç­–ç•¥ {ParallelStackUpPolicy}ï¼Œç§»é™¤ç­–ç•¥ {ParallelStackDownPolicy}ã€‚";
+
+            return $"æ™®é€š Buffï¼šå å±‚ç­–ç•¥ {NormalStackPolicy}ã€‚";
+        }
+
+        private string BuildValidationSummary()
+        {
+            List<string> messages = new List<string>();
+
+            if (!IsValidId())
+                messages.Add("é”™è¯¯ï¼šID å¿…é¡»å¤§äº 0ã€‚");
+
+            if (!IsValidName())
+                messages.Add("é”™è¯¯ï¼šåç§°ä¸èƒ½ä¸ºç©ºã€‚");
+
+            if (!IsValidMaxStack())
+                messages.Add("é”™è¯¯ï¼šæœ€å¤§å±‚æ•°å¿…é¡»å¤§äº 0ï¼Œé™¤éå¼€å¯æ— é™å±‚æ•°ã€‚");
+
+            if (!IsValidDuration())
+                messages.Add("é”™è¯¯ï¼šéæ°¸ä¹… Buff çš„æŒç»­æ—¶é—´å¿…é¡»å¤§äº 0ã€‚");
+
+            if (!IsValidTickTime())
+                messages.Add("é”™è¯¯ï¼šTick ç±»å‹ Buff çš„ Tick é—´éš”å¿…é¡»å¤§äº 0ã€‚");
+
+            if (!IsValidEventIds())
+                messages.Add("é”™è¯¯ï¼šEventTrigger ç±»å‹ Buff å¿…é¡»è‡³å°‘é€‰æ‹©ä¸€ä¸ª EventIdã€‚");
+
+            if (!IsValidEffectId())
+                messages.Add("é”™è¯¯ï¼šEffectId å¿…é¡»å¤§äº 0ã€‚");
+
+            if (!IsEffectSupportedForTrigger())
+                messages.Add("è­¦å‘Šï¼šé€‰æ‹©çš„ Effect æœªå£°æ˜æ”¯æŒå½“å‰è§¦å‘ç±»å‹ã€‚");
+
+            if (!IsParallelStackCountSafe())
+                messages.Add("è­¦å‘Šï¼šå¹¶è¡Œ Buff æœ€å¤§å±‚æ•°è¾ƒå¤§ï¼Œå¯èƒ½å¢åŠ  Entityã€æ’åºå’Œå›æ»šå¿«ç…§æˆæœ¬ã€‚");
+
+            if (messages.Count == 0)
+                return "å½“å‰é…ç½®æœªå‘ç°æ˜æ˜¾é—®é¢˜ã€‚";
+
+            return string.Join("\n", messages);
+        }
+
+#if UNITY_EDITOR
+        private void OnValidate()
+        {
+            if (BuffTriggerType == BuffTriggerType.EventTrigger && (EventIds == null || EventIds.Count == 0))
+                Debug.LogWarning($"BuffConfigData è­¦å‘Šï¼šäº‹ä»¶è§¦å‘ Buff {ID} æœªé…ç½® EventIdsï¼Œè¿è¡Œæ—¶ä¸ä¼šå“åº”äº‹ä»¶ã€‚", this);
+
+            if (!IsEffectSupportedForTrigger())
+                Debug.LogWarning($"BuffConfigData è­¦å‘Šï¼šBuff {ID} é€‰æ‹©çš„ EffectId {EffectId} æœªå£°æ˜æ”¯æŒå½“å‰è§¦å‘ç±»å‹ {BuffTriggerType}ã€‚", this);
+
+            if (!IsParallelStackCountSafe())
+                Debug.LogWarning($"BuffConfigData è­¦å‘Šï¼šå¹¶è¡Œ Buff {ID} çš„æœ€å¤§å±‚æ•°è¾ƒå¤§ï¼Œå¯èƒ½å¸¦æ¥æ€§èƒ½é£é™©ã€‚", this);
+        }
+#endif
     }
 }

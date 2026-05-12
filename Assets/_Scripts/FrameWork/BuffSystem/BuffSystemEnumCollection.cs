@@ -1,18 +1,45 @@
-namespace BuffSystem
+ï»¿namespace BuffSystem
 {
+    public enum BuffInstanceType
+    {
+        normal,
+        parallel
+    }
+
     public enum BuffTriggerType
     {
         /// <summary>
-        /// ÖÜÆÚĞÔ´¥·¢
+        /// æŒ‰å›ºå®šå¸§é—´éš”è§¦å‘ã€‚
         /// </summary>
         Tick,
+
         /// <summary>
-        /// ÊÂ¼ş´¥·¢
+        /// ç”± ECS é€»è¾‘äº‹ä»¶è§¦å‘ã€‚
         /// </summary>
         EventTrigger
     }
-    public interface IBuffStackStrategy
+
+    public enum NormalBuffStackPolicy
     {
-        public string ID { get; }
+        RefreshDuration = 0,
+        AddDuration = 1,
+        AddStackOnly = 2,
+        AddStackAndRefreshDuration = 3,
+        CyclicStack = 4
+    }
+
+    public enum ParallelBuffStackUpPolicy
+    {
+        Append = 0,
+        RefreshEarliest = 1,
+        RefreshAll = 2,
+        ReplaceEarliestWhenFull = 3
+    }
+
+    public enum ParallelBuffStackDownPolicy
+    {
+        RemoveEarliest = 0,
+        RemoveLatest = 1,
+        ClearAll = 2
     }
 }
