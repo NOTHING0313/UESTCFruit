@@ -337,10 +337,11 @@ public class World
 public enum WorldStates
 {
     Initialization = 0,
-    Ticking = 1,
-    AfterTicking = 2,
-    SystemOperating = 3,
-    Disposing = 4,
+    Idle = 1,
+    Ticking = 2,
+    AfterTicking = 3,
+    SystemOperating = 4,
+    Disposing = 5,
 }
 ```
 
@@ -354,7 +355,7 @@ world.Tick(in context);
 world.Dispose();
 ```
 
-实际项目中更推荐使用 `SimulateRunner` 推进逻辑帧，而不是外部手动构造 `SimulationContext`。
+实际项目中更推荐使用 `SimulateRunner` 推进逻辑帧，而不是外部手动构造 `SimulationContext`。`World` 构造完成后会进入 `Idle`，每次 `Tick` 正常结束后也会回到 `Idle`；`Initialization` 只表示构造期间的短暂初始化状态。
 
 ### 4.2 Entity 管理
 
@@ -642,7 +643,7 @@ public class SimulateRunner
     public float TickLength { get; }
     public float TickCounter { get; }
 
-    public SimulateRunner(World world, float tickLength, int maxConpensationTickCount);
+    public SimulateRunner(World world, float tickLength, int maxCompensationTickCount);
 
     public bool Update(float time);
     public bool StepNextFrame(bool isRollback = false);

@@ -44,34 +44,37 @@ public sealed class GameplayEntityFactory
         return Create(definition, in context, null);
     }
 
-    /// <summary>根据 DefinitionSO 和创建上下文创建 Entity，并允许最终覆盖组件。</summary>
-    public Entity Create(GameplayEntityDefinitionSO definition, in EntityCreateContext context, Action<EntityBuilder> overrideBuilder)
-    {
-        if (_entityFactory == null || definition == null)
-            return Entity.Invalid;
-
-        EntityDefinitionValidationResult result = definition.ValidateDefinition(MismatchPolicy);
-        LogValidationResult(definition, result);
-
-        if (result.HasError)
-            return Entity.Invalid;
-
-        EntityPrefabSO prefab = definition.BasePrefab;
-
-        if (prefab == null)
-            return Entity.Invalid;
-
-        EntityCreateContext localContext = context;
-
-        return _entityFactory.Create(prefab, builder =>
+        /// <summary>根据 DefinitionSO 和创建上下文创建 Entity，并允许最终覆盖组件。</summary>
+        /// <summary>
+        /// 根据 GameplayEntityDefinitionSO 创建实体，并允许外部通过 overrideBuilder 做最终覆盖。
+        /// </summary>
+        public Entity Create(GameplayEntityDefinitionSO definition, in EntityCreateContext context, Action<EntityBuilder> overrideBuilder)
         {
-            definition.Components.Apply(builder, in localContext);
-            overrideBuilder?.Invoke(builder);
-        });
-    }
+            if (_entityFactory == null || definition == null)
+                return Entity.Invalid;
 
-    /// <summary>尝试创建 Entity。</summary>
-    public bool TryCreate(GameplayEntityDefinitionSO definition, in EntityCreateContext context, out Entity entity)
+            EntityDefinitionValidationResult result = definition.ValidateDefinition(MismatchPolicy);
+            LogValidationResult(definition, result);
+
+            if (result.HasError)
+                return Entity.Invalid;
+
+            EntityPrefabSO prefab = definition.BasePrefab;
+
+            if (prefab == null)
+                return Entity.Invalid;
+
+            EntityCreateContext localContext = context;
+
+            return _entityFactory.Create(prefab, builder =>
+            {
+                EntityCreateContext applyContext = localContext;
+                definition.Components.Apply(builder, in applyContext);
+                overrideBuilder?.Invoke(builder);
+            });
+        }
+        /// <summary>尝试创建 Entity。</summary>
+        public bool TryCreate(GameplayEntityDefinitionSO definition, in EntityCreateContext context, out Entity entity)
     {
         entity = Create(definition, in context, null);
         return entity.IsValid && World != null && World.IsAlive(entity);

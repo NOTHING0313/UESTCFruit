@@ -72,7 +72,7 @@ public class ECSSimulateRunnerTestBootstrap : MonoBehaviour
         bool result = runner.Update(0.20f);
 
         Expect(result, "Large update should produce ticks.");
-        Expect(system.TickCount == 2, $"maxConpensationTickCount = 2 should limit this update to 2 ticks. Actual = {system.TickCount}");
+        Expect(system.TickCount == 2, $"maxCompensationTickCount = 2 should limit this update to 2 ticks. Actual = {system.TickCount}");
     }
 
     private void TestRunnerInvalidParametersFallback()

@@ -112,7 +112,7 @@ internal class SystemManager
         if (system == null || _world == null || _world.IsDisposing())
             return;
 
-        if (_isChangingSystems || !_world.CanExcuteSystemImmediately(ExcuteType.Add))
+        if (_isChangingSystems || !_world.CanExecuteSystemImmediately(ExecuteType.Add))
         {
             _changeBuffer.AddSystem(system);
             return;
@@ -129,7 +129,7 @@ internal class SystemManager
         if (system == null || _world == null || _world.IsDisposing())
             return false;
 
-        if (_isChangingSystems || !_world.CanExcuteSystemImmediately(ExcuteType.Remove))
+        if (_isChangingSystems || !_world.CanExecuteSystemImmediately(ExecuteType.Remove))
         {
             _changeBuffer.RemoveSystem(system);
             return true;
@@ -146,7 +146,7 @@ internal class SystemManager
         if (_world == null || _world.IsDisposing())
             return;
 
-        if (_isChangingSystems || !_world.CanExcuteSystemImmediately(ExcuteType.Remove))
+        if (_isChangingSystems || !_world.CanExecuteSystemImmediately(ExecuteType.Remove))
         {
             _changeBuffer.ClearSystem();
             return;

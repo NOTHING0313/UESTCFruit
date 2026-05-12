@@ -89,7 +89,7 @@ World.DestroyEntity(entity);
 World.SetComponent(entity, new SomeNewComponent());
 ```
 
-在 Tick 阶段，这些结构变化会进入 StructuralChangeBuffer，通常是安全的；但在 Initialization 阶段直接调用 ForEach 并立即修改结构，可能导致当前遍历 Store 被改变。
+在 Tick 阶段，这些结构变化会进入 StructuralChangeBuffer，通常是安全的；但在 Idle 阶段直接调用 ForEach 并立即修改结构，可能导致当前遍历 Store 被改变。
 
 如果 System 需要结构修改，应继续通过 World API 发起请求，让 World 生命周期和 Buffer 处理。
 

@@ -22,8 +22,9 @@ public class SimulateRunner
     private int _frameCount;
     private int _executingFrameNumber;
     private bool _isTicking;
-    private readonly int _maxConpensationTickCount;
+    private readonly int _maxCompensationTickCount;
 
+    public World World => _world;
     public int FrameCount => _frameCount;
     public int CurrentFrameNumber => _isTicking ? _executingFrameNumber : _frameCount;
     public int NextFrameNumber => (_isTicking ? _executingFrameNumber : _frameCount) + 1;
@@ -32,11 +33,11 @@ public class SimulateRunner
     public float TickCounter => _tickCounter;
 
     /// <summary>创建逻辑帧推进器，并设置逻辑帧步长与最大补偿帧数。</summary>
-    public SimulateRunner(World world, float tickLength, int maxConpensationTickCount)
+    public SimulateRunner(World world, float tickLength, int maxCompensationTickCount)
     {
         _world = world;
         _tickLength = tickLength > 0 ? tickLength : 0.02f;
-        _maxConpensationTickCount = maxConpensationTickCount > 0 ? maxConpensationTickCount : 1;
+        _maxCompensationTickCount = maxCompensationTickCount > 0 ? maxCompensationTickCount : 1;
     }
 
     /// <summary>累计真实时间并按固定步长推进 World.Tick。</summary>
@@ -53,7 +54,7 @@ public class SimulateRunner
             _tickCounter -= _tickLength;
             additionalFrameCount++;
 
-            if (additionalFrameCount >= _maxConpensationTickCount)
+            if (additionalFrameCount >= _maxCompensationTickCount)
             {
                 _tickCounter = 0;
                 break;

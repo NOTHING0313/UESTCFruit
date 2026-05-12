@@ -21,7 +21,6 @@ public class World
     private SystemManager _systemManager;
     private ComponentTypeRegistry _registry;
     private StructuralChangeBuffer _structuralChangeBuffer;
-    private SystemChangeBuffer _systemChangeBuffer;
     private WorldEventBuffer _worldEventBuffer;
     private Dictionary<Type, Entity> _singletonEntities;
 
@@ -80,6 +79,8 @@ public class World
         _worldEventBuffer = new WorldEventBuffer();
         _singletonEntities = new Dictionary<Type, Entity>();
         _systemManager = new SystemManager(this);
+
+        SetWorldState(WorldStates.Idle);
     }
 
     /// <summary>
@@ -109,19 +110,19 @@ public class World
     /// <summary>
     /// 判断当前阶段是否允许立即执行 Entity/Component 结构修改。
     /// </summary>
-    internal bool CanExcuteImmediately(ExcuteType excuteType)
+    internal bool CanExecuteImmediately(ExecuteType executeType)
     {
         if (_currentState == WorldStates.Disposing)
             return false;
 
-        switch (excuteType)
+        switch (executeType)
         {
-            case ExcuteType.Add:
-            case ExcuteType.Remove:
-            case ExcuteType.DestroyEntity:
-                return _currentState == WorldStates.Initialization || _currentState == WorldStates.AfterTicking;
+            case ExecuteType.Add:
+            case ExecuteType.Remove:
+            case ExecuteType.DestroyEntity:
+                return _currentState == WorldStates.Idle || _currentState == WorldStates.Initialization || _currentState == WorldStates.AfterTicking;
 
-            case ExcuteType.Default:
+            case ExecuteType.Default:
             default:
                 return true;
         }
@@ -130,19 +131,19 @@ public class World
     /// <summary>
     /// 判断当前阶段是否允许立即修改 System 列表。
     /// </summary>
-    internal bool CanExcuteSystemImmediately(ExcuteType excuteType)
+    internal bool CanExecuteSystemImmediately(ExecuteType executeType)
     {
         if (_currentState == WorldStates.Disposing)
             return false;
 
-        switch (excuteType)
+        switch (executeType)
         {
-            case ExcuteType.Add:
-            case ExcuteType.Remove:
-            case ExcuteType.DestroyEntity:
-                return _currentState == WorldStates.Initialization;
+            case ExecuteType.Add:
+            case ExecuteType.Remove:
+            case ExecuteType.DestroyEntity:
+                return _currentState == WorldStates.Idle || _currentState == WorldStates.Initialization;
 
-            case ExcuteType.Default:
+            case ExecuteType.Default:
             default:
                 return true;
         }
@@ -176,7 +177,7 @@ public class World
         finally
         {
             if (_currentState != WorldStates.Disposing)
-                SetWorldState(WorldStates.Initialization);
+                SetWorldState(WorldStates.Idle);
         }
     }
 
@@ -295,7 +296,7 @@ public class World
         if (!_entityManager.IsAlive(entity))
             return;
 
-        if (CanExcuteImmediately(ExcuteType.DestroyEntity))
+        if (CanExecuteImmediately(ExecuteType.DestroyEntity))
         {
             DestroyEntityImmediately(entity);
             return;
@@ -336,7 +337,7 @@ public class World
             return;
         }
 
-        if (CanExcuteImmediately(ExcuteType.Add))
+        if (CanExecuteImmediately(ExecuteType.Add))
         {
             SetComponentImmediately(entity, in component);
             return;
@@ -370,7 +371,7 @@ public class World
         if (!_componentManager.HasComponent<T>(entity))
             return false;
 
-        if (CanExcuteImmediately(ExcuteType.Remove))
+        if (CanExecuteImmediately(ExecuteType.Remove))
             return RemoveComponentImmediately<T>(entity);
 
         Commands.RemoveComponent<T>(entity);
@@ -770,6 +771,19 @@ public class World
     }
 
     /// <summary>
+    /// 尝试以 boxed object 形式读取指定 Entity 上的组件数据，主要用于 Editor 调试面板展示。
+    /// </summary>
+    public bool TryGetComponentDebugValue(Entity entity, Type componentType, out object component)
+    {
+        component = null;
+
+        if (_currentState == WorldStates.Disposing || _componentManager == null)
+            return false;
+
+        return _componentManager.TryGetComponentDebugValue(entity, componentType, out component);
+    }
+
+    /// <summary>
     /// 把当前 ComponentStore 调试信息写入外部 List。
     /// </summary>
     public int FillComponentStoreDebugInfos(List<ComponentStoreDebugInfo> results)
@@ -890,38 +904,40 @@ public class World
 public enum WorldStates
 {
     /// <summary>
-    /// 初始化或空闲阶段；允许立即创建 Entity、添加组件和调整 System。
+    /// World 正在初始化内部 Manager 与 Buffer；该状态只应短暂出现在构造流程中。
     /// </summary>
     Initialization = 0,
 
     /// <summary>
+    /// World 已初始化完成，当前没有执行 Tick，正在等待下一次逻辑帧；这是运行期的稳定空闲状态。
+    /// </summary>
+    Idle = 1,
+
+    /// <summary>
     /// System 正在 Tick；新增/移除组件、销毁 Entity 等结构变化会进入 StructuralChangeBuffer。
     /// </summary>
-    Ticking = 1,
+    Ticking = 2,
 
     /// <summary>
     /// 当前逻辑帧的 System Tick 已结束，正在播放 StructuralChangeBuffer。
     /// </summary>
-    AfterTicking = 2,
+    AfterTicking = 3,
 
     /// <summary>
     /// 正在播放 SystemChangeBuffer；用于统一处理 System 增删。
     /// </summary>
-    SystemOperating = 3,
+    SystemOperating = 4,
 
     /// <summary>
     /// World 正在释放或已经释放；对外修改请求会被忽略。
     /// </summary>
-    Disposing = 4,
+    Disposing = 5,
 }
 
 /// <summary>
 /// World 内部用于判断操作是否允许立即执行的修改类型。
 /// </summary>
-/// <remarks>
-/// 名称 ExcuteType 保留当前代码命名，后续若统一重命名为 ExecuteType，需要同步修改所有调用点。
-/// </remarks>
-internal enum ExcuteType
+internal enum ExecuteType
 {
     /// <summary>不改变结构的普通操作。</summary>
     Default = 0,

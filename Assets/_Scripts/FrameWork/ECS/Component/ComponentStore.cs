@@ -115,6 +115,21 @@ internal class ComponentStore<T> : IComponentStore where T : struct, IComponentD
     }
 
     /// <summary>
+    /// 尝试以 boxed object 形式读取实体组件数据，供非泛型 Debug API 使用。
+    /// </summary>
+    public bool TryGetBoxed(Entity entity, out object component)
+    {
+        if (TryGet(entity, out T value))
+        {
+            component = value;
+            return true;
+        }
+
+        component = null;
+        return false;
+    }
+
+    /// <summary>
     /// 尝试获取实体在 dense 数组中的下标。
     /// 该方法会校验 Entity ID 与 Version，用于高频 ForEach 遍历时避免重复组件查找。
     /// </summary>
@@ -261,6 +276,11 @@ internal interface IComponentStore
     /// 从 Store 中移除实体组件，并用尾元素回填保证 dense 数组连续。
     /// </summary>
     bool Remove(Entity entity);
+
+    /// <summary>
+    /// 尝试以 boxed object 形式读取实体组件数据，供非泛型 Debug API 使用。
+    /// </summary>
+    bool TryGetBoxed(Entity entity, out object component);
 }
 
 }

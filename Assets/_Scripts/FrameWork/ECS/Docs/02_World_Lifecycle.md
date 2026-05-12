@@ -4,7 +4,8 @@
 
 | 状态 | 含义 |
 |---|---|
-| `Initialization` | 初始化或空闲阶段，允许立即修改 Entity / Component / System |
+| `Initialization` | World 正在初始化内部 Manager / Buffer，只应短暂出现在构造流程中 |
+| `Idle` | World 已初始化完成，当前没有执行 Tick，正在等待下一次逻辑帧；这是运行期稳定状态 |
 | `Ticking` | System 正在执行，结构变化需要进入 Buffer |
 | `AfterTicking` | System 执行结束，正在播放 `StructuralChangeBuffer` |
 | `SystemOperating` | 正在播放 `SystemChangeBuffer` |
@@ -27,8 +28,10 @@ SetWorldState(SystemOperating)
     ↓
 SystemManager.PlaybackSystemChanges()
     ↓
-SetWorldState(Initialization)
+SetWorldState(Idle)
 ```
+
+`Initialization` 不再作为 Tick 后的默认状态。Tick 正常结束后，World 会回到 `Idle`，这样 Runtime Inspector / EditorWindow 中看到 `FrameCount` 推进且 `WorldState = Idle` 时，表示 World 正常处于帧间空闲状态。
 
 ## 3. StructuralChangeBuffer 的职责
 

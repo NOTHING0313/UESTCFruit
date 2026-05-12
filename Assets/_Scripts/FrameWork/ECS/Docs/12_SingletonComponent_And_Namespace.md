@@ -82,6 +82,6 @@ time.frame++;
 - `EntityQueryCache`
 - `EntityComparer`
 - `ToolFunction`
-- `ExcuteType`
+- `ExecuteType`
 
 外部业务应优先通过 `World`、`Entity`、`IComponentData`、`IFixedStepSystem`、`EntityQueryBuilder` 等公开 API 使用框架。

@@ -82,16 +82,27 @@ public sealed class SimulationFrameCommandScheduler
         return new ScheduledSimulationFrameCommand(frameNumber, command);
     }
 
-    private sealed class ScheduledSimulationFrameCommand : ISimulationFrameCommand
+    private sealed class ScheduledSimulationFrameCommand : ISimulationFrameCommand, ICommandDebugView
     {
         private readonly ISimulationFrameCommand _innerCommand;
 
         public int FrameNumber { get; }
+        public string DebugName => _innerCommand is ICommandDebugView debugView && !string.IsNullOrEmpty(debugView.DebugName) ? debugView.DebugName : "ScheduledSimulationFrameCommand";
+        public Entity DebugTargetEntity => _innerCommand is ICommandDebugView debugView ? debugView.DebugTargetEntity : Entity.Invalid;
 
         public ScheduledSimulationFrameCommand(int frameNumber, ISimulationFrameCommand innerCommand)
         {
             FrameNumber = frameNumber;
             _innerCommand = innerCommand;
+        }
+
+        /// <summary>返回被调度命令的调试摘要。</summary>
+        public string GetDebugSummary()
+        {
+            if (_innerCommand is ICommandDebugView debugView)
+                return $"Scheduled Frame={FrameNumber}, Inner={debugView.GetDebugSummary()}";
+
+            return _innerCommand != null ? $"Scheduled Frame={FrameNumber}, Inner={_innerCommand.GetType().Name}" : $"Scheduled Frame={FrameNumber}, Inner=null";
         }
 
         public void Execute(World world)

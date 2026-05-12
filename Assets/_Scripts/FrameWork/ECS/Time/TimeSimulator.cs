@@ -12,7 +12,7 @@ namespace ECSFrameWork
 /// <summary>
 /// Unity 层时间驱动器，负责在 Update 中采样输入并推进 SimulateRunner。
 /// </summary>
-public class TimeSimulator : Singleton<TimeSimulator>
+public class TimeSimulator : Singleton<TimeSimulator>, IECSRuntimeDebugSource, IECSFrameCommandDebugSource
 {
     [SerializeField] private UnityInputAdapter[] inputAdapters;
 
@@ -20,6 +20,21 @@ public class TimeSimulator : Singleton<TimeSimulator>
     private InputSnapshotBuffer _inputSnapshotBuffer;
     private WorldInputApplier _worldInputApplier;
     private SimulationFrameCommandApplier _frameCommandApplier;
+
+    /// <summary>当前绑定的逻辑帧推进器。</summary>
+    public SimulateRunner DebugRunner => _runner;
+
+    /// <summary>当前绑定的 World；没有调用 InitSimulator 时返回 null。</summary>
+    public World DebugWorld => _runner != null ? _runner.World : null;
+
+    /// <summary>调试源显示名称。</summary>
+    public string DebugSourceName => name;
+
+    /// <summary>当前使用的帧命令缓冲；未配置命令应用器时返回 null。</summary>
+    public SimulationFrameCommandBuffer DebugFrameCommandBuffer => _frameCommandApplier != null ? _frameCommandApplier.CommandBuffer : null;
+
+    /// <summary>当前使用的帧命令应用器；未配置时返回 null。</summary>
+    public SimulationFrameCommandApplier DebugFrameCommandApplier => _frameCommandApplier;
 
     /// <summary>在 Unity 每帧 Update 中先采样输入，再推进逻辑帧。</summary>
     private void Update()

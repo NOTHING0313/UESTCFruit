@@ -444,6 +444,22 @@ internal class ComponentManager
     }
 
     /// <summary>
+    /// 尝试以 boxed object 形式读取指定 Entity 上的组件数据，供 Editor Debugger 非泛型展示。
+    /// </summary>
+    public bool TryGetComponentDebugValue(Entity entity, Type componentType, out object component)
+    {
+        component = null;
+
+        if (componentType == null || _entityManager == null || !_entityManager.IsAlive(entity))
+            return false;
+
+        if (!_stores.TryGetValue(componentType, out IComponentStore store))
+            return false;
+
+        return store.TryGetBoxed(entity, out component);
+    }
+
+    /// <summary>
     /// 创建指定组件类型对应的 ComponentStore。
     /// </summary>
     private ComponentStore<T> CreateStore<T>() where T : struct, IComponentData

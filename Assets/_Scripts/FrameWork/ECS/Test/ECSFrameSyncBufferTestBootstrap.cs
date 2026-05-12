@@ -18,6 +18,7 @@ public sealed class ECSFrameSyncBufferTestBootstrap : MonoBehaviour
         TestFrameComponentCommandConsumedAtTargetFrame();
         TestFrameCommandApplierSkipsDuplicateNormalApply();
         TestFrameEntityDestroyCommandConsumedAtTargetFrame();
+        TestCommandDebugAndCommandHistory();
 
         if (_failedCount == 0)
             Debug.Log("<color=green>[ECS Frame Sync Buffer Test] All tests passed.</color>");
@@ -108,6 +109,29 @@ public sealed class ECSFrameSyncBufferTestBootstrap : MonoBehaviour
         commandApplier.ReplayCommandsToWorld(2, SimulationFrameCommandTiming.BeforeTick);
         ref MoveSpeedComponent speedAfterReplay = ref world.GetComponent<MoveSpeedComponent>(entity);
         ExpectApproximately(speedAfterReplay.value, 5f, "ReplayCommandsToWorld should explicitly reapply cached frame commands.");
+
+        world.Dispose();
+    }
+
+    /// <summary>验证帧命令会进入 FrameCommand 历史，并在执行后生成 DebugCommand 记录。</summary>
+    private void TestCommandDebugAndCommandHistory()
+    {
+        World world = new World();
+        SimulationFrameCommandBuffer commandBuffer = new SimulationFrameCommandBuffer();
+        SimulationFrameCommandApplier commandApplier = new SimulationFrameCommandApplier(world, commandBuffer);
+        System.Collections.Generic.List<FrameCommandHistoryFrameDebugInfo> historyFrames = new System.Collections.Generic.List<FrameCommandHistoryFrameDebugInfo>();
+        System.Collections.Generic.List<CommandDebugFrame> debugFrames = new System.Collections.Generic.List<CommandDebugFrame>();
+
+        Entity entity = world.CreateEntity();
+        world.SetComponent(entity, new MoveSpeedComponent(1f));
+        commandBuffer.SetComponentAtFrame(2, entity, new MoveSpeedComponent(5f));
+
+        commandBuffer.FillFrameCommandHistoryDebugFrames(historyFrames);
+        Expect(historyFrames.Count == 1 && historyFrames[0].totalCount == 1, "FrameCommand history should record scheduled command.");
+
+        commandApplier.ApplyCommandsToWorld(2);
+        commandApplier.FillCommandDebugFrames(debugFrames);
+        Expect(debugFrames.Count == 1 && debugFrames[0].executedCount == 1, "DebugCommand history should record executed command.");
 
         world.Dispose();
     }

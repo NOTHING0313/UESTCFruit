@@ -24,6 +24,8 @@
 | `17_EntityPrefab_EntityFactory.md` | EntityPrefab 实体模板、EntityFactory 注册创建入口与运行时覆盖规则 |
 | `18_Prefab_SO_GameplayFactory.md` | Unity PrefabSO、ComponentPresetSO、DefinitionSO 与 GameplayEntityFactory 创建链路 |
 | `19_Public_API_Usage_Guide_Latest.md` | 当前 ECSFrameWork 对外接口和调用方式完整说明 |
+| `21_Runtime_Inspector.md` | ECS Runtime Inspector 使用说明 |
+| `22_EditorWindow_Debugger.md` | ECS World Debugger EditorWindow 使用说明 |
 
 ## 核心原则
 

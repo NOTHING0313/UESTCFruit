@@ -12,6 +12,7 @@ public class ECSLifecycleBufferTestBootstrap : MonoBehaviour
     {
         Debug.Log("<color=cyan>[ECS Lifecycle Buffer Test] Start</color>");
 
+        TestWorldStateReturnsToIdle();
         TestSetComponentDuringTick();
         TestRemoveComponentDuringTick();
         TestDestroyEntityDuringTick();
@@ -24,6 +25,20 @@ public class ECSLifecycleBufferTestBootstrap : MonoBehaviour
             Debug.Log("<color=green>[ECS Lifecycle Buffer Test] All tests passed.</color>");
         else
             Debug.LogError($"[ECS Lifecycle Buffer Test] Failed count = {_failedCount}");
+    }
+
+    private void TestWorldStateReturnsToIdle()
+    {
+        Debug.Log("<color=cyan>[Lifecycle Test 0] WorldState Returns To Idle</color>");
+
+        World world = new World();
+        Expect(world.CurrentState == WorldStates.Idle, "World should enter Idle after construction.");
+
+        TickWorld(world, 0);
+        Expect(world.CurrentState == WorldStates.Idle, "World should return to Idle after Tick.");
+
+        world.Dispose();
+        Expect(world.CurrentState == WorldStates.Disposing, "World should remain Disposing after Dispose.");
     }
 
     private void TestSetComponentDuringTick()
