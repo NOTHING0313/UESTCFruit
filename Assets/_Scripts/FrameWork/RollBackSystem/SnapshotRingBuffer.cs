@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using FrameWork.RollBackSystem.Interfaces;
 
 namespace FrameWork.RollBackSystem
@@ -5,52 +6,90 @@ namespace FrameWork.RollBackSystem
     public sealed class SnapshotRingBuffer<TSnapshot>
         where TSnapshot : ISnapshot
     {
-        private readonly TSnapshot[] _buffer;
-
         private readonly int _capacity;
+
+        private readonly Dictionary<int, TSnapshot>
+            _snapshots;
 
         public SnapshotRingBuffer(int capacity)
         {
             _capacity = capacity;
-            _buffer = new TSnapshot[capacity];
+
+            _snapshots =
+                new Dictionary<int, TSnapshot>();
         }
 
         public void Save(TSnapshot snapshot)
         {
-            int index = snapshot.Frame % _capacity;
+            int frame = snapshot.Frame;
 
-            if (_buffer[index] != null)
+            if (_snapshots.TryGetValue(
+                frame,
+                out var oldSnapshot))
             {
-                _buffer[index].Release();
+                oldSnapshot.Release();
             }
 
-            _buffer[index] = snapshot;
+            _snapshots[frame] = snapshot;
+
+            int removeFrame =
+                frame - _capacity;
+
+            if (_snapshots.TryGetValue(
+                removeFrame,
+                out var removedSnapshot))
+            {
+                removedSnapshot.Release();
+
+                _snapshots.Remove(removeFrame);
+            }
         }
 
-        public bool TryGet(int frame, out TSnapshot snapshot)
+        public bool TryGet(
+            int frame,
+            out TSnapshot snapshot)
         {
-            int index = frame % _capacity;
+            return _snapshots.TryGetValue(
+                frame,
+                out snapshot);
+        }
 
-            snapshot = _buffer[index];
+        public bool TryGetNearestSnapshot(
+            int targetFrame,
+            out TSnapshot snapshot)
+        {
+            snapshot = default;
 
-            if (snapshot == null)
+            int nearestFrame = -1;
+
+            foreach (var pair in _snapshots)
             {
-                return false;
+                int frame = pair.Key;
+
+                if (frame > targetFrame)
+                {
+                    continue;
+                }
+
+                if (frame > nearestFrame)
+                {
+                    nearestFrame = frame;
+
+                    snapshot = pair.Value;
+                }
             }
 
-            return snapshot.Frame == frame;
+            return nearestFrame >= 0;
         }
 
         public void Clear()
         {
-            for (int i = 0; i < _buffer.Length; i++)
+            foreach (var snapshot in _snapshots.Values)
             {
-                if (_buffer[i] != null)
-                {
-                    _buffer[i].Release();
-                    _buffer[i] = default;
-                }
+                snapshot.Release();
             }
+
+            _snapshots.Clear();
         }
     }
 }

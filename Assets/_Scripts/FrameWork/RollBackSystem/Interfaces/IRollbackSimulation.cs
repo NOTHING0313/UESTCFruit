@@ -6,7 +6,13 @@ namespace FrameWork.RollBackSystem.Interfaces
 
         void Step(in TInput input);
 
-        void RollbackTo(int frame);
+        void SaveSnapshot();
+
+        void ReceiveAuthoritativeInput(
+            int frame,
+            in TInput input);
+
+        bool RollbackTo(int frame);
 
         void ResimulateTo(int targetFrame);
     }

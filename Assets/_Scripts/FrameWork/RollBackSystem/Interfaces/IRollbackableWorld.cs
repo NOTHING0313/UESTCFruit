@@ -5,5 +5,7 @@ namespace FrameWork.RollBackSystem.Interfaces
           ISimulation<TInput>,
           ISimulationChecksum
     {
+        void SetSimulationContext(
+            SimulationContext context);
     }
 }

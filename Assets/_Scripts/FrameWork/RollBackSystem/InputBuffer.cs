@@ -1,13 +1,15 @@
-using System.Collections.Generic;
 using FrameWork.RollBackSystem.Interfaces;
+using System.Collections.Generic;
 
 namespace FrameWork.RollBackSystem
 {
-    public sealed class InputBuffer<TInput>
-        : IInputBuffer<TInput>
+    /// <summary>
+    /// ¿˙ ∑ ‰»Îª∫¥Ê°£
+    /// </summary>
+    public sealed class InputBuffer<TInput> : IInputBuffer<TInput>
     {
-        private readonly Dictionary<int, TInput> _inputs
-            = new Dictionary<int, TInput>();
+        private readonly Dictionary<int, TInput> _inputs =
+            new Dictionary<int, TInput>();
 
         public void Save(int frame, in TInput input)
         {
@@ -21,20 +23,25 @@ namespace FrameWork.RollBackSystem
 
         public void ClearBefore(int frame)
         {
-            var removeList = new List<int>();
+            if (_inputs.Count == 0)
+                return;
 
-            foreach (var pair in _inputs)
+            List<int> removeList = null;
+
+            foreach (KeyValuePair<int, TInput> pair in _inputs)
             {
-                if (pair.Key < frame)
-                {
-                    removeList.Add(pair.Key);
-                }
+                if (pair.Key >= frame)
+                    continue;
+
+                removeList ??= new List<int>();
+                removeList.Add(pair.Key);
             }
 
-            foreach (var key in removeList)
-            {
-                _inputs.Remove(key);
-            }
+            if (removeList == null)
+                return;
+
+            for (int i = 0; i < removeList.Count; i++)
+                _inputs.Remove(removeList[i]);
         }
     }
 }
