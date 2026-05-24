@@ -11,6 +11,7 @@ namespace View
     /// </summary>
     public sealed class SimulationBootstrap : MonoBehaviour
     {
+        [SerializeField] private LogicFrameDebugPanel _debugPanel;
         [SerializeField] private float _fixedDeltaTime = 1f / 60f;
         [SerializeField] private bool _useRollback = false;
 
@@ -25,6 +26,13 @@ namespace View
             _buffSystem = new ECSBuffSystem(BuffConfigDataLoader.Instance);
             _world.AddSystem(_buffSystem);
             _driver = new RealtimeSimulationDriver(_world, _fixedDeltaTime);
+            // 在 Awake 末尾加入
+            if (_debugPanel != null)
+            {
+                var probe = new SimulationDebugProbe(_world, _buffSystem, _driver, isRollback: _useRollback);
+                _debugPanel.Initialize(probe);
+            }
+           
         }
 
         private void Update()
@@ -40,6 +48,8 @@ namespace View
 
                 Debug.Log($"[SimulationBootstrap] Frame {_driver.CurrentFrame} finished. RollbackMode={_useRollback}");
             }
+            // 每渲染帧刷新一次调试面板（放在 Update 末尾）
+            _debugPanel?.Refresh();
         }
     }
 }

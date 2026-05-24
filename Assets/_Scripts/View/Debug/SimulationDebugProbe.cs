@@ -14,18 +14,22 @@ namespace View
         private readonly World _world;
         private readonly ISimulationDriver _driver;
         private readonly IBuffSystem _buffSystem;
-
+        private readonly bool _isRollback;        // 临时方案，后续可从 RollbackCoordinator 动态获取
         /// <summary>创建一个空调试探针；未绑定运行时对象时返回默认值。</summary>
         public SimulationDebugProbe()
         {
         }
 
         /// <summary>创建绑定 World、Driver 与 BuffSystem 的调试探针。</summary>
-        public SimulationDebugProbe(World world, ISimulationDriver driver, IBuffSystem buffSystem)
+        public SimulationDebugProbe(World world,
+                                    ECSBuffSystem buffSystem,
+                                    ISimulationDriver driver,
+                                    bool isRollback = false)
         {
             _world = world;
-            _driver = driver;
             _buffSystem = buffSystem;
+            _driver = driver;
+            _isRollback = isRollback;
         }
 
         public int CurrentFrame => _driver == null ? 0 : _driver.CurrentFrame;

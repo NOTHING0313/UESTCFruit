@@ -1,29 +1,39 @@
 using Contracts;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace View
 {
     /// <summary>
-    /// 逻辑帧调试面板空壳。
-    /// 后续可以接入 Text / TMP_Text，把 IDebugProbe 中的帧号、实体数量、校验值等数据显示到 Canvas。
+    /// 挂载到 Canvas 下 Panel 的调试面板，实时显示当前帧、实体数、校验和及模式。
+    /// 每渲染帧调用 Refresh() 更新 UI。
     /// </summary>
     public sealed class LogicFrameDebugPanel : MonoBehaviour
     {
+        [Header("UI 绑定")]
+        [SerializeField] private Text _frameText;
+        [SerializeField] private Text _entityCountText;
+        [SerializeField] private Text _checksumText;
+        [SerializeField] private Text _modeText;
         private IDebugProbe _probe;
-
-        /// <summary>绑定调试数据读取接口。</summary>
+        /// <summary>由 Bootstrap 调用，注入探针实例。</summary>
         public void Initialize(IDebugProbe probe)
         {
             _probe = probe;
         }
-
-        /// <summary>刷新调试面板数据。</summary>
+        /// <summary>每渲染帧调用，将探针数据刷新到 UI 文本。</summary>
         public void Refresh()
         {
             if (_probe == null)
                 return;
-
-            Debug.Log($"[LogicFrameDebugPanel] Frame={_probe.CurrentFrame}, EntityCount={_probe.EntityCount}, Checksum={_probe.CurrentChecksum}");
+            if (_frameText != null)
+                _frameText.text = $"Frame: {_probe.CurrentFrame}";
+            if (_entityCountText != null)
+                _entityCountText.text = $"Entities: {_probe.EntityCount}";
+            if (_checksumText != null)
+                _checksumText.text = $"Checksum: {_probe.CurrentChecksum:X8}";
+            if (_modeText != null)
+                _modeText.text = _probe.IsRollbacking ? "ROLLBACK" : "NORMAL";
         }
     }
 }
