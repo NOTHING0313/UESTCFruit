@@ -64,7 +64,30 @@ namespace View
                 var probe = new SimulationDebugProbe(_world, _buffSystem, _runner);
                 _debugPanel.Initialize(probe);
             }
+            // ========== 测试代码开始 ==========
+            // 1. 创建一个测试实体
+            Entity testEntity = _world.CreateEntity();
+            Debug.Log($"Test entity created: id={testEntity.ID}, version={testEntity.Version}");
 
+            // 2. 设置一些基础组件（如果1号提供了这些组件，否则注释掉）
+            // _world.SetComponent(testEntity, new PositionComponent { x = 0, y = 0, z = 0 });
+            // _world.SetComponent(testEntity, new HealthComponent { current = 100, max = 100 });
+
+            // 3. 添加一个测试 Buff（configId = 1 需要与3号对齐，先用1作为示例）
+            //    假设 configId=1 是一个“每秒扣血”或“永久存在”的测试Buff
+            AddBuffCommand addCmd = new AddBuffCommand(
+                target: testEntity,
+                source: testEntity,
+                configId: 1,        // 请与3号确认这个ID是否存在
+                stack: 1
+            );
+            _buffSystem.AddBuff(addCmd);
+            Debug.Log("AddBuffCommand sent to BuffSystemCore.");
+
+            // 4. 如果1号提供了视图组件，可以生成一个视图（需要先注册预制体）
+            // _world.SetComponent(testEntity, new PrefabViewRequestComponent { prefabId = 1 });
+
+            // ========== 测试代码结束 ==========
             Debug.Log("[SimulationInitializer] Initialized.");
         }
 
