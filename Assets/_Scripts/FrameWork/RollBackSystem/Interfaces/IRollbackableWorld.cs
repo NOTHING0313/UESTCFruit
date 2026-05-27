@@ -1,11 +1,19 @@
+/*
+ * 文件说明：IRollbackableWorld 定义支持回滚模拟的世界接口，负责逻辑推进、快照恢复与校验。
+ * 设计约束：World 必须保证相同输入与相同快照下可得到一致逻辑结果。
+ */
+
+using ECSFrameWork;
+using Simulation.Contracts;
+
 namespace FrameWork.RollBackSystem.Interfaces
 {
     public interface IRollbackableWorld<TInput>
         : ISnapshotable<ISnapshot>,
-          ISimulation<TInput>,
           ISimulationChecksum
     {
-        void SetSimulationContext(
-            SimulationContext context);
+        void Simulate(
+            TInput input,
+            in SimulationContext context);
     }
 }
