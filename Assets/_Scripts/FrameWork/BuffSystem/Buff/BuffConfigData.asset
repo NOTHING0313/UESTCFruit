@@ -18,15 +18,16 @@ MonoBehaviour:
   Icon: {fileID: 0}
   Priority: 0
   Tags: []
-  Unlimited: 0
-  MaxStack: 1
   IsForever: 0
   Duration: 1
   BuffTriggerType: 0
   TickTime: 0
   BuffType: 0
+  Unlimited: 0
+  MaxStack: 1
   NormalStackPolicy: 0
   ParallelStackUpPolicy: 0
   ParallelStackDownPolicy: 0
   DurationExtendPerStack: 0
   EffectId: 0
+  EventIds: 

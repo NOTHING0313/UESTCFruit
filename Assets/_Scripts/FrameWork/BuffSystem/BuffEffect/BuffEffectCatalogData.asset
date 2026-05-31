@@ -12,4 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2c0c886461db4a01a0fcf2dfc4c5fbf9, type: 3}
   m_Name: BuffEffectCatalogData
   m_EditorClassIdentifier: 
-  _entries: []
+  _entries:
+  - EffectId: 0
+    DisplayName: 
+    Description: 
+    SupportedTriggerTypes: 00000000
+    DeveloperNote: 
