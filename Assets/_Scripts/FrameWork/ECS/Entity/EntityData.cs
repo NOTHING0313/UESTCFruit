@@ -57,6 +57,16 @@ internal class EntityData
     {
         _archeType.Clear();
     }
+
+    /// <summary>
+    /// 从快照恢复实体槽位基础状态；组件 Mask 由组件恢复阶段重建。
+    /// </summary>
+    internal void RestoreSlot(bool isAlive, int version)
+    {
+        _isAlive = isAlive;
+        _version = version;
+        _archeType.Clear();
+    }
 }
 
 }

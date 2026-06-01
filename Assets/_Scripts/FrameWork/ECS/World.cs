@@ -249,7 +249,7 @@ public class World
     }
 
     /// <summary>
-    /// 创建新实体；World 正在释放时返回 Invalid。
+    /// 创建新实体；World 正在释放时返回 Invalid。Ticking 阶段会立即分配实体句柄，但新增组件仍受结构变更缓冲规则约束。
     /// </summary>
     public Entity CreateEntity()
     {

@@ -73,6 +73,8 @@ world.DestroyEntity(entity);
 
 `Entity` 是 `id + version` 组成的实体句柄，不保存业务数据。Entity 被销毁后，版本号机制用于避免旧句柄误操作复用后的 Entity。
 
+`World.CreateEntity()` 在 `World.Tick` 期间仍会立即返回一个存活实体句柄；但 Tick 中给该实体新增组件会进入结构变更缓冲，直到本帧 `AfterTicking` 播放后才会进入对应 ComponentStore / ArcheType。系统作者不应假设“Tick 中新建并新增组件”的实体会立刻被同一 Tick 内的组件 Query 命中。
+
 ### 3.3 Component 操作
 
 ```csharp

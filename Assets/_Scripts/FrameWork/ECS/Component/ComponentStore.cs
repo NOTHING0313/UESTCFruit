@@ -130,8 +130,36 @@ internal class ComponentStore<T> : IComponentStore where T : struct, IComponentD
     }
 
     /// <summary>
+    /// 按 dense 顺序读取实体和 boxed 组件值，供快照捕获保持 Store 遍历顺序。
+    /// </summary>
+    public bool TryGetBoxedByDenseIndex(int denseIndex, out Entity entity, out object component)
+    {
+        if (denseIndex < 0 || denseIndex >= _count)
+        {
+            entity = default;
+            component = null;
+            return false;
+        }
+
+        entity = _denseEntity[denseIndex];
+        component = _denseComponent[denseIndex];
+        return true;
+    }
+
+    /// <summary>
+    /// 通过非泛型入口写入 boxed 组件值，供 ComponentManager 恢复快照时重建 Store。
+    /// </summary>
+    public bool SetBoxed(Entity entity, object component)
+    {
+        if (!(component is T value))
+            return false;
+
+        Set(entity, in value);
+        return Has(entity);
+    }
+
+    /// <summary>
     /// 尝试获取实体在 dense 数组中的下标。
-    /// 该方法会校验 Entity ID 与 Version，用于高频 ForEach 遍历时避免重复组件查找。
     /// </summary>
     public bool TryGetDenseIndex(Entity entity, out int denseIndex)
     {
@@ -200,6 +228,25 @@ internal class ComponentStore<T> : IComponentStore where T : struct, IComponentD
 
         _count--;
         return true;
+    }
+
+    /// <summary>
+    /// 清空 Store 中的组件数据，同时保留已分配容量以便后续复用。
+    /// </summary>
+    public void Clear()
+    {
+        for (int i = 0; i < _count; i++)
+        {
+            Entity entity = _denseEntity[i];
+
+            if (entity.ID >= 0 && entity.ID < _sparse.Length)
+                _sparse[entity.ID] = -1;
+
+            _denseEntity[i] = default;
+            _denseComponent[i] = default;
+        }
+
+        _count = 0;
     }
 
     /// <summary>
@@ -281,6 +328,21 @@ internal interface IComponentStore
     /// 尝试以 boxed object 形式读取实体组件数据，供非泛型 Debug API 使用。
     /// </summary>
     bool TryGetBoxed(Entity entity, out object component);
+
+    /// <summary>
+    /// 按 dense 顺序读取实体和 boxed 组件值，供快照捕获使用。
+    /// </summary>
+    bool TryGetBoxedByDenseIndex(int denseIndex, out Entity entity, out object component);
+
+    /// <summary>
+    /// 通过 boxed 组件值写入 Store，供快照恢复使用。
+    /// </summary>
+    bool SetBoxed(Entity entity, object component);
+
+    /// <summary>
+    /// 清空 Store 内部组件数据。
+    /// </summary>
+    void Clear();
 }
 
 }

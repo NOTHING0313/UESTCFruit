@@ -20,6 +20,7 @@ public class ECSLifecycleBufferTestBootstrap : MonoBehaviour
         TestRemoveSystemDuringTick();
         TestClearSystemDuringTick();
         TestSystemCommandCreatedDuringSystemPlaybackIsDelayedToNextPlayback();
+        TestSystemRemoveCreatedDuringLifecycleCallbackIsDelayedToNextPlayback();
 
         if (_failedCount == 0)
             Debug.Log("<color=green>[ECS Lifecycle Buffer Test] All tests passed.</color>");
@@ -99,6 +100,9 @@ public class ECSLifecycleBufferTestBootstrap : MonoBehaviour
         TickWorld(world, 1);
 
         Expect(destroySystem.TickCount == 1, "DestroyEntitySystem should tick once.");
+        Expect(destroySystem.DeferredComponentQueuedBeforeDestroy, "DestroyEntitySystem should queue a component command before requesting destroy.");
+        Expect(destroySystem.PendingCommandCountAfterDestroy == 1, "DestroyEntity should cancel pending component commands and leave only the destroy command pending.");
+        Expect(destroySystem.ComponentCommandAfterDestroyIgnored, "SetComponent after a pending DestroyEntity request should be ignored.");
         Expect(destroySystem.StillAliveAfterDestroyRequest, "Entity should still be alive immediately after DestroyEntity request during Tick.");
         Expect(checkAliveSystem.SawAliveInSameTick, "Later system in same Tick should still see entity alive before playback.");
         Expect(!world.IsAlive(entity), "Entity should be destroyed after Tick playback.");
@@ -190,6 +194,32 @@ public class ECSLifecycleBufferTestBootstrap : MonoBehaviour
         TickWorld(world, 3);
 
         Expect(nestedSystem.TickCount == 1, "Nested system should tick after being created in previous playback.");
+    }
+
+    private void TestSystemRemoveCreatedDuringLifecycleCallbackIsDelayedToNextPlayback()
+    {
+        Debug.Log("<color=cyan>[Lifecycle Test 8] System Remove Created During Lifecycle Callback Is Delayed</color>");
+
+        World world = new World();
+        LifeRemoveSelfOnCreateSystem removeOnCreateSystem = new LifeRemoveSelfOnCreateSystem();
+        LifeAddSystemOnceDuringTickSystem requestAddSystem = new LifeAddSystemOnceDuringTickSystem(removeOnCreateSystem);
+
+        world.AddSystem(requestAddSystem);
+        TickWorld(world, 1);
+
+        Expect(removeOnCreateSystem.OnCreateCount == 1, "RemoveOnCreate system should be created during first SystemPlayback.");
+        Expect(removeOnCreateSystem.TickCount == 0, "RemoveOnCreate system should not tick in the same frame it was created.");
+        Expect(removeOnCreateSystem.OnDestroyCount == 0, "RemoveOnCreate system should not be destroyed in the same SystemPlayback where it was created.");
+        Expect(world.PendingSystemCommandCount > 0, "Remove command requested from OnCreate should remain pending for next SystemPlayback.");
+
+        TickWorld(world, 2);
+
+        Expect(removeOnCreateSystem.TickCount == 1, "RemoveOnCreate system should tick once before delayed removal is played back.");
+        Expect(removeOnCreateSystem.OnDestroyCount == 1, "RemoveOnCreate system should be destroyed during the next SystemPlayback.");
+
+        TickWorld(world, 3);
+
+        Expect(removeOnCreateSystem.TickCount == 1, "RemoveOnCreate system should not tick after delayed removal.");
     }
 
     private void TickWorld(World world, int frameNumber)
@@ -309,6 +339,9 @@ public class LifeCheckRemoveVisibilitySystem : LifeTestSystemBase
 public class LifeDestroyEntitySystem : LifeTestSystemBase
 {
     private readonly Entity _entity;
+    public bool DeferredComponentQueuedBeforeDestroy { get; private set; }
+    public bool ComponentCommandAfterDestroyIgnored { get; private set; }
+    public int PendingCommandCountAfterDestroy { get; private set; }
     public bool StillAliveAfterDestroyRequest { get; private set; }
 
     public LifeDestroyEntitySystem(Entity entity)
@@ -319,7 +352,12 @@ public class LifeDestroyEntitySystem : LifeTestSystemBase
     public override void Tick(in SimulationContext context)
     {
         TickCount++;
+        World.SetComponent(_entity, new LifeDeferredTagComponent());
+        DeferredComponentQueuedBeforeDestroy = !World.HasComponent<LifeDeferredTagComponent>(_entity) && World.PendingCommandCount == 1;
         World.DestroyEntity(_entity);
+        PendingCommandCountAfterDestroy = World.PendingCommandCount;
+        World.SetComponent(_entity, new LifeDeferredTagComponent());
+        ComponentCommandAfterDestroyIgnored = World.PendingCommandCount == PendingCommandCountAfterDestroy;
         StillAliveAfterDestroyRequest = World.IsAlive(_entity);
     }
 }
@@ -354,6 +392,23 @@ public class LifeAddSystemDuringTickSystem : LifeTestSystemBase
     {
         TickCount++;
         World.AddSystem(_systemToAdd);
+    }
+}
+
+public class LifeAddSystemOnceDuringTickSystem : LifeTestSystemBase
+{
+    private readonly IFixedStepSystem _systemToAdd;
+
+    public LifeAddSystemOnceDuringTickSystem(IFixedStepSystem systemToAdd)
+    {
+        _systemToAdd = systemToAdd;
+    }
+
+    public override void Tick(in SimulationContext context)
+    {
+        TickCount++;
+        World.AddSystem(_systemToAdd);
+        World.RemoveSystem(this);
     }
 }
 
@@ -404,6 +459,20 @@ public class LifeAddNestedOnCreateSystem : LifeTestSystemBase
     {
         base.OnSystemCreate();
         World.AddSystem(_nestedSystem);
+    }
+
+    public override void Tick(in SimulationContext context)
+    {
+        TickCount++;
+    }
+}
+
+public class LifeRemoveSelfOnCreateSystem : LifeTestSystemBase
+{
+    protected override void OnSystemCreate()
+    {
+        base.OnSystemCreate();
+        World.RemoveSystem(this);
     }
 
     public override void Tick(in SimulationContext context)

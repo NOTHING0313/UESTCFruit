@@ -33,8 +33,10 @@ internal class ComponentTypeRegistry
     /// <summary>
     /// 获取指定 Type 的注册 ID；如果尚未注册则分配新的组件类型 ID。
     /// </summary>
-    private int GetOrRegister(Type type)
+    internal int GetOrRegister(Type type)
     {
+        ValidateComponentType(type);
+
         if (_typeToId.TryGetValue(type, out int id))
             return id;
 
@@ -45,6 +47,63 @@ internal class ComponentTypeRegistry
         _typeToId.Add(type, id);
         _idToType.Add(type);
         return id;
+    }
+
+    /// <summary>
+    /// 捕获当前组件类型注册顺序。
+    /// </summary>
+    internal IReadOnlyList<Type> CaptureRegisteredTypes()
+    {
+        return _idToType.ToArray();
+    }
+
+    /// <summary>
+    /// 按快照顺序恢复组件类型注册表；失败时不会修改当前注册表。
+    /// </summary>
+    internal void RestoreRegisteredTypes(IReadOnlyList<Type> registeredTypes)
+    {
+        if (registeredTypes == null)
+            throw new ArgumentNullException(nameof(registeredTypes));
+
+        if (registeredTypes.Count > MaxComponentTypes)
+            throw new InvalidOperationException("ComponentMask256 supports at most 256 component types.");
+
+        Dictionary<Type, int> restoredTypeToId = new Dictionary<Type, int>(registeredTypes.Count);
+        List<Type> restoredIdToType = new List<Type>(registeredTypes.Count);
+
+        for (int i = 0; i < registeredTypes.Count; i++)
+        {
+            Type type = registeredTypes[i];
+            ValidateComponentType(type);
+
+            if (restoredTypeToId.ContainsKey(type))
+                throw new InvalidOperationException($"Duplicate component type in registry snapshot: {type.FullName}");
+
+            restoredTypeToId.Add(type, i);
+            restoredIdToType.Add(type);
+        }
+
+        _typeToId.Clear();
+        _idToType.Clear();
+
+        for (int i = 0; i < restoredIdToType.Count; i++)
+        {
+            Type type = restoredIdToType[i];
+            _typeToId.Add(type, i);
+            _idToType.Add(type);
+        }
+    }
+
+    private static void ValidateComponentType(Type type)
+    {
+        if (type == null)
+            throw new ArgumentNullException(nameof(type));
+
+        if (!typeof(IComponentData).IsAssignableFrom(type))
+            throw new InvalidOperationException($"Type must implement IComponentData: {type.FullName}");
+
+        if (!type.IsValueType)
+            throw new InvalidOperationException($"Component type must be a struct: {type.FullName}");
     }
     /// <summary>
     /// 为单个组件类型创建 ComponentMask256。

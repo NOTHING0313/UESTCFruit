@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace ECSFrameWork
@@ -76,12 +77,19 @@ public sealed class ECSReviewIssueRegressionTestBootstrap : MonoBehaviour
         Expect(caught, "First ApplyCommandsToWorld should surface the command exception.");
         Expect(throwCommand.ExecuteCount == 1, "Throw command should execute once during failed apply.");
         Expect(countCommand.ExecuteCount == 0, "Commands after the throwing command should not execute during failed apply.");
+        Expect(applier.AppliedFrameCount == 0, "Failed apply should not mark the frame timing as applied.");
+        Expect(applier.DebugRecordCount == 1, "Failed apply should record exactly one failed command debug record.");
+
+        List<CommandDebugFrame> debugFrames = new List<CommandDebugFrame>();
+        applier.FillCommandDebugFrames(debugFrames);
+        Expect(debugFrames.Count == 1 && debugFrames[0].failedCount == 1, "Failed apply should keep one failed debug record for inspection.");
 
         throwCommand.ShouldThrow = false;
         applier.ApplyCommandsToWorld(1, SimulationFrameCommandTiming.BeforeTick);
 
         Expect(throwCommand.ExecuteCount == 2, "Throw command should be retried because failed frame was not marked as applied.");
         Expect(countCommand.ExecuteCount == 1, "Command after recovered throwing command should execute on retry.");
+        Expect(applier.AppliedFrameCount == 1, "Successful retry should mark the frame timing as applied.");
 
         applier.ApplyCommandsToWorld(1, SimulationFrameCommandTiming.BeforeTick);
 

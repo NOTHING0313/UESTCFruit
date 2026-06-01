@@ -148,6 +148,7 @@ public sealed class SimulationFrameCommandApplier
         {
             CommandDebugRecord failed = CommandDebugUtility.CreateExecutionRecord(command, frameNumber, timing, CommandExecuteStatus.Failed, exception.Message, forceReplay);
             _debugHistory.Record(in failed);
+            throw;
         }
     }
 

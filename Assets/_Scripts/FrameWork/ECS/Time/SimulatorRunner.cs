@@ -40,7 +40,10 @@ public class SimulateRunner
         _maxCompensationTickCount = maxCompensationTickCount > 0 ? maxCompensationTickCount : 1;
     }
 
-    /// <summary>累计真实时间并按固定步长推进 World.Tick。</summary>
+    /// <summary>
+    /// 累计真实时间并按固定步长推进 World.Tick。
+    /// maxCompensationTickCount 表示单次 Update 最多执行的逻辑帧数；超过上限时会丢弃剩余累计时间。
+    /// </summary>
     public bool Update(float time)
     {
         if (_world == null || time <= 0)
@@ -105,7 +108,7 @@ public class SimulateRunner
         }
     }
 
-    /// <summary>设置当前帧号；恢复 WorldSnapshot 后可用它对齐 Runner 帧号。</summary>
+    /// <summary>设置当前帧号；恢复外部快照后可用它对齐 Runner 帧号。</summary>
     public void SetFrameCount(int frameCount)
     {
         if (_isTicking)

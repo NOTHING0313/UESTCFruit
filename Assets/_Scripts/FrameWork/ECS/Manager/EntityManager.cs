@@ -41,6 +41,104 @@ internal class EntityManager
     }
 
     /// <summary>
+    /// 捕获 EntityManager 的完整槽位、版本号和未来 ID 复用顺序。
+    /// </summary>
+    internal EcsEntityManagerSnapshot CaptureSnapshot()
+    {
+        EcsEntitySlotSnapshot[] slots = new EcsEntitySlotSnapshot[dataCount];
+
+        for (int i = 0; i < dataCount; i++)
+        {
+            EntityData data = _datas[i];
+            int version = data != null ? data.Version : 0;
+            bool isAlive = data != null && data.isAlive;
+            slots[i] = new EcsEntitySlotSnapshot(i, version, isAlive);
+        }
+
+        return new EcsEntityManagerSnapshot(dataCount, slots, freeIDs.ToArray());
+    }
+
+    /// <summary>
+    /// 从快照恢复 EntityManager 槽位、版本号和未来 ID 复用顺序。
+    /// </summary>
+    internal void RestoreSnapshot(EcsEntityManagerSnapshot snapshot)
+    {
+        if (snapshot == null)
+            throw new ArgumentNullException(nameof(snapshot));
+
+        if (snapshot.DataCount < 0)
+            throw new InvalidOperationException("EntityManager snapshot DataCount cannot be negative.");
+
+        if (snapshot.Slots.Count != snapshot.DataCount)
+            throw new InvalidOperationException("EntityManager snapshot slot count must equal DataCount.");
+
+        EntityData[] restoredDatas = Array.Empty<EntityData>();
+        ToolFunction.EnsureArrayLength(ref restoredDatas, snapshot.DataCount);
+        bool[] restoredSlotFlags = snapshot.DataCount > 0 ? new bool[snapshot.DataCount] : Array.Empty<bool>();
+        bool[] restoredFreeIdFlags = snapshot.DataCount > 0 ? new bool[snapshot.DataCount] : Array.Empty<bool>();
+
+        for (int i = 0; i < snapshot.Slots.Count; i++)
+        {
+            EcsEntitySlotSnapshot slot = snapshot.Slots[i];
+
+            if (slot == null)
+                throw new InvalidOperationException("EntityManager snapshot contains null slot.");
+
+            if (slot.Id < 0 || slot.Id >= snapshot.DataCount)
+                throw new InvalidOperationException($"EntityManager snapshot slot id is out of range: {slot.Id}.");
+
+            if (restoredSlotFlags[slot.Id])
+                throw new InvalidOperationException($"EntityManager snapshot contains duplicate slot id: {slot.Id}.");
+
+            if (slot.Version < 0)
+                throw new InvalidOperationException($"EntityManager snapshot slot version cannot be negative: {slot.Id}.");
+
+            if (slot.IsAlive && slot.Version <= 0)
+                throw new InvalidOperationException($"EntityManager snapshot alive slot must have positive version: {slot.Id}.");
+
+            restoredSlotFlags[slot.Id] = true;
+
+            EntityData data = new EntityData();
+            data.RestoreSlot(slot.IsAlive, slot.Version);
+            restoredDatas[slot.Id] = data;
+        }
+
+        Stack<int> restoredFreeIds = new Stack<int>();
+
+        for (int i = snapshot.FreeIdsInPopOrder.Count - 1; i >= 0; i--)
+        {
+            int freeId = snapshot.FreeIdsInPopOrder[i];
+
+            if (freeId < 0 || freeId >= snapshot.DataCount)
+                throw new InvalidOperationException($"EntityManager snapshot free id is out of range: {freeId}.");
+
+            if (restoredFreeIdFlags[freeId])
+                throw new InvalidOperationException($"EntityManager snapshot contains duplicate free id: {freeId}.");
+
+            if (restoredDatas[freeId] != null && restoredDatas[freeId].isAlive)
+                throw new InvalidOperationException($"EntityManager snapshot free id points to alive slot: {freeId}.");
+
+            restoredFreeIdFlags[freeId] = true;
+            restoredFreeIds.Push(freeId);
+        }
+
+        for (int i = 0; i < restoredDatas.Length; i++)
+        {
+            EntityData data = restoredDatas[i];
+
+            if (data == null)
+                throw new InvalidOperationException($"EntityManager snapshot is missing slot id: {i}.");
+
+            if (!data.isAlive && !restoredFreeIdFlags[i])
+                throw new InvalidOperationException($"EntityManager snapshot dead slot is missing from free id list: {i}.");
+        }
+
+        _datas = restoredDatas;
+        freeIDs = restoredFreeIds;
+        dataCount = snapshot.DataCount;
+    }
+
+    /// <summary>
     /// 确保 EntityData 数组容量至少达到指定长度。
     /// 该方法只扩容底层数组，不会创建新的 Entity。
     /// </summary>

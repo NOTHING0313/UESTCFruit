@@ -78,6 +78,88 @@ internal class ComponentManager
     }
 
     /// <summary>
+    /// 通过运行时 Type 获取或创建 ComponentStore，供快照恢复按注册表顺序重建 Store。
+    /// </summary>
+    internal IComponentStore GetOrCreateStore(Type componentType)
+    {
+        if (_entityManager == null || _registry == null || !IsValidComponentType(componentType))
+            return null;
+
+        if (_stores.TryGetValue(componentType, out IComponentStore existingStore))
+            return existingStore;
+
+        int registerID = _registry.GetOrRegister(componentType);
+        IComponentStore store = CreateStoreByType(componentType, registerID);
+        _stores.Add(componentType, store);
+        return store;
+    }
+
+    /// <summary>
+    /// 捕获当前所有 ComponentStore 的 dense 顺序组件快照。
+    /// </summary>
+    internal List<EcsComponentStoreSnapshot> CaptureStoreSnapshots()
+    {
+        List<IComponentStore> stores = new List<IComponentStore>(_stores.Values);
+        stores.Sort((left, right) => left.RegisterID.CompareTo(right.RegisterID));
+
+        List<EcsComponentStoreSnapshot> snapshots = new List<EcsComponentStoreSnapshot>(stores.Count);
+
+        for (int i = 0; i < stores.Count; i++)
+        {
+            IComponentStore store = stores[i];
+            List<EcsComponentSnapshot> components = new List<EcsComponentSnapshot>(store.Count);
+
+            for (int denseIndex = 0; denseIndex < store.Count; denseIndex++)
+            {
+                if (store.TryGetBoxedByDenseIndex(denseIndex, out Entity entity, out object component))
+                    components.Add(new EcsComponentSnapshot(entity, component));
+            }
+
+            snapshots.Add(new EcsComponentStoreSnapshot(store.ComponentType, store.RegisterID, components));
+        }
+
+        return snapshots;
+    }
+
+    /// <summary>
+    /// 按快照恢复 ComponentStore。所有校验和临时 Store 构建完成后，才会替换当前 Store。
+    /// </summary>
+    internal bool RestoreStoreSnapshots(IReadOnlyList<EcsComponentStoreSnapshot> snapshots, out string errorMessage)
+    {
+        if (!ValidateStoreSnapshots(snapshots, out List<EcsComponentStoreSnapshot> orderedSnapshots, out errorMessage))
+            return false;
+
+        if (!BuildRestoredStores(orderedSnapshots, out Dictionary<Type, IComponentStore> restoredStores, out errorMessage))
+            return false;
+
+        ClearAllStores();
+        ClearAllEntityMasks();
+
+        for (int i = 0; i < orderedSnapshots.Count; i++)
+        {
+            EcsComponentStoreSnapshot snapshot = orderedSnapshots[i];
+            _stores.Add(snapshot.ComponentType, restoredStores[snapshot.ComponentType]);
+        }
+
+        RebuildEntityMasksFromStores(orderedSnapshots);
+        errorMessage = string.Empty;
+        return true;
+    }
+
+    /// <summary>
+    /// 清空并移除当前已创建的全部 ComponentStore。
+    /// </summary>
+    internal void ClearAllStores()
+    {
+        foreach (IComponentStore store in _stores.Values)
+        {
+            store.Clear();
+        }
+
+        _stores.Clear();
+    }
+
+    /// <summary>
     /// 为实体设置组件数据，并在新增组件时更新实体 Mask 与 ArcheType 分组。
     /// </summary>
     public void SetComponent<T>(Entity entity, in T component) where T : struct, IComponentData
@@ -457,6 +539,214 @@ internal class ComponentManager
             return false;
 
         return store.TryGetBoxed(entity, out component);
+    }
+
+    /// <summary>
+    /// 校验 Store 快照结构、组件类型、注册 ID 和实体引用，不修改当前 Store。
+    /// </summary>
+    private bool ValidateStoreSnapshots(IReadOnlyList<EcsComponentStoreSnapshot> snapshots, out List<EcsComponentStoreSnapshot> orderedSnapshots, out string errorMessage)
+    {
+        orderedSnapshots = null;
+
+        if (snapshots == null)
+        {
+            errorMessage = "Component store snapshot list is null.";
+            return false;
+        }
+
+        if (_entityManager == null)
+        {
+            errorMessage = "ComponentManager cannot restore stores without EntityManager.";
+            return false;
+        }
+
+        if (_registry == null)
+        {
+            errorMessage = "ComponentManager cannot restore stores without ComponentTypeRegistry.";
+            return false;
+        }
+
+        HashSet<Type> componentTypes = new HashSet<Type>();
+        HashSet<int> registerIDs = new HashSet<int>();
+        orderedSnapshots = new List<EcsComponentStoreSnapshot>(snapshots.Count);
+
+        for (int i = 0; i < snapshots.Count; i++)
+        {
+            EcsComponentStoreSnapshot snapshot = snapshots[i];
+
+            if (snapshot == null)
+            {
+                errorMessage = $"Component store snapshot at index {i} is null.";
+                return false;
+            }
+
+            if (!ValidateStoreSnapshotHeader(snapshot, componentTypes, registerIDs, out errorMessage))
+                return false;
+
+            if (!ValidateStoreSnapshotComponents(snapshot, out errorMessage))
+                return false;
+
+            orderedSnapshots.Add(snapshot);
+        }
+
+        orderedSnapshots.Sort((left, right) => left.RegisterID.CompareTo(right.RegisterID));
+        errorMessage = string.Empty;
+        return true;
+    }
+
+    private bool ValidateStoreSnapshotHeader(EcsComponentStoreSnapshot snapshot, HashSet<Type> componentTypes, HashSet<int> registerIDs, out string errorMessage)
+    {
+        if (!IsValidComponentType(snapshot.ComponentType))
+        {
+            errorMessage = $"Invalid component type in store snapshot: {snapshot.ComponentType?.FullName ?? "<null>"}";
+            return false;
+        }
+
+        if (!componentTypes.Add(snapshot.ComponentType))
+        {
+            errorMessage = $"Duplicate component store snapshot type: {snapshot.ComponentType.FullName}";
+            return false;
+        }
+
+        if (!registerIDs.Add(snapshot.RegisterID))
+        {
+            errorMessage = $"Duplicate component store snapshot register id: {snapshot.RegisterID}";
+            return false;
+        }
+
+        if (!_registry.TryGetType(snapshot.RegisterID, out Type registeredType))
+        {
+            errorMessage = $"Component store snapshot register id is not registered: {snapshot.RegisterID}";
+            return false;
+        }
+
+        if (registeredType != snapshot.ComponentType)
+        {
+            errorMessage = $"Component store snapshot type does not match registry id {snapshot.RegisterID}: {snapshot.ComponentType.FullName}";
+            return false;
+        }
+
+        if (snapshot.DenseComponents == null)
+        {
+            errorMessage = $"Component store snapshot dense component list is null: {snapshot.ComponentType.FullName}";
+            return false;
+        }
+
+        errorMessage = string.Empty;
+        return true;
+    }
+
+    private bool ValidateStoreSnapshotComponents(EcsComponentStoreSnapshot snapshot, out string errorMessage)
+    {
+        HashSet<Entity> entities = new HashSet<Entity>();
+
+        for (int i = 0; i < snapshot.DenseComponents.Count; i++)
+        {
+            EcsComponentSnapshot component = snapshot.DenseComponents[i];
+
+            if (component == null)
+            {
+                errorMessage = $"Component snapshot at dense index {i} is null: {snapshot.ComponentType.FullName}";
+                return false;
+            }
+
+            if (!_entityManager.IsAlive(component.Entity))
+            {
+                errorMessage = $"Component snapshot entity is not alive: {component.Entity}";
+                return false;
+            }
+
+            if (!entities.Add(component.Entity))
+            {
+                errorMessage = $"Duplicate entity in component store snapshot: {component.Entity}";
+                return false;
+            }
+
+            if (component.ComponentValue == null || !snapshot.ComponentType.IsInstanceOfType(component.ComponentValue))
+            {
+                errorMessage = $"Component snapshot value type mismatch: {snapshot.ComponentType.FullName}";
+                return false;
+            }
+        }
+
+        errorMessage = string.Empty;
+        return true;
+    }
+
+    private bool BuildRestoredStores(List<EcsComponentStoreSnapshot> orderedSnapshots, out Dictionary<Type, IComponentStore> restoredStores, out string errorMessage)
+    {
+        restoredStores = new Dictionary<Type, IComponentStore>(orderedSnapshots.Count);
+
+        for (int i = 0; i < orderedSnapshots.Count; i++)
+        {
+            EcsComponentStoreSnapshot snapshot = orderedSnapshots[i];
+            IComponentStore store = CreateStoreByType(snapshot.ComponentType, snapshot.RegisterID);
+
+            for (int denseIndex = 0; denseIndex < snapshot.DenseComponents.Count; denseIndex++)
+            {
+                EcsComponentSnapshot component = snapshot.DenseComponents[denseIndex];
+
+                if (!store.SetBoxed(component.Entity, component.ComponentValue))
+                {
+                    errorMessage = $"Failed to restore component store value: {snapshot.ComponentType.FullName}";
+                    return false;
+                }
+            }
+
+            restoredStores.Add(snapshot.ComponentType, store);
+        }
+
+        errorMessage = string.Empty;
+        return true;
+    }
+
+    private void ClearAllEntityMasks()
+    {
+        if (_entityManager == null)
+            return;
+
+        List<Entity> entities = new List<Entity>();
+        _entityManager.FillAliveEntities(entities);
+
+        for (int i = 0; i < entities.Count; i++)
+        {
+            Entity entity = entities[i];
+            ComponentMask256 oldMask = _entityManager.GetMask(entity);
+
+            if (oldMask.IsEmpty)
+                continue;
+
+            _entityManager.ClearMask(entity);
+            _archeTypeManager?.ChangeGroup(entity, oldMask, default);
+        }
+    }
+
+    private void RebuildEntityMasksFromStores(List<EcsComponentStoreSnapshot> orderedSnapshots)
+    {
+        for (int i = 0; i < orderedSnapshots.Count; i++)
+        {
+            EcsComponentStoreSnapshot snapshot = orderedSnapshots[i];
+
+            for (int denseIndex = 0; denseIndex < snapshot.DenseComponents.Count; denseIndex++)
+            {
+                Entity entity = snapshot.DenseComponents[denseIndex].Entity;
+                ComponentMask256 oldMask = _entityManager.GetMask(entity);
+                _entityManager.SetMask(entity, snapshot.RegisterID);
+                ComponentMask256 newMask = _entityManager.GetMask(entity);
+                _archeTypeManager?.ChangeGroup(entity, oldMask, newMask);
+            }
+        }
+    }
+
+    private static bool IsValidComponentType(Type type)
+    {
+        return type != null && typeof(IComponentData).IsAssignableFrom(type) && type.IsValueType;
+    }
+
+    private IComponentStore CreateStoreByType(Type componentType, int registerID)
+    {
+        Type storeType = typeof(ComponentStore<>).MakeGenericType(componentType);
+        return (IComponentStore)Activator.CreateInstance(storeType, registerID, _entityManager);
     }
 
     /// <summary>

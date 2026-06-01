@@ -1,0 +1,11 @@
+﻿[mcp_servers.image_assets]
+command = "node"
+args = ["H:/GitHub/UESTCFruit/Tools/image-mcp-server/dist/index.js"]
+cwd = "H:/GitHub/UESTCFruit/Tools/image-mcp-server"
+
+env = { IMAGE_MCP_PROJECT_ROOT = "H:/GitHub/UESTCFruit", IMAGE_MCP_OUTPUT_ROOT = "H:/GitHub/UESTCFruit/Assets/Arts/AI_Generate", IMAGE_PROVIDER = "openai", OPENAI_IMAGE_MODEL = "gpt-image-2", OPENAI_PROXY_URL = "http://127.0.0.1:7890", VOLCENGINE_IMAGE_MODEL = "doubao-seedream-5-0-260128", VOLCENGINE_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3" }
+
+env_vars = ["OPENAI_API_KEY", "ARK_API_KEY"]
+startup_timeout_sec = 30
+tool_timeout_sec = 300
+enabled = true

@@ -15,6 +15,8 @@ public class ECSSimulateRunnerTestBootstrap : MonoBehaviour
         TestRunnerAccumulatesSmallDeltaTime();
         TestRunnerAdvancesMultipleTicks();
         TestRunnerCompensationLimit();
+        TestRunnerCompensationLimitDiscardsRemainder();
+        TestRunnerRejectsNonPositiveDeltaTime();
         TestRunnerInvalidParametersFallback();
         TestSystemSequenceOrder();
         TestRunnerResetsTickingStateAfterException();
@@ -73,6 +75,42 @@ public class ECSSimulateRunnerTestBootstrap : MonoBehaviour
 
         Expect(result, "Large update should produce ticks.");
         Expect(system.TickCount == 2, $"maxCompensationTickCount = 2 should limit this update to 2 ticks. Actual = {system.TickCount}");
+    }
+
+    private void TestRunnerCompensationLimitDiscardsRemainder()
+    {
+        Debug.Log("<color=cyan>[Runner Test 3.1] Runner Compensation Limit Discards Remainder</color>");
+
+        World world = new World();
+        RunnerCountingSystem system = new RunnerCountingSystem();
+        world.AddSystem(system);
+        SimulateRunner runner = new SimulateRunner(world, 0.02f, 5);
+
+        bool result = runner.Update(1.0f);
+
+        Expect(result, "Large update should return true when at least one frame is executed.");
+        Expect(system.TickCount == 5, $"maxCompensationTickCount = 5 should execute exactly 5 frames. Actual = {system.TickCount}");
+        Expect(runner.FrameCount == 5, $"Runner FrameCount should advance to 5 after compensation-limited update. Actual = {runner.FrameCount}");
+        Expect(Mathf.Approximately(runner.TickCounter, 0f), $"Runner should discard remaining accumulated time after compensation limit. TickCounter = {runner.TickCounter}");
+    }
+
+    private void TestRunnerRejectsNonPositiveDeltaTime()
+    {
+        Debug.Log("<color=cyan>[Runner Test 3.2] Runner Rejects Non-positive DeltaTime</color>");
+
+        World world = new World();
+        RunnerCountingSystem system = new RunnerCountingSystem();
+        world.AddSystem(system);
+        SimulateRunner runner = new SimulateRunner(world, 0.02f, 5);
+
+        bool zeroResult = runner.Update(0f);
+        bool negativeResult = runner.Update(-1f);
+
+        Expect(!zeroResult, "Update(0) should return false.");
+        Expect(!negativeResult, "Update with negative delta time should return false.");
+        Expect(system.TickCount == 0, $"Non-positive delta time should not tick systems. Actual = {system.TickCount}");
+        Expect(runner.FrameCount == 0, $"Non-positive delta time should not advance frames. Actual = {runner.FrameCount}");
+        Expect(Mathf.Approximately(runner.TickCounter, 0f), $"Non-positive delta time should not accumulate time. TickCounter = {runner.TickCounter}");
     }
 
     private void TestRunnerInvalidParametersFallback()

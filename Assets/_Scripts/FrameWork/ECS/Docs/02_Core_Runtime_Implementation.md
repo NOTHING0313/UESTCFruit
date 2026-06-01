@@ -219,6 +219,8 @@ SetWorldState(Idle)
 
 已有组件的数据覆盖不是结构变化，可以立即写入。
 
+`World.CreateEntity()` 在 `Ticking` 中仍会立即分配实体句柄。此时实体已经 `IsAlive == true`，但如果它的组件是在同一次 `Tick` 中新增的，这些新增组件会先进入 `StructuralChangeBuffer`，直到 `AfterTicking` 播放后才同步到 ComponentStore / ArcheType。因此，新建实体可能在当前 Tick 内存活，但在组件播放前不会被依赖对应组件的 Query 命中。
+
 ### 6.2 System 变化规则
 
 System 增删由 `SystemManager` 和 `SystemChangeBuffer` 管理。System 列表变更在安全阶段播放，避免 Tick 遍历过程中修改 System 列表。
