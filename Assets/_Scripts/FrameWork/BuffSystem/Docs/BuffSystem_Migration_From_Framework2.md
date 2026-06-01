@@ -104,3 +104,54 @@ normalStackPolicy = NormalBuffStackPolicy.ResetDurationOnly;
 
 说明：第一套不会重置 `RunTime`，而是重置固定帧字段 `elapsedFrames` 和 `ticks`，并刷新 `remainingFrames`。
 
+## Phase 3F-8 - ParallelBuffRunTimeData 到 CompressedExpiryFrameList
+
+FrameWork2 的 `ParallelBuffRunTimeData` 使用内部到期队列表达多个并行层。第一套 ECS BuffSystem 的迁移方向是 `ParallelBuffStorageMode.CompressedExpiryFrameList`：
+
+```text
+FrameWork2 expiry queue -> CompressedParallelBuffRuntimeComponent.layers
+real-time expiry -> fixed-frame expireFrame
+runtime object stack data -> ECS component true state
+```
+
+第一套不迁移：
+
+- `Time.time`
+- `Time.deltaTime`
+- `float expiry`
+- `GameObject` runtime target/source
+- `MonoBehaviour` runtime handler
+- runtime `ScriptableObject` effect
+
+compressed layer 使用固定帧字段：
+
+```text
+expireFrame
+elapsedFrames
+ticks
+layerId
+layerRuntimeHandle
+```
+
+当前只适合后续 Phase 3G 小范围启用 eligible Tick parallel buff。eligibility 条件为：
+
+```text
+BuffType == parallel
+ParallelStorageMode == CompressedExpiryFrameList
+TriggerType == Tick
+Unlimited == false
+MaxStack <= CompressedParallelBuffLayerBuffer.Capacity
+compressed gate == enabled
+```
+
+正式 public constructor 路径 gate 默认关闭，因此当前正式运行时仍默认 `EntityPerStack`。不建议直接全项目替换 EntityPerStack，也不建议业务代码直接使用 validation factory。
+
+已验证内容包括 Append、RefreshEarliest、RefreshAll、RemoveEarliest、RemoveLatest、ClearAll、duration=1 / duration=2 Tick + Expire、forever layer、PendingRemove / Destroy、ReplaceEarliestWhenFull、capacity 边界和 Phase 2A Runner 回归。
+
+仍需后续阶段确认：
+
+- mixed duration / forever internal-state。
+- 性能测试。
+- 回滚快照验证。
+- Phase 3G 小范围正式启用策略。
+

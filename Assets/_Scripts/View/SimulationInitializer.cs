@@ -31,11 +31,27 @@ namespace View
             if (timeSim == null)
             {
                 Debug.LogError("[SimulationInitializer] TimeSimulator.Instance missing!");
+                enabled = false;
+                return;
+            }
+
+            BuffConfigDataLoader definitionProvider = BuffConfigDataLoader.Instance;
+            if (definitionProvider == null)
+            {
+                Debug.LogError("[SimulationInitializer] BuffConfigDataLoader.Instance missing. Please add BuffConfigDataLoader to the Bootstrap GameObject or scene before starting simulation.");
+                enabled = false;
                 return;
             }
 
             _world = new World();
-            _buffSystem = new BuffSystemCore();
+
+            definitionProvider.SetTickLength(_fixedDeltaTime);
+            definitionProvider.Init();
+
+            BuffEffectRegistry effectRegistry = new BuffEffectRegistry();
+            BuffEffectRegistryBootstrap.RegisterProductionEffects(effectRegistry);
+
+            _buffSystem = BuffSystemCore.CreateForProduction(definitionProvider, effectRegistry);
             _runner = new SimulateRunner(_world, _fixedDeltaTime, _maxCompensationTicks);
             timeSim.InitSimulator(_runner);
 

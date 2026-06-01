@@ -1,5 +1,11 @@
 # BuffSystem Effect Pipeline
 
+## Phase 3C-2 - Dormant compressed helpers
+
+Phase 3C-2 预埋压缩并行 Buff 的 Add / Refresh / Remove helper，但不接入主流程，也不扩展 `BuffEffectRequest`。这些 helper 复用现有 `BuffRuntimeComponent` 单层 snapshot 表达层级 Effect：`stack = 1`，`runtimeHandle = layerRuntimeHandle`，`remainingFrames` 由 `expireFrame - frameNumber` 计算，`elapsedFrames` 与 `ticks` 来自对应 layer。
+
+由于 `ShouldUseCompressedParallel` 仍返回 false，本阶段不会产生压缩层 EffectRequest，Phase 2A 生命周期排序和事件型 Effect 热路径保持不变。
+
 ## Phase 3C-1 - 压缩并行 Buff 准备阶段
 
 Phase 3C-1 不扩展 `BuffEffectRequest`，不修改 `BuffEffectContext`，也不改变 `IBuffEffectExecutor` 或 `IBuffEventEffectExecutor<TEvent>`。`CompressedExpiryFrameList` 仍未接入生命周期 EffectRequest Pipeline。
@@ -106,4 +112,53 @@ public sealed class PoisonTickEffect : BuffEffectExecutorBase
 ## 回滚说明
 
 Effect 修改的任何逻辑结果都必须写入 ECS Component。表现层事件应通过 WorldEvent 或 ViewBridge 处理，不应直接在 Effect 中播放。
+
+## Phase 3F-8 - Compressed layer 生命周期 Effect 口径
+
+compressed layer 生命周期仍进入 Phase 2A EffectRequest Pipeline。排序规则仍是：
+
+```text
+frameNumber -> phaseOrder -> priority -> runtimeHandle -> Entity.ID -> Entity.Version -> sequence
+```
+
+`phaseOrder` 仍为：
+
+```text
+Apply = 0
+Refresh = 1
+StackChanged = 2
+Tick = 3
+Remove = 4
+```
+
+### Tick / Remove snapshot
+
+compressed duration layer 的 Effect snapshot 口径为：
+
+```text
+Tick snapshot RemainingFrames = expireFrame - currentFrame + 1
+Remove snapshot RemainingFrames = 0
+forever snapshot remainingFrames = 0
+```
+
+新建 compressed layer 创建当帧不 Tick：
+
+```text
+duration=1：F1 Apply，F2 Tick + Remove
+duration=2：F1 Apply，F2 Tick，F3 Tick + Remove
+```
+
+ViewData duration 使用 `expireFrame - currentFrame`，Tick snapshot 使用 `expireFrame - currentFrame + 1`，两者不能混用。forever ViewData 使用 `RemainingFrames = -1`，但 forever runtime / effect snapshot 中 `remainingFrames` 可以保持 0。
+
+### PendingRemove / Destroy
+
+最后一层 Remove / Expire / ClearAll 后，compressed runtime container 进入 pending remove。pending remove 使用 `compressedRuntimeHandle`，因为删除目标是 container entity。
+
+container pending remove 不额外触发聚合 Remove Effect。layer Remove 使用 `layerRuntimeHandle`，生命周期回调仍来自单层 snapshot。pending remove 后 `TryGetBuff / GetBuffs` 不显示，Destroy 前会 defensive 清理 `_compressedRuntimeEntityByKey`。
+
+### ReplaceEarliestWhenFull
+
+`ReplaceEarliestWhenFull` 满层时，状态层面移除最早层并追加新层。新层生成新的 `layerId / layerRuntimeHandle`，未替换层 identity 保持。
+
+同帧 Replace 不假设 Remove callback 一定早于 Apply callback。Effect Flush 顺序仍由 Phase 2A phaseOrder 决定，测试和业务逻辑都不应依赖“Remove 先于 Apply”的同帧回调顺序。
 

@@ -221,6 +221,8 @@ namespace BuffSystem
 
         private readonly IBuffDefinitionProvider _definitionProvider;
         private readonly BuffEffectRegistry _effectRegistry;
+        private readonly bool _enableCompressedParallelRuntime;
+        private readonly HashSet<int> _compressedParallelWhitelist;
         private readonly RuntimeRemovalComparer _runtimeRemovalComparer = new RuntimeRemovalComparer();
         private readonly BuffEventCandidateComparer _eventCandidateComparer = new BuffEventCandidateComparer();
         private readonly BuffEffectRequestComparer _effectRequestComparer = new BuffEffectRequestComparer();
@@ -232,6 +234,7 @@ namespace BuffSystem
         private readonly List<PendingRemoveRuntime> _pendingRemoveRuntimes = new List<PendingRemoveRuntime>(32);
         private readonly List<Entity> _runtimeEntities = new List<Entity>(128);
         private readonly List<Entity> _runtimeEntitiesThisFrame = new List<Entity>(128);
+        private readonly List<Entity> _compressedRuntimeEntitiesThisFrame = new List<Entity>(32);
         private readonly List<Entity> _createdRuntimeEntitiesThisFrame = new List<Entity>(32);
         private readonly List<Entity> _addRequestEntities = new List<Entity>(32);
         private readonly List<Entity> _removeRequestEntities = new List<Entity>(32);
@@ -255,23 +258,48 @@ namespace BuffSystem
         private bool _viewCacheDirty = true;
         private bool _eventRuntimeIndexDirty = true;
         private int _nextLifecycleEffectSequence;
+        private int _viewCacheFrameNumber = -1;
         private int _runtimeSnapshotFrameNumber = -1;
         private int _eventRuntimeIndexFrameNumber = -1;
 
         private World _queryWorld;
         private EntityQueryDescription _runtimeQuery;
+        private EntityQueryDescription _compressedRuntimeQuery;
         private EntityQueryDescription _addRequestQuery;
         private EntityQueryDescription _removeRequestQuery;
 
         public BuffSystemCore()
-            : this(new BuffDefinitionRegistry(), new BuffEffectRegistry())
+            : this(null, null, false, null)
         {
         }
 
         public BuffSystemCore(IBuffDefinitionProvider definitionProvider, BuffEffectRegistry effectRegistry = null)
+            : this(definitionProvider, effectRegistry, false, null)
+        {
+        }
+
+        internal static BuffSystemCore CreateForCompressedParallelValidation(IBuffDefinitionProvider definitionProvider, BuffEffectRegistry effectRegistry)
+        {
+            return new BuffSystemCore(definitionProvider, effectRegistry, true, CreateCompressedParallelValidationWhitelist());
+        }
+
+        internal static BuffSystemCore CreateForProduction(IBuffDefinitionProvider definitionProvider, BuffEffectRegistry effectRegistry)
+        {
+            return new BuffSystemCore(definitionProvider, effectRegistry, true, CreateCompressedParallelProductionWhitelist());
+        }
+
+        private BuffSystemCore(
+            IBuffDefinitionProvider definitionProvider,
+            BuffEffectRegistry effectRegistry,
+            bool enableCompressedParallelRuntime,
+            IEnumerable<int> compressedParallelWhitelist)
         {
             _definitionProvider = definitionProvider ?? new BuffDefinitionRegistry();
             _effectRegistry = effectRegistry ?? new BuffEffectRegistry();
+            _enableCompressedParallelRuntime = enableCompressedParallelRuntime;
+            _compressedParallelWhitelist = compressedParallelWhitelist == null
+                ? new HashSet<int>()
+                : new HashSet<int>(compressedParallelWhitelist);
         }
 
         public void Tick(World world, SimulationContext context)
@@ -283,10 +311,13 @@ namespace BuffSystem
             _pendingRuntimeComponents.Clear();
             _nextLifecycleEffectSequence = 0;
             CaptureRuntimeEntities(world, context.frameNumber);
+            CaptureCompressedRuntimeEntities(world);
             RebuildRuntimeLookup(world);
+            RebuildCompressedRuntimeLookup(world);
             ConsumeRequestComponents(world, in context);
             ConsumeQueuedCommands(world, in context);
             TickRuntimeBuffs(world, in context);
+            TickCompressedParallelRuntimes(world, in context);
             FlushLifecycleEffects(world, in context);
             DestroyPendingRemoveRuntimes(world);
             _pendingRuntimeComponents.Clear();
@@ -361,6 +392,7 @@ namespace BuffSystem
             _pendingRemoveRuntimes.Clear();
             _runtimeEntities.Clear();
             _runtimeEntitiesThisFrame.Clear();
+            _compressedRuntimeEntitiesThisFrame.Clear();
             _createdRuntimeEntitiesThisFrame.Clear();
             _addRequestEntities.Clear();
             _removeRequestEntities.Clear();
@@ -382,6 +414,7 @@ namespace BuffSystem
             _viewCacheDirty = true;
             _eventRuntimeIndexDirty = true;
             _nextLifecycleEffectSequence = 0;
+            _viewCacheFrameNumber = -1;
             _runtimeSnapshotFrameNumber = -1;
             _eventRuntimeIndexFrameNumber = -1;
             _queryWorld = null;
@@ -393,6 +426,7 @@ namespace BuffSystem
                 return;
 
             _runtimeQuery = world.Query().With<BuffRuntimeComponent>().BuildDescription();
+            _compressedRuntimeQuery = world.Query().With<CompressedParallelBuffRuntimeComponent>().BuildDescription();
             _addRequestQuery = world.Query().With<AddBuffRequestComponent>().BuildDescription();
             _removeRequestQuery = world.Query().With<RemoveBuffRequestComponent>().BuildDescription();
             _queryWorld = world;
@@ -409,6 +443,12 @@ namespace BuffSystem
             world.FillQuery(_runtimeQuery, _runtimeEntitiesThisFrame, true);
             _runtimeSnapshotFrameNumber = frameNumber;
             MarkEventRuntimeIndexDirty();
+        }
+
+        private void CaptureCompressedRuntimeEntities(World world)
+        {
+            _compressedRuntimeEntitiesThisFrame.Clear();
+            world.FillQuery(_compressedRuntimeQuery, _compressedRuntimeEntitiesThisFrame, true);
         }
 
         private void ConsumeRequestComponents(World world, in SimulationContext context)
@@ -473,6 +513,12 @@ namespace BuffSystem
 
             if (definition.BuffType == BuffInstanceType.parallel)
             {
+                if (ShouldUseCompressedParallel(in definition))
+                {
+                    ApplyCompressedParallelAdd(world, in context, command, in definition);
+                    return;
+                }
+
                 ApplyParallelAdd(world, in context, command, in definition);
                 return;
             }
@@ -610,6 +656,12 @@ namespace BuffSystem
             if (!command.IsValid)
                 return;
 
+            if (_definitionProvider.TryGetDefinition(command.ConfigId, out BuffDefinition commandDefinition) && ShouldUseCompressedParallel(in commandDefinition))
+            {
+                ApplyCompressedParallelRemove(world, in context, command);
+                return;
+            }
+
             CollectRuntimeEntities(world, command, _scratchEntities);
             SortRuntimeEntitiesForRemoval(world, GetRemovePolicyForCommand(world, command));
 
@@ -705,6 +757,40 @@ namespace BuffSystem
                 runtime.remainingFrames = Math.Max(1, runtime.durationFrames);
                 WriteRuntimeComponent(world, runtimeEntity, runtime);
                 QueueLifecycleEffect(in context, runtimeEntity, in runtime, in definition, BuffEffectPhase.StackChanged, -1);
+            }
+        }
+
+        private void TickCompressedParallelRuntimes(World world, in SimulationContext context)
+        {
+            for (int i = 0; i < _compressedRuntimeEntitiesThisFrame.Count; i++)
+            {
+                Entity runtimeEntity = _compressedRuntimeEntitiesThisFrame[i];
+
+                if (IsPendingRemoveRuntime(runtimeEntity))
+                    continue;
+
+                if (!world.TryGetComponent(runtimeEntity, out CompressedParallelBuffRuntimeComponent runtime))
+                    continue;
+
+                if (!_definitionProvider.TryGetDefinition(runtime.configId, out BuffDefinition definition))
+                    continue;
+
+                if (!ShouldUseCompressedParallel(in definition))
+                    continue;
+
+                if (runtime.layerCount <= 0 || !world.IsAlive(runtime.target))
+                {
+                    QueueCompressedRuntimePendingRemove(world, runtimeEntity, in runtime);
+                    continue;
+                }
+
+                TickCompressedParallelLayers(in context, runtimeEntity, ref runtime, in definition);
+                ExpireCompressedParallelLayers(in context, runtimeEntity, ref runtime, in definition);
+                world.SetComponent(runtimeEntity, runtime);
+                MarkViewCacheDirty();
+
+                if (runtime.layerCount <= 0)
+                    QueueCompressedRuntimePendingRemove(world, runtimeEntity, in runtime);
             }
         }
 
@@ -862,10 +948,41 @@ namespace BuffSystem
             RemoveEmptyRuntimeLookupLists();
         }
 
+        private void RebuildCompressedRuntimeLookup(World world)
+        {
+            _compressedRuntimeEntityByKey.Clear();
+
+            for (int i = 0; i < _compressedRuntimeEntitiesThisFrame.Count; i++)
+            {
+                Entity runtimeEntity = _compressedRuntimeEntitiesThisFrame[i];
+
+                if (IsPendingRemoveRuntime(runtimeEntity))
+                    continue;
+
+                if (!world.TryGetComponent(runtimeEntity, out CompressedParallelBuffRuntimeComponent runtime))
+                    continue;
+
+                if (runtime.layerCount <= 0 || !world.IsAlive(runtime.target))
+                    continue;
+
+                BuffRuntimeKey key = new BuffRuntimeKey(runtime.target, runtime.source, runtime.configId);
+
+                if (_compressedRuntimeEntityByKey.TryGetValue(key, out Entity existingRuntimeEntity))
+                {
+                    if (CompareEntity(runtimeEntity, existingRuntimeEntity) < 0)
+                        _compressedRuntimeEntityByKey[key] = runtimeEntity;
+                }
+                else
+                {
+                    _compressedRuntimeEntityByKey.Add(key, runtimeEntity);
+                }
+            }
+        }
+
         private void EnsureViewCache()
         {
             // ViewCache 延迟到外部读取时构建；RemainingFrames 变化时由 WriteRuntimeComponent 标记 dirty。
-            if (!_viewCacheDirty)
+            if (!_viewCacheDirty && !ShouldRebuildViewCacheForCompressedFrame())
                 return;
 
             _viewByKey.Clear();
@@ -874,6 +991,7 @@ namespace BuffSystem
             if (_queryWorld == null)
             {
                 _viewCacheDirty = false;
+                _viewCacheFrameNumber = _runtimeSnapshotFrameNumber;
                 return;
             }
 
@@ -893,7 +1011,71 @@ namespace BuffSystem
                     AddRuntimeToViewCache(_queryWorld, in runtime);
             }
 
+            AddCompressedRuntimesToViewCache(_queryWorld, _runtimeSnapshotFrameNumber);
+
+            _viewCacheFrameNumber = _runtimeSnapshotFrameNumber;
             _viewCacheDirty = false;
+        }
+
+        private bool ShouldRebuildViewCacheForCompressedFrame()
+        {
+            if (_queryWorld == null || _viewCacheFrameNumber == _runtimeSnapshotFrameNumber)
+                return false;
+
+            for (int i = 0; i < _compressedRuntimeEntitiesThisFrame.Count; i++)
+            {
+                Entity runtimeEntity = _compressedRuntimeEntitiesThisFrame[i];
+
+                if (IsPendingRemoveRuntime(runtimeEntity))
+                    continue;
+
+                if (!_queryWorld.TryGetComponent(runtimeEntity, out CompressedParallelBuffRuntimeComponent runtime))
+                    continue;
+
+                if (runtime.layerCount <= 0 || !_queryWorld.IsAlive(runtime.target))
+                    continue;
+
+                if (!_definitionProvider.TryGetDefinition(runtime.configId, out BuffDefinition definition))
+                    continue;
+
+                if (ShouldUseCompressedParallel(in definition))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private void AddCompressedRuntimesToViewCache(World world, int frameNumber)
+        {
+            for (int i = 0; i < _compressedRuntimeEntitiesThisFrame.Count; i++)
+            {
+                Entity runtimeEntity = _compressedRuntimeEntitiesThisFrame[i];
+
+                if (IsPendingRemoveRuntime(runtimeEntity))
+                    continue;
+
+                if (!world.TryGetComponent(runtimeEntity, out CompressedParallelBuffRuntimeComponent runtime))
+                    continue;
+
+                if (!_definitionProvider.TryGetDefinition(runtime.configId, out BuffDefinition definition))
+                    continue;
+
+                if (!ShouldUseCompressedParallel(in definition))
+                    continue;
+
+                if (runtime.layerCount <= 0 || !world.IsAlive(runtime.target))
+                    continue;
+
+                if (!TryBuildCompressedViewData(in runtime, in definition, frameNumber, out BuffViewData view))
+                    continue;
+
+                BuffRuntimeKey key = new BuffRuntimeKey(view.Target, view.Source, view.ConfigId);
+
+                if (_viewByKey.TryGetValue(key, out BuffViewData existed))
+                    _viewByKey[key] = MergeViewData(existed, view);
+                else
+                    _viewByKey.Add(key, view);
+            }
         }
 
         private void AddRuntimeToViewCache(World world, in BuffRuntimeComponent runtime)
@@ -985,8 +1167,14 @@ namespace BuffSystem
 
         private bool ShouldUseCompressedParallel(in BuffDefinition definition)
         {
-            // Phase 3C-1 only prepares helpers and lookup cache. Compressed runtime is not enabled yet.
-            return false;
+            return _enableCompressedParallelRuntime
+                && IsCompressedParallelWhitelisted(definition.ConfigId)
+                && IsCompressedParallelEligible(in definition);
+        }
+
+        private bool IsCompressedParallelWhitelisted(int configId)
+        {
+            return _compressedParallelWhitelist.Contains(configId);
         }
 
         private static bool IsCompressedParallelEligible(in BuffDefinition definition)
@@ -996,6 +1184,586 @@ namespace BuffSystem
                 && definition.TriggerType == BuffTriggerType.Tick
                 && !definition.Unlimited
                 && definition.MaxStack <= CompressedParallelBuffLayerBuffer.Capacity;
+        }
+
+        private static HashSet<int> CreateCompressedParallelValidationWhitelist()
+        {
+            // Phase 3G-1: validation-only whitelist. Production constructors pass an empty whitelist.
+            return new HashSet<int>
+            {
+                9301,
+                9302,
+                9303,
+                9304,
+                9305,
+                9306,
+                9307,
+                9308,
+                9309,
+                9310,
+                9311,
+                9312,
+                9313,
+                9314,
+                9315
+            };
+        }
+
+        private static HashSet<int> CreateCompressedParallelProductionWhitelist()
+        {
+            // Phase 3G-3D-A: production whitelist is intentionally limited to the smoke-test Buff only.
+            return new HashSet<int>
+            {
+                991001
+            };
+        }
+
+        private void ApplyCompressedParallelAdd(World world, in SimulationContext context, AddBuffCommand command, in BuffDefinition definition)
+        {
+            BuffRuntimeKey key = new BuffRuntimeKey(command.Target, command.Source, command.ConfigId);
+            Entity runtimeEntity = TryGetCompressedRuntimeEntity(key, out Entity existingRuntimeEntity)
+                ? existingRuntimeEntity
+                : CreateCompressedParallelRuntime(world, command, in definition);
+
+            if (!runtimeEntity.IsValid || !world.TryGetComponent(runtimeEntity, out CompressedParallelBuffRuntimeComponent runtime))
+                return;
+
+            int incoming = command.Stack;
+
+            switch (definition.ParallelStackUpPolicy)
+            {
+                case ParallelBuffStackUpPolicy.RefreshEarliest:
+                    incoming -= RefreshCompressedParallelLayers(world, in context, runtimeEntity, ref runtime, in definition, incoming, false);
+                    AppendCompressedParallelLayers(world, in context, runtimeEntity, ref runtime, in definition, incoming);
+                    break;
+
+                case ParallelBuffStackUpPolicy.RefreshAll:
+                    RefreshCompressedParallelLayers(world, in context, runtimeEntity, ref runtime, in definition, int.MaxValue, true);
+                    AppendCompressedParallelLayers(world, in context, runtimeEntity, ref runtime, in definition, incoming);
+                    break;
+
+                case ParallelBuffStackUpPolicy.ReplaceEarliestWhenFull:
+                    ReplaceOrAppendCompressedParallelLayers(world, in context, runtimeEntity, ref runtime, in definition, incoming);
+                    break;
+
+                case ParallelBuffStackUpPolicy.Append:
+                default:
+                    AppendCompressedParallelLayers(world, in context, runtimeEntity, ref runtime, in definition, incoming);
+                    break;
+            }
+
+            world.SetComponent(runtimeEntity, runtime);
+        }
+
+        private void ApplyCompressedParallelRemove(World world, in SimulationContext context, RemoveBuffCommand command)
+        {
+            if (!command.IsValid || !_definitionProvider.TryGetDefinition(command.ConfigId, out BuffDefinition definition))
+                return;
+
+            // Phase 3C-2 dormant helper 暂不支持 MatchAnySource 压缩移除。
+            if (command.MatchAnySource)
+                return;
+
+            BuffRuntimeKey key = new BuffRuntimeKey(command.Target, command.Source, command.ConfigId);
+
+            if (!TryGetCompressedRuntimeEntity(key, out Entity runtimeEntity))
+                return;
+
+            if (!world.TryGetComponent(runtimeEntity, out CompressedParallelBuffRuntimeComponent runtime))
+                return;
+
+            ParallelBuffStackDownPolicy policy = command.ClearAllStacks
+                ? ParallelBuffStackDownPolicy.ClearAll
+                : definition.ParallelStackDownPolicy;
+
+            RemoveCompressedParallelLayers(world, in context, runtimeEntity, ref runtime, in definition, command.StackCount, policy);
+            world.SetComponent(runtimeEntity, runtime);
+        }
+
+        private Entity CreateCompressedParallelRuntime(World world, AddBuffCommand command, in BuffDefinition definition)
+        {
+            Entity runtimeEntity = world.CreateEntity();
+
+            if (!runtimeEntity.IsValid)
+                return Entity.Invalid;
+
+            CompressedParallelBuffRuntimeComponent runtime = new CompressedParallelBuffRuntimeComponent
+            {
+                target = command.Target,
+                source = command.Source,
+                configId = command.ConfigId,
+                compressedRuntimeHandle = runtimeEntity.ID,
+                priority = definition.Priority,
+                layerCount = 0,
+                nextLayerId = 1
+            };
+            runtime.layers.Clear();
+
+            BuffRuntimeKey key = new BuffRuntimeKey(command.Target, command.Source, command.ConfigId);
+            RegisterCompressedRuntimeLookup(key, runtimeEntity);
+            world.SetComponent(runtimeEntity, runtime);
+            return runtimeEntity;
+        }
+
+        private bool TryGetCompressedRuntimeEntity(BuffRuntimeKey key, out Entity runtimeEntity)
+        {
+            if (_compressedRuntimeEntityByKey.TryGetValue(key, out runtimeEntity) && !IsPendingRemoveRuntime(runtimeEntity))
+                return true;
+
+            runtimeEntity = Entity.Invalid;
+            return false;
+        }
+
+        private void RegisterCompressedRuntimeLookup(BuffRuntimeKey key, Entity runtimeEntity)
+        {
+            if (!runtimeEntity.IsValid)
+                return;
+
+            _compressedRuntimeEntityByKey[key] = runtimeEntity;
+        }
+
+        private void RemoveCompressedRuntimeLookup(BuffRuntimeKey key)
+        {
+            _compressedRuntimeEntityByKey.Remove(key);
+        }
+
+        private void QueueCompressedRuntimePendingRemove(World world, Entity runtimeEntity, in CompressedParallelBuffRuntimeComponent runtime)
+        {
+            if (!runtimeEntity.IsValid || _pendingRemoveRuntimeSet.Contains(runtimeEntity))
+                return;
+
+            _pendingRemoveRuntimeSet.Add(runtimeEntity);
+            _pendingRemoveRuntimes.Add(new PendingRemoveRuntime(runtimeEntity, runtime.compressedRuntimeHandle));
+            RemoveCompressedRuntimeLookup(new BuffRuntimeKey(runtime.target, runtime.source, runtime.configId));
+            MarkViewCacheDirty();
+        }
+
+        private int AppendCompressedParallelLayers(
+            World world,
+            in SimulationContext context,
+            Entity runtimeEntity,
+            ref CompressedParallelBuffRuntimeComponent runtime,
+            in BuffDefinition definition,
+            int count)
+        {
+            if (count <= 0)
+                return 0;
+
+            int appended = 0;
+            int appendLimit = definition.Unlimited
+                ? count
+                : Math.Min(count, definition.MaxStack - runtime.layerCount);
+
+            for (int i = 0; i < appendLimit; i++)
+            {
+                CompressedParallelBuffLayer layer = CreateCompressedParallelLayer(ref runtime, in context, in definition);
+
+                if (!runtime.layers.AppendLayer(runtime.layerCount, in layer))
+                    break;
+
+                runtime.layerCount++;
+                appended++;
+
+                BuffRuntimeComponent snapshot = CreateCompressedLayerSnapshot(in runtime, in layer, in definition, context.frameNumber);
+                QueueLifecycleEffect(in context, runtimeEntity, in snapshot, in definition, BuffEffectPhase.Apply, 0);
+                QueueLifecycleEffect(in context, runtimeEntity, in snapshot, in definition, BuffEffectPhase.StackChanged, 1);
+            }
+
+            return appended;
+        }
+
+        private int RefreshCompressedParallelLayers(
+            World world,
+            in SimulationContext context,
+            Entity runtimeEntity,
+            ref CompressedParallelBuffRuntimeComponent runtime,
+            in BuffDefinition definition,
+            int count,
+            bool refreshAll)
+        {
+            if (runtime.layerCount <= 0)
+                return 0;
+
+            int refreshed = 0;
+            int refreshLimit = refreshAll ? runtime.layerCount : Math.Min(count, runtime.layerCount);
+
+            for (int i = 0; i < refreshLimit; i++)
+            {
+                int index = refreshAll ? i : runtime.layers.FindEarliestIndex(runtime.layerCount);
+
+                if (index < 0)
+                    break;
+
+                runtime.layers.RefreshLayer(index, runtime.layerCount, context.frameNumber, definition.DurationFrames, definition.IsForever);
+                CompressedParallelBuffLayer layer = runtime.layers.Get(index);
+                BuffRuntimeComponent snapshot = CreateCompressedLayerSnapshot(in runtime, in layer, in definition, context.frameNumber);
+                QueueLifecycleEffect(in context, runtimeEntity, in snapshot, in definition, BuffEffectPhase.Refresh, 0);
+                refreshed++;
+            }
+
+            return refreshed;
+        }
+
+        private void ReplaceOrAppendCompressedParallelLayers(
+            World world,
+            in SimulationContext context,
+            Entity runtimeEntity,
+            ref CompressedParallelBuffRuntimeComponent runtime,
+            in BuffDefinition definition,
+            int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                if (runtime.layerCount < definition.MaxStack)
+                {
+                    AppendCompressedParallelLayers(world, in context, runtimeEntity, ref runtime, in definition, 1);
+                    continue;
+                }
+
+                int removeIndex = runtime.layers.FindEarliestIndex(runtime.layerCount);
+
+                if (removeIndex >= 0)
+                    RemoveCompressedParallelLayerAt(world, in context, runtimeEntity, ref runtime, in definition, removeIndex);
+
+                AppendCompressedParallelLayers(world, in context, runtimeEntity, ref runtime, in definition, 1);
+            }
+        }
+
+        private int RemoveCompressedParallelLayers(
+            World world,
+            in SimulationContext context,
+            Entity runtimeEntity,
+            ref CompressedParallelBuffRuntimeComponent runtime,
+            in BuffDefinition definition,
+            int count,
+            ParallelBuffStackDownPolicy policy)
+        {
+            if (runtime.layerCount <= 0)
+                return 0;
+
+            if (policy == ParallelBuffStackDownPolicy.ClearAll)
+                return ClearCompressedParallelLayers(world, in context, runtimeEntity, ref runtime, in definition);
+
+            int removed = 0;
+            int removeLimit = Math.Min(count, runtime.layerCount);
+
+            for (int i = 0; i < removeLimit; i++)
+            {
+                int index = policy == ParallelBuffStackDownPolicy.RemoveLatest
+                    ? runtime.layers.FindLatestIndex(runtime.layerCount)
+                    : runtime.layers.FindEarliestIndex(runtime.layerCount);
+
+                if (index < 0)
+                    break;
+
+                if (RemoveCompressedParallelLayerAt(world, in context, runtimeEntity, ref runtime, in definition, index))
+                    removed++;
+            }
+
+            if (runtime.layerCount <= 0 && removed > 0)
+                QueueCompressedRuntimePendingRemove(world, runtimeEntity, in runtime);
+
+            return removed;
+        }
+
+        private bool RemoveCompressedParallelLayerAt(
+            World world,
+            in SimulationContext context,
+            Entity runtimeEntity,
+            ref CompressedParallelBuffRuntimeComponent runtime,
+            in BuffDefinition definition,
+            int index)
+        {
+            if (index < 0 || index >= runtime.layerCount)
+                return false;
+
+            CompressedParallelBuffLayer layer = runtime.layers.Get(index);
+            BuffRuntimeComponent snapshot = CreateCompressedLayerSnapshot(in runtime, in layer, in definition, context.frameNumber);
+            QueueLifecycleEffect(in context, runtimeEntity, in snapshot, in definition, BuffEffectPhase.StackChanged, -1);
+            QueueLifecycleEffect(in context, runtimeEntity, in snapshot, in definition, BuffEffectPhase.Remove, 0);
+            runtime.layers.RemoveAt(index, runtime.layerCount);
+            runtime.layerCount--;
+            return true;
+        }
+
+        private int ClearCompressedParallelLayers(
+            World world,
+            in SimulationContext context,
+            Entity runtimeEntity,
+            ref CompressedParallelBuffRuntimeComponent runtime,
+            in BuffDefinition definition)
+        {
+            int removed = 0;
+
+            while (runtime.layerCount > 0)
+            {
+                if (RemoveCompressedParallelLayerAt(world, in context, runtimeEntity, ref runtime, in definition, 0))
+                    removed++;
+            }
+
+            runtime.layers.Clear();
+
+            if (runtime.layerCount <= 0 && removed > 0)
+                QueueCompressedRuntimePendingRemove(world, runtimeEntity, in runtime);
+
+            return removed;
+        }
+
+        private static CompressedParallelBuffLayer CreateCompressedParallelLayer(
+            ref CompressedParallelBuffRuntimeComponent runtime,
+            in SimulationContext context,
+            in BuffDefinition definition)
+        {
+            int layerId = runtime.nextLayerId++;
+
+            return new CompressedParallelBuffLayer
+            {
+                layerId = layerId,
+                expireFrame = definition.IsForever ? int.MaxValue : context.frameNumber + definition.DurationFrames,
+                elapsedFrames = 0,
+                ticks = 0,
+                layerRuntimeHandle = CreateCompressedLayerRuntimeHandle(runtime.compressedRuntimeHandle, layerId)
+            };
+        }
+
+        private static int CreateCompressedLayerRuntimeHandle(int compressedRuntimeHandle, int layerId)
+        {
+            unchecked
+            {
+                return (compressedRuntimeHandle * 397) ^ layerId;
+            }
+        }
+
+        private static BuffRuntimeComponent CreateCompressedLayerSnapshot(
+            in CompressedParallelBuffRuntimeComponent runtime,
+            in CompressedParallelBuffLayer layer,
+            in BuffDefinition definition,
+            int frameNumber)
+        {
+            return new BuffRuntimeComponent
+            {
+                target = runtime.target,
+                source = runtime.source,
+                configId = runtime.configId,
+                runtimeHandle = layer.layerRuntimeHandle,
+                stack = 1,
+                durationFrames = definition.DurationFrames,
+                remainingFrames = definition.IsForever ? 0 : Math.Max(0, layer.expireFrame - frameNumber),
+                tickIntervalFrames = definition.TickIntervalFrames,
+                elapsedFrames = layer.elapsedFrames,
+                ticks = layer.ticks,
+                maxStack = definition.MaxStack,
+                priority = runtime.priority,
+                unlimited = definition.Unlimited,
+                isForever = definition.IsForever,
+                buffType = BuffInstanceType.parallel
+            };
+        }
+
+        private void TickCompressedParallelLayers(
+            in SimulationContext context,
+            Entity runtimeEntity,
+            ref CompressedParallelBuffRuntimeComponent runtime,
+            in BuffDefinition definition)
+        {
+            for (int i = 0; i < runtime.layerCount; i++)
+            {
+                CompressedParallelBuffLayer layer = runtime.layers.Get(i);
+                layer.elapsedFrames++;
+
+                if (definition.TickIntervalFrames > 0 && layer.elapsedFrames % definition.TickIntervalFrames == 0)
+                {
+                    layer.ticks++;
+                    BuffRuntimeComponent snapshot = CreateCompressedLayerTickSnapshot(in runtime, in layer, in definition, context.frameNumber);
+                    QueueLifecycleEffect(in context, runtimeEntity, in snapshot, in definition, BuffEffectPhase.Tick, 0);
+                }
+
+                runtime.layers.Set(i, in layer);
+            }
+        }
+
+        private int ExpireCompressedParallelLayers(
+            in SimulationContext context,
+            Entity runtimeEntity,
+            ref CompressedParallelBuffRuntimeComponent runtime,
+            in BuffDefinition definition)
+        {
+            if (definition.IsForever)
+                return 0;
+
+            int expired = 0;
+
+            while (runtime.layerCount > 0)
+            {
+                int expiredIndex = FindExpiredCompressedLayerIndex(in runtime, context.frameNumber);
+
+                if (expiredIndex < 0)
+                    break;
+
+                CompressedParallelBuffLayer layer = runtime.layers.Get(expiredIndex);
+                BuffRuntimeComponent snapshot = CreateCompressedLayerRemoveSnapshot(in runtime, in layer, in definition);
+                QueueLifecycleEffect(in context, runtimeEntity, in snapshot, in definition, BuffEffectPhase.StackChanged, -1);
+                QueueLifecycleEffect(in context, runtimeEntity, in snapshot, in definition, BuffEffectPhase.Remove, 0);
+
+                runtime.layers.RemoveAt(expiredIndex, runtime.layerCount);
+                runtime.layerCount--;
+                expired++;
+            }
+
+            return expired;
+        }
+
+        private static int FindExpiredCompressedLayerIndex(in CompressedParallelBuffRuntimeComponent runtime, int frameNumber)
+        {
+            int bestIndex = -1;
+            CompressedParallelBuffLayer bestLayer = default(CompressedParallelBuffLayer);
+
+            for (int i = 0; i < runtime.layerCount; i++)
+            {
+                CompressedParallelBuffLayer layer = runtime.layers.Get(i);
+
+                if (!IsCompressedLayerExpired(in layer, frameNumber))
+                    continue;
+
+                if (bestIndex < 0 || CompareCompressedLayerExpiry(in layer, in bestLayer) < 0)
+                {
+                    bestIndex = i;
+                    bestLayer = layer;
+                }
+            }
+
+            return bestIndex;
+        }
+
+        private static bool IsCompressedLayerExpired(in CompressedParallelBuffLayer layer, int frameNumber)
+        {
+            return layer.expireFrame != int.MaxValue && frameNumber >= layer.expireFrame;
+        }
+
+        private static int CompareCompressedLayerExpiry(in CompressedParallelBuffLayer left, in CompressedParallelBuffLayer right)
+        {
+            int result = left.expireFrame.CompareTo(right.expireFrame);
+
+            if (result != 0)
+                return result;
+
+            result = left.layerId.CompareTo(right.layerId);
+
+            if (result != 0)
+                return result;
+
+            return left.layerRuntimeHandle.CompareTo(right.layerRuntimeHandle);
+        }
+
+        private static BuffRuntimeComponent CreateCompressedLayerTickSnapshot(
+            in CompressedParallelBuffRuntimeComponent runtime,
+            in CompressedParallelBuffLayer layer,
+            in BuffDefinition definition,
+            int frameNumber)
+        {
+            BuffRuntimeComponent snapshot = CreateCompressedLayerSnapshot(in runtime, in layer, in definition, frameNumber);
+            snapshot.remainingFrames = definition.IsForever ? 0 : Math.Max(0, layer.expireFrame - frameNumber + 1);
+            snapshot.elapsedFrames = layer.elapsedFrames;
+            snapshot.ticks = layer.ticks;
+            return snapshot;
+        }
+
+        private static BuffRuntimeComponent CreateCompressedLayerRemoveSnapshot(
+            in CompressedParallelBuffRuntimeComponent runtime,
+            in CompressedParallelBuffLayer layer,
+            in BuffDefinition definition)
+        {
+            BuffRuntimeComponent snapshot = CreateCompressedLayerSnapshot(in runtime, in layer, in definition, layer.expireFrame);
+            snapshot.remainingFrames = 0;
+            snapshot.elapsedFrames = layer.elapsedFrames;
+            snapshot.ticks = layer.ticks;
+            return snapshot;
+        }
+
+        private static bool TryBuildCompressedViewData(
+            in CompressedParallelBuffRuntimeComponent runtime,
+            in BuffDefinition definition,
+            int currentFrame,
+            out BuffViewData view)
+        {
+            if (runtime.layerCount <= 0)
+            {
+                view = default(BuffViewData);
+                return false;
+            }
+
+            view = ToCompressedViewData(in runtime, in definition, currentFrame);
+
+            if (view.Stack > 0)
+                return true;
+
+            view = default(BuffViewData);
+            return false;
+        }
+
+        private static BuffViewData ToCompressedViewData(
+            in CompressedParallelBuffRuntimeComponent runtime,
+            in BuffDefinition definition,
+            int currentFrame)
+        {
+            int activeLayerCount = 0;
+            bool hasForever = definition.IsForever;
+            bool hasDuration = false;
+            int minRemainingFrames = 0;
+            bool hasRuntimeHandle = false;
+            int minRuntimeHandle = 0;
+
+            for (int i = 0; i < runtime.layerCount; i++)
+            {
+                CompressedParallelBuffLayer layer = runtime.layers.Get(i);
+
+                if (!IsCompressedLayerActiveForView(in layer, currentFrame))
+                    continue;
+
+                activeLayerCount++;
+
+                int layerRemainingFrames = GetCompressedLayerViewRemainingFrames(in layer, in definition, currentFrame);
+
+                if (layerRemainingFrames < 0)
+                {
+                    hasForever = true;
+                }
+                else
+                {
+                    if (!hasDuration || layerRemainingFrames < minRemainingFrames)
+                        minRemainingFrames = layerRemainingFrames;
+
+                    hasDuration = true;
+                }
+
+                if (!hasRuntimeHandle || layer.layerRuntimeHandle < minRuntimeHandle)
+                {
+                    minRuntimeHandle = layer.layerRuntimeHandle;
+                    hasRuntimeHandle = true;
+                }
+            }
+
+            if (activeLayerCount <= 0 || !hasRuntimeHandle)
+                return default(BuffViewData);
+
+            int remainingFrames = hasForever ? -1 : minRemainingFrames;
+            return new BuffViewData(runtime.target, runtime.source, runtime.configId, activeLayerCount, remainingFrames, minRuntimeHandle);
+        }
+
+        private static bool IsCompressedLayerActiveForView(in CompressedParallelBuffLayer layer, int currentFrame)
+        {
+            return layer.expireFrame == int.MaxValue || currentFrame < layer.expireFrame;
+        }
+
+        private static int GetCompressedLayerViewRemainingFrames(
+            in CompressedParallelBuffLayer layer,
+            in BuffDefinition definition,
+            int currentFrame)
+        {
+            if (definition.IsForever || layer.expireFrame == int.MaxValue)
+                return -1;
+
+            return Math.Max(0, layer.expireFrame - currentFrame);
         }
 
         private bool TryGetFirstRuntimeEntity(World world, BuffRuntimeKey key, BuffInstanceType buffType, out Entity runtimeEntity)
@@ -1340,6 +2108,9 @@ namespace BuffSystem
                     continue;
 
                 lastEntity = runtimeEntity;
+
+                if (world.TryGetComponent(runtimeEntity, out CompressedParallelBuffRuntimeComponent compressedRuntime))
+                    RemoveCompressedRuntimeLookup(new BuffRuntimeKey(compressedRuntime.target, compressedRuntime.source, compressedRuntime.configId));
 
                 if (world.IsAlive(runtimeEntity))
                     world.DestroyEntity(runtimeEntity);

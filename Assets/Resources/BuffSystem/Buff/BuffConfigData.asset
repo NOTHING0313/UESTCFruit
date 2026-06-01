@@ -12,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a78250dae047eeb469650a04aa543dee, type: 3}
   m_Name: BuffConfigData
   m_EditorClassIdentifier: 
-  ID: 0
-  Name: 
+  ID: 1
+  Name: Test1
   Description: 
   Icon: {fileID: 0}
   Priority: 0
@@ -21,13 +21,14 @@ MonoBehaviour:
   IsForever: 0
   Duration: 1
   BuffTriggerType: 0
-  TickTime: 0
+  TickTime: 1
   BuffType: 0
   Unlimited: 0
   MaxStack: 1
   NormalStackPolicy: 0
   ParallelStackUpPolicy: 0
   ParallelStackDownPolicy: 0
+  ParallelStorageMode: 0
   DurationExtendPerStack: 0
   EffectId: 0
   EventIds: 
