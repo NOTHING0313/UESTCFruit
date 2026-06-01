@@ -1,6 +1,7 @@
-﻿using BuffSystem;   // BuffDefinition / BuffDefinitionRegistry 等所在命名空间
-using ECSFrameWork;
+﻿using BuffSystem;
 using Contracts;
+using ECSFrameWork;
+
 using UnityEngine;
 
 namespace View
@@ -13,10 +14,6 @@ namespace View
 
         [Header("View")]
         [SerializeField] private Transform _worldViewRoot;
-        [SerializeField] private GameObject _playerPrefab;
-
-        [Header("Input")]
-        [SerializeField] private UnityInputAdapter _inputAdapter;
 
         [Header("Debug")]
         [SerializeField] private LogicFrameDebugPanel _debugPanel;
@@ -27,7 +24,6 @@ namespace View
         private ViewManager _viewManager;
         private EntityViewBinder _binder;
         private IViewBridge _viewBridge;
-        private Entity _playerEntity;
 
         private void Start()
         {
@@ -38,107 +34,54 @@ namespace View
                 return;
             }
 
-            // ---------- 核心世界 ----------
             _world = new World();
-
-            // ---------- Buff 系统（注册测试用 configId=1）----------
-            var defRegistry = new BuffDefinitionRegistry();
-            defRegistry.Register(new BuffDefinition(
-                configId: 1,
-                name: "TestBuff",
-                priority: 0,
-                maxStack: 1,
-                unlimited: false,
-                isForever: false,
-                durationFrames: 60,            // 1秒 (60fps)
-                tickIntervalFrames: 0,
-                durationExtendFramesPerStack: 0,
-                triggerType: BuffTriggerType.Tick,          // 修正：Tick 代替之前的 TimeTrigger
-                buffType: BuffInstanceType.normal,
-                normalStackPolicy: NormalBuffStackPolicy.RefreshDuration,
-                parallelStackUpPolicy: ParallelBuffStackUpPolicy.Append,
-                parallelStackDownPolicy: ParallelBuffStackDownPolicy.RemoveEarliest,
-                effectId: 0
-            ));
-            _buffSystem = new BuffSystemCore(defRegistry, new BuffEffectRegistry());
-
-            // ---------- 固定帧推进 ----------
+            _buffSystem = new BuffSystemCore();
             _runner = new SimulateRunner(_world, _fixedDeltaTime, _maxCompensationTicks);
             timeSim.InitSimulator(_runner);
 
-            // ---------- 视图管理 ----------
             IViewInstanceProvider provider = new GameObjectPoolViewInstanceProvider(_worldViewRoot);
             _viewManager = new ViewManager(provider);
-            if (_playerPrefab != null)
-                _viewManager.RegisterPrefab(1, _playerPrefab);
 
-            // ---------- 绑定器与桥接器 ----------
+            // 绑定器
             _binder = new EntityViewBinder(_viewManager);
+            // 桥接器
             _viewBridge = new ViewBridge(_binder, _viewManager, _buffSystem);
 
-            // ---------- 系统注册（按 sequence 顺序）----------
-            _world.AddSystem(new ViewSpawnSystem(_viewManager));
-            _world.AddSystem(new EntityViewBindingSystem(_binder));
-            _world.AddSystem(new InputMoveSystem());
-            _world.AddSystem(new MovementSystem());
-            _world.AddSystem(new BuffSystemBridge(_buffSystem));
-            _world.AddSystem(new ViewSyncSystem(_viewManager));
-            _world.AddSystem(new WorldViewEventConsumer(_viewBridge));
-            _world.AddSystem(new ViewDestroySystem(_viewManager));
-            _world.AddSystem(new EntityDestroySystem(_viewManager));
+            // 注册 System（按 sequence 顺序）
+            // 业务系统（暂未实现，注释）
+            // _world.AddSystem(new InputMoveSystem());
+            // _world.AddSystem(new MovementSystem());
+            // _world.AddSystem(new DamageResolveSystem());
+            // _world.AddSystem(new DeadCleanupSystem());
 
-            // ---------- 创建玩家实体 ----------
-            CreatePlayerEntity();
+            _world.AddSystem(new BuffSystemBridge(_buffSystem));   // Buff 桥接
 
-            // ---------- 输入 ----------
-            if (_inputAdapter != null)
-            {
-                _inputAdapter.Init(_world, _playerEntity);
-                _runner.BeforeTick += _inputAdapter.WriteInputToWorld;
-            }
+            _world.AddSystem(new ViewSpawnSystem(_viewManager));   // 生成 View
+            _world.AddSystem(new EntityViewBindingSystem(_binder)); // 绑定 Entity ↔ View
+            _world.AddSystem(new ViewSyncSystem(_viewManager));    // 同步位置
+            _world.AddSystem(new ViewDestroySystem(_viewManager)); // 销毁 View （会自动解绑）
+            _world.AddSystem(new WorldViewEventConsumer(_viewBridge)); // 消费事件
 
-            // ---------- 调试面板 ----------
             if (_debugPanel != null)
             {
                 var probe = new SimulationDebugProbe(_world, _buffSystem, _runner);
                 _debugPanel.Initialize(probe);
             }
 
-            Debug.Log("[SimulationInitializer] Initialized. Use WASD to move.");
+            Debug.Log("[SimulationInitializer] Initialized.");
         }
 
         private void Update()
         {
-            if (_inputAdapter != null)
-                _inputAdapter.SampleInput();
             _debugPanel?.Refresh();
         }
 
         private void OnDestroy()
         {
-            if (_runner != null && _inputAdapter != null)
-                _runner.BeforeTick -= _inputAdapter.WriteInputToWorld;
             _viewManager?.Clear();
             _world?.Dispose();
         }
 
-        private void CreatePlayerEntity()
-        {
-            Vector3 spawnPos = Vector3.zero;
-            _playerEntity = _world.CreateEntity();
-            _world.SetComponent(_playerEntity, new PositionComponent(spawnPos.x, spawnPos.y, spawnPos.z));
-            _world.SetComponent(_playerEntity, new VelocityComponent(0f, 0f, 0f));
-            _world.SetComponent(_playerEntity, new PrefabViewRequestComponent(1));
-            _world.SetComponent(_playerEntity, new PlayerInputSnapshotComponent(0f, 0f));
-            _world.SetComponent(_playerEntity, new PlayerTagComponent());
-            _world.SetComponent(_playerEntity, new MoveSpeedComponent(5f));
-
-            // 测试 Buff
-            var buffCmd = new AddBuffCommand(_playerEntity, configId: 1, source: _playerEntity, stack: 1);
-            _buffSystem.AddBuff(buffCmd);
-        }
-
-        // BuffSystem 桥接
         private class BuffSystemBridge : IFixedStepSystem
         {
             private readonly BuffSystemCore _core;
