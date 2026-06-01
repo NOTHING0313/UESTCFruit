@@ -22,6 +22,7 @@ namespace BuffSystem
         public readonly NormalBuffStackPolicy NormalStackPolicy;
         public readonly ParallelBuffStackUpPolicy ParallelStackUpPolicy;
         public readonly ParallelBuffStackDownPolicy ParallelStackDownPolicy;
+        public readonly ParallelBuffStorageMode ParallelStorageMode;
         public readonly int EffectId;
         public readonly int[] EventIds;
 
@@ -41,7 +42,8 @@ namespace BuffSystem
             ParallelBuffStackUpPolicy parallelStackUpPolicy,
             ParallelBuffStackDownPolicy parallelStackDownPolicy,
             int effectId,
-            int[] eventIds = null)
+            int[] eventIds = null,
+            ParallelBuffStorageMode parallelStorageMode = ParallelBuffStorageMode.EntityPerStack)
         {
             ConfigId = configId;
             Name = name ?? string.Empty;
@@ -57,6 +59,7 @@ namespace BuffSystem
             NormalStackPolicy = normalStackPolicy;
             ParallelStackUpPolicy = parallelStackUpPolicy;
             ParallelStackDownPolicy = parallelStackDownPolicy;
+            ParallelStorageMode = parallelStorageMode;
             EffectId = effectId;
             EventIds = CopyEventIds(eventIds);
         }

@@ -84,6 +84,58 @@ namespace BuffSystem
             }
         }
 
+        private readonly struct BuffEffectRequest
+        {
+            public readonly int frameNumber;
+            public readonly int sequence;
+            public readonly BuffEffectPhase phase;
+            public readonly Entity runtimeEntity;
+            public readonly Entity target;
+            public readonly Entity source;
+            public readonly int configId;
+            public readonly int effectId;
+            public readonly int priority;
+            public readonly int runtimeHandle;
+            public readonly int stack;
+            public readonly int stackDelta;
+            public readonly int remainingFrames;
+            public readonly int elapsedFrames;
+            public readonly int ticks;
+            public readonly BuffRuntimeComponent runtimeSnapshot;
+
+            public BuffEffectRequest(int frameNumber, int sequence, BuffEffectPhase phase, Entity runtimeEntity, in BuffRuntimeComponent runtime, in BuffDefinition definition, int stackDelta)
+            {
+                this.frameNumber = frameNumber;
+                this.sequence = sequence;
+                this.phase = phase;
+                this.runtimeEntity = runtimeEntity;
+                target = runtime.target;
+                source = runtime.source;
+                configId = runtime.configId;
+                effectId = definition.EffectId;
+                priority = definition.Priority;
+                runtimeHandle = runtime.runtimeHandle;
+                stack = runtime.stack;
+                this.stackDelta = stackDelta;
+                remainingFrames = runtime.remainingFrames;
+                elapsedFrames = runtime.elapsedFrames;
+                ticks = runtime.ticks;
+                runtimeSnapshot = runtime;
+            }
+        }
+
+        private readonly struct PendingRemoveRuntime
+        {
+            public readonly Entity runtimeEntity;
+            public readonly int runtimeHandle;
+
+            public PendingRemoveRuntime(Entity runtimeEntity, int runtimeHandle)
+            {
+                this.runtimeEntity = runtimeEntity;
+                this.runtimeHandle = runtimeHandle;
+            }
+        }
+
         private sealed class RuntimeRemovalComparer : IComparer<Entity>
         {
             private BuffSystemCore _owner;
@@ -121,12 +173,63 @@ namespace BuffSystem
             }
         }
 
+        private sealed class BuffEffectRequestComparer : IComparer<BuffEffectRequest>
+        {
+            public int Compare(BuffEffectRequest left, BuffEffectRequest right)
+            {
+                int frameCompare = left.frameNumber.CompareTo(right.frameNumber);
+
+                if (frameCompare != 0)
+                    return frameCompare;
+
+                int phaseCompare = GetLifecyclePhaseOrder(left.phase).CompareTo(GetLifecyclePhaseOrder(right.phase));
+
+                if (phaseCompare != 0)
+                    return phaseCompare;
+
+                int priorityCompare = left.priority.CompareTo(right.priority);
+
+                if (priorityCompare != 0)
+                    return priorityCompare;
+
+                int handleCompare = left.runtimeHandle.CompareTo(right.runtimeHandle);
+
+                if (handleCompare != 0)
+                    return handleCompare;
+
+                int entityCompare = CompareEntity(left.runtimeEntity, right.runtimeEntity);
+
+                if (entityCompare != 0)
+                    return entityCompare;
+
+                return left.sequence.CompareTo(right.sequence);
+            }
+        }
+
+        private sealed class PendingRemoveRuntimeComparer : IComparer<PendingRemoveRuntime>
+        {
+            public int Compare(PendingRemoveRuntime left, PendingRemoveRuntime right)
+            {
+                int handleCompare = left.runtimeHandle.CompareTo(right.runtimeHandle);
+
+                if (handleCompare != 0)
+                    return handleCompare;
+
+                return CompareEntity(left.runtimeEntity, right.runtimeEntity);
+            }
+        }
+
         private readonly IBuffDefinitionProvider _definitionProvider;
         private readonly BuffEffectRegistry _effectRegistry;
         private readonly RuntimeRemovalComparer _runtimeRemovalComparer = new RuntimeRemovalComparer();
         private readonly BuffEventCandidateComparer _eventCandidateComparer = new BuffEventCandidateComparer();
+        private readonly BuffEffectRequestComparer _effectRequestComparer = new BuffEffectRequestComparer();
+        private readonly PendingRemoveRuntimeComparer _pendingRemoveRuntimeComparer = new PendingRemoveRuntimeComparer();
 
         private readonly List<QueuedCommand> _queuedCommands = new List<QueuedCommand>();
+        private readonly List<BuffEffectRequest> _pendingLifecycleEffects = new List<BuffEffectRequest>(64);
+        private readonly List<BuffEffectRequest> _executingLifecycleEffects = new List<BuffEffectRequest>(64);
+        private readonly List<PendingRemoveRuntime> _pendingRemoveRuntimes = new List<PendingRemoveRuntime>(32);
         private readonly List<Entity> _runtimeEntities = new List<Entity>(128);
         private readonly List<Entity> _runtimeEntitiesThisFrame = new List<Entity>(128);
         private readonly List<Entity> _createdRuntimeEntitiesThisFrame = new List<Entity>(32);
@@ -137,6 +240,7 @@ namespace BuffSystem
         private readonly List<BuffRuntimeKey> _removeLookupKeys = new List<BuffRuntimeKey>(32);
         private readonly List<BuffEventCandidate> _eventCandidates = new List<BuffEventCandidate>(32);
         private readonly HashSet<Entity> _eventCandidateEntitySet = new HashSet<Entity>();
+        private readonly HashSet<Entity> _pendingRemoveRuntimeSet = new HashSet<Entity>();
         private readonly Dictionary<BuffRuntimeKey, List<Entity>> _runtimeEntitiesByKey = new Dictionary<BuffRuntimeKey, List<Entity>>();
         private readonly Dictionary<BuffRuntimeKey, int> _runtimeLookupUnusedFrames = new Dictionary<BuffRuntimeKey, int>();
         private readonly Dictionary<int, List<Entity>> _eventRuntimeEntitiesByEventId = new Dictionary<int, List<Entity>>();
@@ -149,6 +253,7 @@ namespace BuffSystem
 
         private bool _viewCacheDirty = true;
         private bool _eventRuntimeIndexDirty = true;
+        private int _nextLifecycleEffectSequence;
         private int _runtimeSnapshotFrameNumber = -1;
         private int _eventRuntimeIndexFrameNumber = -1;
 
@@ -175,11 +280,14 @@ namespace BuffSystem
 
             EnsureQueries(world);
             _pendingRuntimeComponents.Clear();
+            _nextLifecycleEffectSequence = 0;
             CaptureRuntimeEntities(world, context.frameNumber);
             RebuildRuntimeLookup(world);
             ConsumeRequestComponents(world, in context);
             ConsumeQueuedCommands(world, in context);
             TickRuntimeBuffs(world, in context);
+            FlushLifecycleEffects(world, in context);
+            DestroyPendingRemoveRuntimes(world);
             _pendingRuntimeComponents.Clear();
         }
 
@@ -247,6 +355,9 @@ namespace BuffSystem
         public void Dispose()
         {
             _queuedCommands.Clear();
+            _pendingLifecycleEffects.Clear();
+            _executingLifecycleEffects.Clear();
+            _pendingRemoveRuntimes.Clear();
             _runtimeEntities.Clear();
             _runtimeEntitiesThisFrame.Clear();
             _createdRuntimeEntitiesThisFrame.Clear();
@@ -257,6 +368,7 @@ namespace BuffSystem
             _removeLookupKeys.Clear();
             _eventCandidates.Clear();
             _eventCandidateEntitySet.Clear();
+            _pendingRemoveRuntimeSet.Clear();
             _runtimeEntitiesByKey.Clear();
             _runtimeLookupUnusedFrames.Clear();
             _eventRuntimeEntitiesByEventId.Clear();
@@ -267,6 +379,7 @@ namespace BuffSystem
             _validTargetViewCache.Clear();
             _viewCacheDirty = true;
             _eventRuntimeIndexDirty = true;
+            _nextLifecycleEffectSequence = 0;
             _runtimeSnapshotFrameNumber = -1;
             _eventRuntimeIndexFrameNumber = -1;
             _queryWorld = null;
@@ -377,11 +490,11 @@ namespace BuffSystem
                 int beforeStack = runtime.stack;
                 ApplyNormalStackPolicy(ref runtime, in definition, command.Stack);
                 WriteRuntimeComponent(world, runtimeEntity, runtime);
-                RunEffect(world, in context, runtimeEntity, in runtime, in definition, BuffEffectPhase.Refresh, 0);
+                QueueLifecycleEffect(in context, runtimeEntity, in runtime, in definition, BuffEffectPhase.Refresh, 0);
 
                 int delta = runtime.stack - beforeStack;
                 if (delta != 0)
-                    RunEffect(world, in context, runtimeEntity, in runtime, in definition, BuffEffectPhase.StackChanged, delta);
+                    QueueLifecycleEffect(in context, runtimeEntity, in runtime, in definition, BuffEffectPhase.StackChanged, delta);
 
                 return;
             }
@@ -459,8 +572,10 @@ namespace BuffSystem
                 runtime.remainingFrames = definition.IsForever ? 0 : definition.DurationFrames;
                 runtime.durationFrames = definition.DurationFrames;
                 runtime.tickIntervalFrames = definition.TickIntervalFrames;
+                runtime.elapsedFrames = 0;
+                runtime.ticks = 0;
                 WriteRuntimeComponent(world, runtimeEntity, runtime);
-                RunEffect(world, in context, runtimeEntity, in runtime, in definition, BuffEffectPhase.Refresh, 0);
+                QueueLifecycleEffect(in context, runtimeEntity, in runtime, in definition, BuffEffectPhase.Refresh, 0);
                 refreshed++;
             }
 
@@ -513,7 +628,7 @@ namespace BuffSystem
 
                 if (runtime.buffType == BuffInstanceType.parallel)
                 {
-                    RemoveRuntimeEntity(world, in context, runtimeEntity, in runtime, in definition, true);
+                    QueueRemoveRuntimeEntity(world, in context, runtimeEntity, in runtime, in definition, true);
                     remainRemoveCount--;
                     continue;
                 }
@@ -521,7 +636,7 @@ namespace BuffSystem
                 if (command.ClearAllStacks || remainRemoveCount >= runtime.stack)
                 {
                     int removed = runtime.stack;
-                    RemoveRuntimeEntity(world, in context, runtimeEntity, in runtime, in definition, true);
+                    QueueRemoveRuntimeEntity(world, in context, runtimeEntity, in runtime, in definition, true);
                     remainRemoveCount -= removed;
                     continue;
                 }
@@ -529,7 +644,7 @@ namespace BuffSystem
                 runtime.stack -= remainRemoveCount;
                 runtime.remainingFrames = runtime.isForever ? 0 : runtime.durationFrames;
                 WriteRuntimeComponent(world, runtimeEntity, runtime);
-                RunEffect(world, in context, runtimeEntity, in runtime, in definition, BuffEffectPhase.StackChanged, -remainRemoveCount);
+                QueueLifecycleEffect(in context, runtimeEntity, in runtime, in definition, BuffEffectPhase.StackChanged, -remainRemoveCount);
                 remainRemoveCount = 0;
             }
         }
@@ -540,6 +655,9 @@ namespace BuffSystem
             {
                 Entity runtimeEntity = _runtimeEntitiesThisFrame[i];
 
+                if (IsPendingRemoveRuntime(runtimeEntity))
+                    continue;
+
                 if (!world.TryGetComponent(runtimeEntity, out BuffRuntimeComponent runtime))
                     continue;
 
@@ -548,7 +666,7 @@ namespace BuffSystem
 
                 if (runtime.stack <= 0 || !world.IsAlive(runtime.target))
                 {
-                    RemoveRuntimeEntity(world, in context, runtimeEntity, in runtime, in definition, runtime.stack > 0);
+                    QueueRemoveRuntimeEntity(world, in context, runtimeEntity, in runtime, in definition, runtime.stack > 0);
                     continue;
                 }
 
@@ -558,7 +676,7 @@ namespace BuffSystem
                 {
                     runtime.ticks++;
                     WriteRuntimeComponent(world, runtimeEntity, runtime);
-                    RunEffect(world, in context, runtimeEntity, in runtime, in definition, BuffEffectPhase.Tick, 0);
+                    QueueLifecycleEffect(in context, runtimeEntity, in runtime, in definition, BuffEffectPhase.Tick, 0);
                 }
 
                 if (runtime.isForever)
@@ -577,14 +695,14 @@ namespace BuffSystem
 
                 if (runtime.buffType == BuffInstanceType.parallel || runtime.stack <= 1)
                 {
-                    RemoveRuntimeEntity(world, in context, runtimeEntity, in runtime, in definition, true);
+                    QueueRemoveRuntimeEntity(world, in context, runtimeEntity, in runtime, in definition, true);
                     continue;
                 }
 
                 runtime.stack--;
                 runtime.remainingFrames = Math.Max(1, runtime.durationFrames);
                 WriteRuntimeComponent(world, runtimeEntity, runtime);
-                RunEffect(world, in context, runtimeEntity, in runtime, in definition, BuffEffectPhase.StackChanged, -1);
+                QueueLifecycleEffect(in context, runtimeEntity, in runtime, in definition, BuffEffectPhase.StackChanged, -1);
             }
         }
 
@@ -612,8 +730,8 @@ namespace BuffSystem
             if (!runEffects)
                 return;
 
-            RunEffect(world, in context, runtimeEntity, in runtime, in definition, BuffEffectPhase.Apply, 0);
-            RunEffect(world, in context, runtimeEntity, in runtime, in definition, BuffEffectPhase.StackChanged, stack);
+            QueueLifecycleEffect(in context, runtimeEntity, in runtime, in definition, BuffEffectPhase.Apply, 0);
+            QueueLifecycleEffect(in context, runtimeEntity, in runtime, in definition, BuffEffectPhase.StackChanged, stack);
         }
 
         private void RemoveParallelStacks(World world, in SimulationContext context, BuffRuntimeKey key, BuffDefinition definition, int count)
@@ -629,26 +747,43 @@ namespace BuffSystem
                 if (!TryGetRuntimeComponent(world, runtimeEntity, out BuffRuntimeComponent runtime))
                     continue;
 
-                RemoveRuntimeEntity(world, in context, runtimeEntity, in runtime, in definition, true);
+                QueueRemoveRuntimeEntity(world, in context, runtimeEntity, in runtime, in definition, true);
                 removed++;
             }
         }
 
-        private void RemoveRuntimeEntity(World world, in SimulationContext context, Entity runtimeEntity, in BuffRuntimeComponent runtime, in BuffDefinition definition, bool emitStackChanged)
+        private void QueueRemoveRuntimeEntity(World world, in SimulationContext context, Entity runtimeEntity, in BuffRuntimeComponent runtime, in BuffDefinition definition, bool emitStackChanged)
         {
-            BuffRuntimeComponent removedRuntime = runtime;
-            int removedStack = removedRuntime.stack;
+            if (_pendingRemoveRuntimeSet.Contains(runtimeEntity))
+                return;
+
+            // Remove effects must observe the pre-removal runtime snapshot.
+            BuffRuntimeComponent runtimeBeforeRemove = runtime;
+            int removedStack = runtimeBeforeRemove.stack;
+
+            if (emitStackChanged && removedStack != 0)
+                QueueLifecycleEffect(in context, runtimeEntity, in runtimeBeforeRemove, in definition, BuffEffectPhase.StackChanged, -removedStack);
+
+            QueueLifecycleEffect(in context, runtimeEntity, in runtimeBeforeRemove, in definition, BuffEffectPhase.Remove, 0);
+            _pendingRemoveRuntimeSet.Add(runtimeEntity);
+            _pendingRemoveRuntimes.Add(new PendingRemoveRuntime(runtimeEntity, runtimeBeforeRemove.runtimeHandle));
+
+            RemoveRuntimeEntityFromLookup(runtimeBeforeRemove, runtimeEntity);
+
+            BuffRuntimeComponent removedRuntime = runtimeBeforeRemove;
             removedRuntime.stack = 0;
             WriteRuntimeComponent(world, runtimeEntity, removedRuntime);
             _pendingRuntimeComponents.Remove(runtimeEntity);
             _createdRuntimeComponentsThisFrame.Remove(runtimeEntity);
             MarkEventRuntimeIndexDirty();
+        }
 
-            if (emitStackChanged && removedStack != 0)
-                RunEffect(world, in context, runtimeEntity, in runtime, in definition, BuffEffectPhase.StackChanged, -removedStack);
+        private void RemoveRuntimeEntityFromLookup(in BuffRuntimeComponent runtime, Entity runtimeEntity)
+        {
+            BuffRuntimeKey key = new BuffRuntimeKey(runtime.target, runtime.source, runtime.configId);
 
-            RunEffect(world, in context, runtimeEntity, in runtime, in definition, BuffEffectPhase.Remove, 0);
-            world.DestroyEntity(runtimeEntity);
+            if (_runtimeEntitiesByKey.TryGetValue(key, out List<Entity> entities))
+                entities.Remove(runtimeEntity);
         }
 
         private void ApplyNormalStackPolicy(ref BuffRuntimeComponent runtime, in BuffDefinition definition, int incomingStack)
@@ -666,8 +801,11 @@ namespace BuffSystem
 
                 case NormalBuffStackPolicy.AddStackAndRefreshDuration:
                     runtime.stack = ClampStack(runtime.stack + incomingStack, definition.Unlimited, definition.MaxStack);
-                    runtime.durationFrames = definition.DurationFrames;
-                    runtime.remainingFrames = definition.IsForever ? 0 : definition.DurationFrames;
+                    ResetRuntimeDuration(ref runtime, in definition);
+                    break;
+
+                case NormalBuffStackPolicy.ResetDurationOnly:
+                    ResetRuntimeDuration(ref runtime, in definition);
                     break;
 
                 case NormalBuffStackPolicy.CyclicStack:
@@ -685,10 +823,17 @@ namespace BuffSystem
                 case NormalBuffStackPolicy.RefreshDuration:
                 default:
                     runtime.stack = ClampStack(runtime.stack + incomingStack, definition.Unlimited, definition.MaxStack);
-                    runtime.durationFrames = definition.DurationFrames;
-                    runtime.remainingFrames = definition.IsForever ? 0 : definition.DurationFrames;
+                    ResetRuntimeDuration(ref runtime, in definition);
                     break;
             }
+        }
+
+        private static void ResetRuntimeDuration(ref BuffRuntimeComponent runtime, in BuffDefinition definition)
+        {
+            runtime.durationFrames = definition.DurationFrames;
+            runtime.remainingFrames = definition.IsForever ? 0 : definition.DurationFrames;
+            runtime.elapsedFrames = 0;
+            runtime.ticks = 0;
         }
 
         private void RebuildRuntimeLookup(World world)
@@ -699,6 +844,9 @@ namespace BuffSystem
             for (int i = 0; i < _runtimeEntitiesThisFrame.Count; i++)
             {
                 Entity runtimeEntity = _runtimeEntitiesThisFrame[i];
+
+                if (IsPendingRemoveRuntime(runtimeEntity))
+                    continue;
 
                 if (!world.TryGetComponent(runtimeEntity, out BuffRuntimeComponent runtime))
                     continue;
@@ -731,7 +879,7 @@ namespace BuffSystem
             {
                 Entity runtimeEntity = _runtimeEntitiesThisFrame[i];
 
-                if (_queryWorld.TryGetComponent(runtimeEntity, out BuffRuntimeComponent runtime))
+                if (TryGetRuntimeComponent(_queryWorld, runtimeEntity, out BuffRuntimeComponent runtime))
                     AddRuntimeToViewCache(_queryWorld, in runtime);
             }
 
@@ -739,9 +887,7 @@ namespace BuffSystem
             {
                 Entity runtimeEntity = _createdRuntimeEntitiesThisFrame[i];
 
-                if (_queryWorld.TryGetComponent(runtimeEntity, out BuffRuntimeComponent runtime))
-                    AddRuntimeToViewCache(_queryWorld, in runtime);
-                else if (_createdRuntimeComponentsThisFrame.TryGetValue(runtimeEntity, out runtime))
+                if (TryGetRuntimeComponent(_queryWorld, runtimeEntity, out BuffRuntimeComponent runtime))
                     AddRuntimeToViewCache(_queryWorld, in runtime);
             }
 
@@ -830,6 +976,11 @@ namespace BuffSystem
             _eventRuntimeIndexDirty = true;
         }
 
+        private bool IsPendingRemoveRuntime(Entity runtimeEntity)
+        {
+            return _pendingRemoveRuntimeSet.Contains(runtimeEntity);
+        }
+
         private bool TryGetFirstRuntimeEntity(World world, BuffRuntimeKey key, BuffInstanceType buffType, out Entity runtimeEntity)
         {
             runtimeEntity = Entity.Invalid;
@@ -840,6 +991,9 @@ namespace BuffSystem
             for (int i = 0; i < entities.Count; i++)
             {
                 Entity entity = entities[i];
+
+                if (IsPendingRemoveRuntime(entity))
+                    continue;
 
                 if (!TryGetRuntimeComponent(world, entity, out BuffRuntimeComponent runtime))
                     continue;
@@ -863,7 +1017,12 @@ namespace BuffSystem
 
             for (int i = 0; i < entities.Count; i++)
             {
-                if (!TryGetRuntimeComponent(world, entities[i], out BuffRuntimeComponent runtime))
+                Entity runtimeEntity = entities[i];
+
+                if (IsPendingRemoveRuntime(runtimeEntity))
+                    continue;
+
+                if (!TryGetRuntimeComponent(world, runtimeEntity, out BuffRuntimeComponent runtime))
                     continue;
 
                 if (runtime.stack <= 0 || runtime.buffType != buffType)
@@ -880,7 +1039,15 @@ namespace BuffSystem
             results.Clear();
 
             if (_runtimeEntitiesByKey.TryGetValue(key, out List<Entity> entities))
-                results.AddRange(entities);
+            {
+                for (int i = 0; i < entities.Count; i++)
+                {
+                    Entity runtimeEntity = entities[i];
+
+                    if (!IsPendingRemoveRuntime(runtimeEntity))
+                        results.Add(runtimeEntity);
+                }
+            }
         }
 
         private void CollectRuntimeEntities(World world, RemoveBuffCommand command, List<Entity> results)
@@ -893,7 +1060,15 @@ namespace BuffSystem
                 BuffRuntimeKey key = new BuffRuntimeKey(command.Target, command.Source, command.ConfigId);
 
                 if (_runtimeEntitiesByKey.TryGetValue(key, out List<Entity> entities))
-                    results.AddRange(entities);
+                {
+                    for (int i = 0; i < entities.Count; i++)
+                    {
+                        Entity runtimeEntity = entities[i];
+
+                        if (!IsPendingRemoveRuntime(runtimeEntity))
+                            results.Add(runtimeEntity);
+                    }
+                }
 
                 return;
             }
@@ -901,6 +1076,9 @@ namespace BuffSystem
             for (int i = 0; i < _runtimeEntitiesThisFrame.Count; i++)
             {
                 Entity runtimeEntity = _runtimeEntitiesThisFrame[i];
+
+                if (IsPendingRemoveRuntime(runtimeEntity))
+                    continue;
 
                 if (!TryGetRuntimeComponent(world, runtimeEntity, out BuffRuntimeComponent runtime))
                     continue;
@@ -911,6 +1089,9 @@ namespace BuffSystem
 
             foreach (KeyValuePair<Entity, BuffRuntimeComponent> pair in _pendingRuntimeComponents)
             {
+                if (IsPendingRemoveRuntime(pair.Key))
+                    continue;
+
                 BuffRuntimeComponent runtime = pair.Value;
 
                 if (runtime.target == command.Target && runtime.configId == command.ConfigId)
@@ -1064,14 +1245,49 @@ namespace BuffSystem
             effect.OnEvent(in effectContext, in gameEvent);
         }
 
-        private void RunEffect(World world, in SimulationContext context, Entity runtimeEntity, in BuffRuntimeComponent runtime, in BuffDefinition definition, BuffEffectPhase phase, int stackDelta)
+        private void QueueLifecycleEffect(in SimulationContext context, Entity runtimeEntity, in BuffRuntimeComponent runtime, in BuffDefinition definition, BuffEffectPhase phase, int stackDelta)
         {
-            if (!_effectRegistry.TryGet(definition.EffectId, out IBuffEffectExecutor effect))
+            if (definition.EffectId == 0)
                 return;
 
-            BuffEffectContext effectContext = new BuffEffectContext(world, in context, runtimeEntity, in runtime, in definition);
+            _pendingLifecycleEffects.Add(new BuffEffectRequest(
+                context.frameNumber,
+                _nextLifecycleEffectSequence++,
+                phase,
+                runtimeEntity,
+                in runtime,
+                in definition,
+                stackDelta));
+        }
 
-            switch (phase)
+        private void FlushLifecycleEffects(World world, in SimulationContext context)
+        {
+            if (_pendingLifecycleEffects.Count == 0)
+                return;
+
+            _pendingLifecycleEffects.Sort(_effectRequestComparer);
+
+            _executingLifecycleEffects.Clear();
+            _executingLifecycleEffects.AddRange(_pendingLifecycleEffects);
+            _pendingLifecycleEffects.Clear();
+
+            for (int i = 0; i < _executingLifecycleEffects.Count; i++)
+                ExecuteLifecycleEffectRequest(world, in context, _executingLifecycleEffects[i]);
+
+            _executingLifecycleEffects.Clear();
+        }
+
+        private void ExecuteLifecycleEffectRequest(World world, in SimulationContext context, in BuffEffectRequest request)
+        {
+            if (!_definitionProvider.TryGetDefinition(request.configId, out BuffDefinition definition))
+                return;
+
+            if (!_effectRegistry.TryGet(request.effectId, out IBuffEffectExecutor effect))
+                return;
+
+            BuffEffectContext effectContext = new BuffEffectContext(world, in context, request.runtimeEntity, in request.runtimeSnapshot, in definition);
+
+            switch (request.phase)
             {
                 case BuffEffectPhase.Apply:
                     effect.OnApply(in effectContext);
@@ -1080,7 +1296,7 @@ namespace BuffSystem
                     effect.OnRefresh(in effectContext);
                     break;
                 case BuffEffectPhase.StackChanged:
-                    effect.OnStackChanged(in effectContext, stackDelta);
+                    effect.OnStackChanged(in effectContext, request.stackDelta);
                     break;
                 case BuffEffectPhase.Tick:
                     effect.OnTick(in effectContext);
@@ -1088,6 +1304,50 @@ namespace BuffSystem
                 case BuffEffectPhase.Remove:
                     effect.OnRemove(in effectContext);
                     break;
+            }
+        }
+
+        private void DestroyPendingRemoveRuntimes(World world)
+        {
+            if (_pendingRemoveRuntimes.Count == 0)
+                return;
+
+            _pendingRemoveRuntimes.Sort(_pendingRemoveRuntimeComparer);
+
+            Entity lastEntity = Entity.Invalid;
+            for (int i = 0; i < _pendingRemoveRuntimes.Count; i++)
+            {
+                Entity runtimeEntity = _pendingRemoveRuntimes[i].runtimeEntity;
+
+                if (runtimeEntity == lastEntity)
+                    continue;
+
+                lastEntity = runtimeEntity;
+
+                if (world.IsAlive(runtimeEntity))
+                    world.DestroyEntity(runtimeEntity);
+            }
+
+            _pendingRemoveRuntimes.Clear();
+            _pendingRemoveRuntimeSet.Clear();
+        }
+
+        private static int GetLifecyclePhaseOrder(BuffEffectPhase phase)
+        {
+            switch (phase)
+            {
+                case BuffEffectPhase.Apply:
+                    return 0;
+                case BuffEffectPhase.Refresh:
+                    return 1;
+                case BuffEffectPhase.StackChanged:
+                    return 2;
+                case BuffEffectPhase.Tick:
+                    return 3;
+                case BuffEffectPhase.Remove:
+                    return 4;
+                default:
+                    return int.MaxValue;
             }
         }
 
@@ -1102,6 +1362,9 @@ namespace BuffSystem
 
         private void AddRuntimeEntityToLookup(BuffRuntimeKey key, Entity runtimeEntity)
         {
+            if (IsPendingRemoveRuntime(runtimeEntity))
+                return;
+
             if (!_runtimeEntitiesByKey.TryGetValue(key, out List<Entity> entities))
             {
                 entities = new List<Entity>();
@@ -1113,6 +1376,12 @@ namespace BuffSystem
 
         private bool TryGetRuntimeComponent(World world, Entity runtimeEntity, out BuffRuntimeComponent runtime)
         {
+            if (IsPendingRemoveRuntime(runtimeEntity))
+            {
+                runtime = default;
+                return false;
+            }
+
             if (_pendingRuntimeComponents.TryGetValue(runtimeEntity, out runtime))
                 return true;
 
@@ -1122,7 +1391,7 @@ namespace BuffSystem
             return world.TryGetComponent(runtimeEntity, out runtime);
         }
 
-        private void WriteRuntimeComponent(World world, Entity runtimeEntity, BuffRuntimeComponent runtime)
+        private void WriteRuntimeComponent(World world, Entity runtimeEntity, BuffRuntimeComponent runtime, bool markViewDirty = true)
         {
             // 同步更新本帧新建 Runtime 快照，保证结构变更播放前 ViewCache 也能读到最新值。
             if (_pendingRuntimeComponents.TryGetValue(runtimeEntity, out _))
@@ -1132,7 +1401,9 @@ namespace BuffSystem
                 _createdRuntimeComponentsThisFrame[runtimeEntity] = runtime;
 
             world.SetComponent(runtimeEntity, runtime);
-            MarkViewCacheDirty();
+
+            if (markViewDirty)
+                MarkViewCacheDirty();
         }
 
         private static BuffViewData ToViewData(BuffRuntimeComponent runtime)
