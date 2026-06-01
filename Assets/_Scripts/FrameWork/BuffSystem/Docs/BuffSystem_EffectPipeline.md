@@ -1,5 +1,11 @@
 # BuffSystem Effect Pipeline
 
+## Phase 3C-1 - 压缩并行 Buff 准备阶段
+
+Phase 3C-1 不扩展 `BuffEffectRequest`，不修改 `BuffEffectContext`，也不改变 `IBuffEffectExecutor` 或 `IBuffEventEffectExecutor<TEvent>`。`CompressedExpiryFrameList` 仍未接入生命周期 EffectRequest Pipeline。
+
+本阶段只允许为后续压缩并行 Buff 接入预留 helper 和 lookup cache。Add、Refresh、Remove、Tick、Query 和 EffectRequest 主流程仍完全使用当前 EntityPerStack 路径。
+
 ## 作用
 
 Effect Pipeline 负责在 Buff 生命周期节点执行纯 C# Effect。运行时 Effect 不允许依赖 `ScriptableObject`、`GameObject`、`MonoBehaviour` 或 Unity 真实时间。

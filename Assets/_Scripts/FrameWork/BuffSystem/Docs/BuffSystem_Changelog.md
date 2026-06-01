@@ -1,5 +1,25 @@
 # BuffSystem Changelog
 
+## Phase 3C-1 - Compressed parallel preparation helpers
+
+### 新增
+
+- `BuffSystemCore` 新增 `_compressedRuntimeEntityByKey` lookup cache 字段，并只在清理路径中清空；本阶段不在主流程读写它。
+- 新增 `ShouldUseCompressedParallel`，本阶段保持返回 false，确保 `CompressedExpiryFrameList` 不会实际生效。
+- 新增 `IsCompressedParallelEligible`，规则为 parallel buff、`CompressedExpiryFrameList`、Tick 触发、非 Unlimited、`MaxStack <= CompressedParallelBuffLayerBuffer.Capacity`。
+- `CompressedParallelBuffLayerBuffer` 新增 `RemoveAt`、`FindEarliestIndex`、`FindLatestIndex`、`FindExpiredEarliestIndex`、`AppendLayer`、`RefreshLayer` helper。
+
+### 保持不变
+
+- 不接入 Add、Refresh、Remove、Tick、Query 或 EffectRequest 主流程。
+- 不扩展 `BuffEffectRequest` 或 `BuffEffectContext`。
+- 不修改 public BuffSystem API、`IBuffEffectExecutor` 或 `IBuffEventEffectExecutor<TEvent>`。
+- 当前 EntityPerStack 行为不变。
+
+### Tick / Expire 基准
+
+当前 EntityPerStack 的 `TickRuntimeBuffs` 顺序是先 Tick，再 Expire：先推进 `elapsedFrames` 并在满足间隔时 Queue `OnTick`，随后非永久 Buff 才扣减 `remainingFrames` 并处理自然到期。后续压缩模式正式接入时必须对齐该顺序。
+
 ## Phase 3B - Parallel Buff compressed storage skeleton
 
 ### 新增

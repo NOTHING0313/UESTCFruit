@@ -1,5 +1,13 @@
 # BuffSystem Parallel Buff
 
+## Phase 3C-1 - 压缩接入准备
+
+Phase 3C-1 只补充内部 helper、eligibility 判断和 compressed lookup cache，仍不启用 `CompressedExpiryFrameList` 主流程。`ShouldUseCompressedParallel` 在本阶段保持返回 false，`CompressedExpiryFrameList` 配置不会影响任何现有 Buff 行为。
+
+本阶段不接入 Add、Refresh、Remove、Tick、Query 或 EffectRequest。`_compressedRuntimeEntityByKey` 只作为后续 compressed runtime lookup cache 预留，不是回滚真状态；Phase 3C-1 不在主流程中写入或读取它。
+
+当前 EntityPerStack 的 Tick / Expire 基准为：先推进 `elapsedFrames` 并判断 Tick，满足 Tick 条件时先 Queue `OnTick`；随后非永久 Buff 才扣减 `remainingFrames` 并处理自然到期。后续压缩模式接入时必须保持“先 Tick，再 Expire”的同帧顺序。
+
 ## Phase 3B - 压缩存储预留入口
 
 Phase 3B 新增 `ParallelBuffStorageMode`：

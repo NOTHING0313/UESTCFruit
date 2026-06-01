@@ -167,6 +167,152 @@ namespace BuffSystem
                     throw new System.ArgumentOutOfRangeException(nameof(index));
             }
         }
+
+        public void RemoveAt(int index, int count)
+        {
+            ValidateActiveIndex(index, count);
+
+            for (int i = index; i < count - 1; i++)
+                Set(i, Get(i + 1));
+
+            Set(count - 1, default);
+        }
+
+        public int FindEarliestIndex(int count)
+        {
+            ValidateActiveCount(count);
+
+            if (count == 0)
+                return -1;
+
+            int bestIndex = 0;
+            CompressedParallelBuffLayer best = Get(0);
+
+            for (int i = 1; i < count; i++)
+            {
+                CompressedParallelBuffLayer current = Get(i);
+
+                if (CompareEarliest(current, best) < 0)
+                {
+                    best = current;
+                    bestIndex = i;
+                }
+            }
+
+            return bestIndex;
+        }
+
+        public int FindLatestIndex(int count)
+        {
+            ValidateActiveCount(count);
+
+            if (count == 0)
+                return -1;
+
+            int bestIndex = 0;
+            CompressedParallelBuffLayer best = Get(0);
+
+            for (int i = 1; i < count; i++)
+            {
+                CompressedParallelBuffLayer current = Get(i);
+
+                if (CompareLatest(current, best) < 0)
+                {
+                    best = current;
+                    bestIndex = i;
+                }
+            }
+
+            return bestIndex;
+        }
+
+        public int FindExpiredEarliestIndex(int count, int frameNumber)
+        {
+            ValidateActiveCount(count);
+
+            int bestIndex = -1;
+            CompressedParallelBuffLayer best = default;
+
+            for (int i = 0; i < count; i++)
+            {
+                CompressedParallelBuffLayer current = Get(i);
+
+                if (current.expireFrame == int.MaxValue || current.expireFrame > frameNumber)
+                    continue;
+
+                if (bestIndex < 0 || CompareEarliest(current, best) < 0)
+                {
+                    best = current;
+                    bestIndex = i;
+                }
+            }
+
+            return bestIndex;
+        }
+
+        public bool AppendLayer(int count, in CompressedParallelBuffLayer layer)
+        {
+            if (count < 0 || count >= Capacity)
+                return false;
+
+            Set(count, in layer);
+            return true;
+        }
+
+        public void RefreshLayer(int index, int count, int frameNumber, int durationFrames, bool isForever)
+        {
+            ValidateActiveIndex(index, count);
+
+            CompressedParallelBuffLayer layer = Get(index);
+            layer.expireFrame = isForever ? int.MaxValue : frameNumber + durationFrames;
+            layer.elapsedFrames = 0;
+            layer.ticks = 0;
+            Set(index, in layer);
+        }
+
+        private static void ValidateActiveCount(int count)
+        {
+            if (count < 0 || count > Capacity)
+                throw new System.ArgumentOutOfRangeException(nameof(count));
+        }
+
+        private static void ValidateActiveIndex(int index, int count)
+        {
+            ValidateActiveCount(count);
+
+            if (index < 0 || index >= count)
+                throw new System.ArgumentOutOfRangeException(nameof(index));
+        }
+
+        private static int CompareEarliest(CompressedParallelBuffLayer left, CompressedParallelBuffLayer right)
+        {
+            int expireCompare = left.expireFrame.CompareTo(right.expireFrame);
+
+            if (expireCompare != 0)
+                return expireCompare;
+
+            int layerCompare = left.layerId.CompareTo(right.layerId);
+
+            if (layerCompare != 0)
+                return layerCompare;
+
+            return left.layerRuntimeHandle.CompareTo(right.layerRuntimeHandle);
+        }
+
+        private static int CompareLatest(CompressedParallelBuffLayer left, CompressedParallelBuffLayer right)
+        {
+            int expireCompare = right.expireFrame.CompareTo(left.expireFrame);
+
+            if (expireCompare != 0)
+                return expireCompare;
+
+            int layerCompare = left.layerId.CompareTo(right.layerId);
+
+            if (layerCompare != 0)
+                return layerCompare;
+
+            return left.layerRuntimeHandle.CompareTo(right.layerRuntimeHandle);
+        }
     }
 
     /// <summary>

@@ -242,6 +242,7 @@ namespace BuffSystem
         private readonly HashSet<Entity> _eventCandidateEntitySet = new HashSet<Entity>();
         private readonly HashSet<Entity> _pendingRemoveRuntimeSet = new HashSet<Entity>();
         private readonly Dictionary<BuffRuntimeKey, List<Entity>> _runtimeEntitiesByKey = new Dictionary<BuffRuntimeKey, List<Entity>>();
+        private readonly Dictionary<BuffRuntimeKey, Entity> _compressedRuntimeEntityByKey = new Dictionary<BuffRuntimeKey, Entity>();
         private readonly Dictionary<BuffRuntimeKey, int> _runtimeLookupUnusedFrames = new Dictionary<BuffRuntimeKey, int>();
         private readonly Dictionary<int, List<Entity>> _eventRuntimeEntitiesByEventId = new Dictionary<int, List<Entity>>();
         private readonly Dictionary<Entity, BuffRuntimeComponent> _pendingRuntimeComponents = new Dictionary<Entity, BuffRuntimeComponent>();
@@ -370,6 +371,7 @@ namespace BuffSystem
             _eventCandidateEntitySet.Clear();
             _pendingRemoveRuntimeSet.Clear();
             _runtimeEntitiesByKey.Clear();
+            _compressedRuntimeEntityByKey.Clear();
             _runtimeLookupUnusedFrames.Clear();
             _eventRuntimeEntitiesByEventId.Clear();
             _pendingRuntimeComponents.Clear();
@@ -979,6 +981,21 @@ namespace BuffSystem
         private bool IsPendingRemoveRuntime(Entity runtimeEntity)
         {
             return _pendingRemoveRuntimeSet.Contains(runtimeEntity);
+        }
+
+        private bool ShouldUseCompressedParallel(in BuffDefinition definition)
+        {
+            // Phase 3C-1 only prepares helpers and lookup cache. Compressed runtime is not enabled yet.
+            return false;
+        }
+
+        private static bool IsCompressedParallelEligible(in BuffDefinition definition)
+        {
+            return definition.BuffType == BuffInstanceType.parallel
+                && definition.ParallelStorageMode == ParallelBuffStorageMode.CompressedExpiryFrameList
+                && definition.TriggerType == BuffTriggerType.Tick
+                && !definition.Unlimited
+                && definition.MaxStack <= CompressedParallelBuffLayerBuffer.Capacity;
         }
 
         private bool TryGetFirstRuntimeEntity(World world, BuffRuntimeKey key, BuffInstanceType buffType, out Entity runtimeEntity)
