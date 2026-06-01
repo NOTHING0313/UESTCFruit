@@ -1,5 +1,7 @@
-using BuffSystem;
+ï»¿using BuffSystem;
+using Contracts;
 using ECSFrameWork;
+
 using UnityEngine;
 
 namespace View
@@ -20,6 +22,8 @@ namespace View
         private SimulateRunner _runner;
         private BuffSystemCore _buffSystem;
         private ViewManager _viewManager;
+        private EntityViewBinder _binder;
+        private IViewBridge _viewBridge;
 
         private void Start()
         {
@@ -30,64 +34,40 @@ namespace View
                 return;
             }
 
-            // 1. ´´½¨ World
             _world = new World();
-
-            // 2. ´´½¨ Buff ºËĞÄÏµÍ³
             _buffSystem = new BuffSystemCore();
-
-            // 3. ´´½¨¹Ì¶¨Ö¡ÍÆ½øÆ÷
             _runner = new SimulateRunner(_world, _fixedDeltaTime, _maxCompensationTicks);
             timeSim.InitSimulator(_runner);
 
-            // 4. ´´½¨ ViewManager£¬×¢Èë¶ÔÏó³ØÊÊÅäÆ÷
             IViewInstanceProvider provider = new GameObjectPoolViewInstanceProvider(_worldViewRoot);
             _viewManager = new ViewManager(provider);
 
-            // 5. ×¢²á System£¨ÔİÊ±×¢ÊÍÎ´ÊµÏÖµÄÀà£©
+            // ç»‘å®šå™¨
+            _binder = new EntityViewBinder(_viewManager);
+            // æ¡¥æ¥å™¨
+            _viewBridge = new ViewBridge(_binder, _viewManager, _buffSystem);
+
+            // æ³¨å†Œ Systemï¼ˆæŒ‰ sequence é¡ºåºï¼‰
+            // ä¸šåŠ¡ç³»ç»Ÿï¼ˆæš‚æœªå®ç°ï¼Œæ³¨é‡Šï¼‰
             // _world.AddSystem(new InputMoveSystem());
             // _world.AddSystem(new MovementSystem());
             // _world.AddSystem(new DamageResolveSystem());
             // _world.AddSystem(new DeadCleanupSystem());
 
-            // Buff ÏµÍ³Í¨¹ıÇÅ½Ó×¢²á
-            _world.AddSystem(new BuffSystemBridge(_buffSystem));
+            _world.AddSystem(new BuffSystemBridge(_buffSystem));   // Buff æ¡¥æ¥
 
-            // View ÏµÍ³£¨Èô 1 ºÅÒÑÌá¹©£¬È¡Ïû×¢ÊÍ£©
-            // _world.AddSystem(new ViewSpawnSystem(_viewManager));
-            // _world.AddSystem(new ViewSyncSystem(_viewManager));
-            // _world.AddSystem(new ViewDestroySystem(_viewManager));
+            _world.AddSystem(new ViewSpawnSystem(_viewManager));   // ç”Ÿæˆ View
+            _world.AddSystem(new EntityViewBindingSystem(_binder)); // ç»‘å®š Entity â†” View
+            _world.AddSystem(new ViewSyncSystem(_viewManager));    // åŒæ­¥ä½ç½®
+            _world.AddSystem(new ViewDestroySystem(_viewManager)); // é”€æ¯ View ï¼ˆä¼šè‡ªåŠ¨è§£ç»‘ï¼‰
+            _world.AddSystem(new WorldViewEventConsumer(_viewBridge)); // æ¶ˆè´¹äº‹ä»¶
 
-            // 6. µ÷ÊÔÃæ°å
             if (_debugPanel != null)
             {
                 var probe = new SimulationDebugProbe(_world, _buffSystem, _runner);
                 _debugPanel.Initialize(probe);
             }
-            // ========== ²âÊÔ´úÂë¿ªÊ¼ ==========
-            // 1. ´´½¨Ò»¸ö²âÊÔÊµÌå
-            Entity testEntity = _world.CreateEntity();
-            Debug.Log($"Test entity created: id={testEntity.ID}, version={testEntity.Version}");
 
-            // 2. ÉèÖÃÒ»Ğ©»ù´¡×é¼ş£¨Èç¹û1ºÅÌá¹©ÁËÕâĞ©×é¼ş£¬·ñÔò×¢ÊÍµô£©
-            // _world.SetComponent(testEntity, new PositionComponent { x = 0, y = 0, z = 0 });
-            // _world.SetComponent(testEntity, new HealthComponent { current = 100, max = 100 });
-
-            // 3. Ìí¼ÓÒ»¸ö²âÊÔ Buff£¨configId = 1 ĞèÒªÓë3ºÅ¶ÔÆë£¬ÏÈÓÃ1×÷ÎªÊ¾Àı£©
-            //    ¼ÙÉè configId=1 ÊÇÒ»¸ö¡°Ã¿Ãë¿ÛÑª¡±»ò¡°ÓÀ¾Ã´æÔÚ¡±µÄ²âÊÔBuff
-            AddBuffCommand addCmd = new AddBuffCommand(
-                target: testEntity,
-                source: testEntity,
-                configId: 1,        // ÇëÓë3ºÅÈ·ÈÏÕâ¸öIDÊÇ·ñ´æÔÚ
-                stack: 1
-            );
-            _buffSystem.AddBuff(addCmd);
-            Debug.Log("AddBuffCommand sent to BuffSystemCore.");
-
-            // 4. Èç¹û1ºÅÌá¹©ÁËÊÓÍ¼×é¼ş£¬¿ÉÒÔÉú³ÉÒ»¸öÊÓÍ¼£¨ĞèÒªÏÈ×¢²áÔ¤ÖÆÌå£©
-            // _world.SetComponent(testEntity, new PrefabViewRequestComponent { prefabId = 1 });
-
-            // ========== ²âÊÔ´úÂë½áÊø ==========
             Debug.Log("[SimulationInitializer] Initialized.");
         }
 
@@ -102,24 +82,14 @@ namespace View
             _world?.Dispose();
         }
 
-        /// <summary>
-        /// ½« BuffSystemCore ÊÊÅäÎª IFixedStepSystem¡£
-        /// µÈ BuffSystemCore Ö±½ÓÊµÏÖ½Ó¿Úºó¿ÉÉ¾³ı¡£
-        /// </summary>
         private class BuffSystemBridge : IFixedStepSystem
         {
             private readonly BuffSystemCore _core;
             private World _world;
-
             public BuffSystemBridge(BuffSystemCore core) => _core = core;
-
-            // Ö´ĞĞ½×¶ÎÉèÎªÂß¼­½×¶Î£¨¿É¸ù¾İĞèÒªµ÷ÕûÎª movement »ò damage Ö®¼ä£©
             public SystemTickSequence sequence => SystemTickSequence.logic;
-
             public void OnCreate(World world) => _world = world;
-
             public void Tick(in SimulationContext context) => _core.Tick(_world, context);
-
             public void OnDestroy(World world) { }
         }
     }
