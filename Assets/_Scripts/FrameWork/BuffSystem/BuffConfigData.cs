@@ -75,6 +75,10 @@ namespace BuffSystem
         [Tooltip("并行 Buff 移除层数时优先移除哪一层。")]
         public ParallelBuffStackDownPolicy ParallelStackDownPolicy = ParallelBuffStackDownPolicy.RemoveEarliest;
 
+        [BoxGroup("堆叠规则"), LabelText("并行 Buff 存储模式"), HideIf(nameof(IsNormalBuff))]
+        [Tooltip("Phase 3B 预留配置入口：当前运行时尚未启用压缩模式，所有并行 Buff 仍然走 EntityPerStack 主流程。")]
+        public ParallelBuffStorageMode ParallelStorageMode = ParallelBuffStorageMode.EntityPerStack;
+
         [BoxGroup("堆叠规则"), LabelText("每层延长时间（秒）"), MinValue(0), ShowIf(nameof(UsesDurationExtension))]
         [Tooltip("仅普通 Buff 的 AddDuration 策略使用。")]
         public float DurationExtendPerStack = 0f;
@@ -199,7 +203,8 @@ namespace BuffSystem
                 ParallelStackUpPolicy,
                 ParallelStackDownPolicy,
                 EffectId,
-                ToEventIdArray());
+                ToEventIdArray(),
+                ParallelStorageMode);
         }
 
         public virtual void CopyTo(BuffConfigData target)
@@ -223,6 +228,7 @@ namespace BuffSystem
             target.NormalStackPolicy = NormalStackPolicy;
             target.ParallelStackUpPolicy = ParallelStackUpPolicy;
             target.ParallelStackDownPolicy = ParallelStackDownPolicy;
+            target.ParallelStorageMode = ParallelStorageMode;
             target.DurationExtendPerStack = DurationExtendPerStack;
             target.EffectId = EffectId;
             target.EventIds = EventIds == null ? new List<int>() : new List<int>(EventIds);

@@ -46,6 +46,144 @@ namespace BuffSystem
     /// <summary>
     /// 添加 Buff 的单帧 ECS 请求组件；BuffSystemCore 消费后销毁请求实体。
     /// </summary>
+    /// <summary>
+    /// Phase 3B 预留：压缩并行 Buff 的单层固定帧运行时数据，当前尚未接入运行时主流程。
+    /// </summary>
+    public struct CompressedParallelBuffLayer
+    {
+        public int layerId;
+        public int expireFrame;
+        public int elapsedFrames;
+        public int ticks;
+        public int layerRuntimeHandle;
+    }
+
+    /// <summary>
+    /// Phase 3B 预留：压缩并行 Buff 层的固定容量值类型容器；不使用数组、List 或 Dictionary 作为回滚真状态。
+    /// </summary>
+    public struct CompressedParallelBuffLayerBuffer
+    {
+        public const int Capacity = 16;
+
+        private CompressedParallelBuffLayer _layer0;
+        private CompressedParallelBuffLayer _layer1;
+        private CompressedParallelBuffLayer _layer2;
+        private CompressedParallelBuffLayer _layer3;
+        private CompressedParallelBuffLayer _layer4;
+        private CompressedParallelBuffLayer _layer5;
+        private CompressedParallelBuffLayer _layer6;
+        private CompressedParallelBuffLayer _layer7;
+        private CompressedParallelBuffLayer _layer8;
+        private CompressedParallelBuffLayer _layer9;
+        private CompressedParallelBuffLayer _layer10;
+        private CompressedParallelBuffLayer _layer11;
+        private CompressedParallelBuffLayer _layer12;
+        private CompressedParallelBuffLayer _layer13;
+        private CompressedParallelBuffLayer _layer14;
+        private CompressedParallelBuffLayer _layer15;
+
+        public void Clear()
+        {
+            this = default;
+        }
+
+        public CompressedParallelBuffLayer Get(int index)
+        {
+            switch (index)
+            {
+                case 0: return _layer0;
+                case 1: return _layer1;
+                case 2: return _layer2;
+                case 3: return _layer3;
+                case 4: return _layer4;
+                case 5: return _layer5;
+                case 6: return _layer6;
+                case 7: return _layer7;
+                case 8: return _layer8;
+                case 9: return _layer9;
+                case 10: return _layer10;
+                case 11: return _layer11;
+                case 12: return _layer12;
+                case 13: return _layer13;
+                case 14: return _layer14;
+                case 15: return _layer15;
+                default: throw new System.ArgumentOutOfRangeException(nameof(index));
+            }
+        }
+
+        public void Set(int index, in CompressedParallelBuffLayer layer)
+        {
+            switch (index)
+            {
+                case 0:
+                    _layer0 = layer;
+                    break;
+                case 1:
+                    _layer1 = layer;
+                    break;
+                case 2:
+                    _layer2 = layer;
+                    break;
+                case 3:
+                    _layer3 = layer;
+                    break;
+                case 4:
+                    _layer4 = layer;
+                    break;
+                case 5:
+                    _layer5 = layer;
+                    break;
+                case 6:
+                    _layer6 = layer;
+                    break;
+                case 7:
+                    _layer7 = layer;
+                    break;
+                case 8:
+                    _layer8 = layer;
+                    break;
+                case 9:
+                    _layer9 = layer;
+                    break;
+                case 10:
+                    _layer10 = layer;
+                    break;
+                case 11:
+                    _layer11 = layer;
+                    break;
+                case 12:
+                    _layer12 = layer;
+                    break;
+                case 13:
+                    _layer13 = layer;
+                    break;
+                case 14:
+                    _layer14 = layer;
+                    break;
+                case 15:
+                    _layer15 = layer;
+                    break;
+                default:
+                    throw new System.ArgumentOutOfRangeException(nameof(index));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Phase 3B 预留：一个 Runtime Entity 聚合多个并行层的压缩运行时组件；当前不创建、不写入 World、不参与查询或 Tick。
+    /// </summary>
+    public struct CompressedParallelBuffRuntimeComponent : IComponentData
+    {
+        public Entity target;
+        public Entity source;
+        public int configId;
+        public int compressedRuntimeHandle;
+        public int priority;
+        public int layerCount;
+        public int nextLayerId;
+        public CompressedParallelBuffLayerBuffer layers;
+    }
+
     public struct AddBuffRequestComponent : IComponentData
     {
         public AddBuffCommand command;
