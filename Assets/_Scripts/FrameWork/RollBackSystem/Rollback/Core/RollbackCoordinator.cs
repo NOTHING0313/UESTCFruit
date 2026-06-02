@@ -5,6 +5,9 @@
  * 2. 回滚后必须通过历史输入重新模拟所有后续帧。
  * 3. Snapshot 与 Checksum 必须与逻辑帧保持一致。
  * 4. Coordinator 本身不保存游戏状态，只协调 Buffer、World 与 Runner。
+ * 5. 帧命令回放由 WorldRollbackAdapter.Simulate() 在 Tick 前根据 context.isRollback
+ *    分发 IFrameCommandSource.ReplayCommandsToWorld / ApplyCommandsToWorld，
+ *    RollbackCoordinator 不直接持有 World，因此不在此处调用帧命令。
  */
 
 using FrameWork.RollBackSystem.Interfaces;
@@ -26,21 +29,12 @@ namespace FrameWork.RollBackSystem
         // Buffers
         //--------------------------------
 
-        /// <summary>
-        /// 本地预测输入缓存。
-        /// </summary>
         private readonly IInputBuffer<TInput>
             _inputBuffer;
 
-        /// <summary>
-        /// 权威输入缓存（服务器输入）。
-        /// </summary>
         private readonly AuthoritativeInputBuffer<TInput>
             _authoritativeInputBuffer;
 
-        /// <summary>
-        /// 历史快照缓存。
-        /// </summary>
         private readonly SnapshotRingBuffer<TSnapshot>
             _snapshotBuffer;
 
@@ -48,15 +42,9 @@ namespace FrameWork.RollBackSystem
         // Runtime
         //--------------------------------
 
-        /// <summary>
-        /// 支持回滚的 ECS World。
-        /// </summary>
         private readonly IRollbackableWorld<TInput>
             _world;
 
-        /// <summary>
-        /// 用于推进逻辑帧的 Runner 适配器。
-        /// </summary>
         private readonly RollbackRunnerAdapter
             _runner;
 
@@ -64,21 +52,12 @@ namespace FrameWork.RollBackSystem
         // Validation
         //--------------------------------
 
-        /// <summary>
-        /// 输入比较器，用于检测预测输入与权威输入差异。
-        /// </summary>
         private readonly IInputComparer<TInput>
             _inputComparer;
 
-        /// <summary>
-        /// 本地 Checksum 缓存。
-        /// </summary>
         private readonly ChecksumBuffer
             _checksumBuffer;
 
-        /// <summary>
-        /// 权威 Checksum 缓存。
-        /// </summary>
         private readonly AuthoritativeChecksumBuffer
             _authoritativeChecksumBuffer;
 
@@ -86,9 +65,6 @@ namespace FrameWork.RollBackSystem
         // ctor
         //--------------------------------
 
-        /// <summary>
-        /// 创建回滚协调器。
-        /// </summary>
         public RollbackCoordinator(
             IInputBuffer<TInput> inputBuffer,
             AuthoritativeInputBuffer<TInput> authoritativeInputBuffer,
@@ -130,6 +106,7 @@ namespace FrameWork.RollBackSystem
 
         /// <summary>
         /// 推进一个新的逻辑帧。
+        /// 帧命令的 Apply 由 WorldRollbackAdapter.Simulate() 在 Tick 前完成。
         /// </summary>
         public void Step(TInput input)
         {
@@ -164,9 +141,6 @@ namespace FrameWork.RollBackSystem
         // Snapshot
         //--------------------------------
 
-        /// <summary>
-        /// 保存当前逻辑帧的世界快照与 Checksum。
-        /// </summary>
         public void SaveSnapshot()
         {
             TSnapshot snapshot =
@@ -183,23 +157,12 @@ namespace FrameWork.RollBackSystem
         // Receive Authoritative Input
         //--------------------------------
 
-        /// <summary>
-        /// 接收服务器权威输入，并在预测错误时触发回滚。
-        /// </summary>
         public void ReceiveAuthoritativeInput(
             int frame,
             in TInput input)
         {
-            //--------------------------------
-            // Save authoritative
-            //--------------------------------
-
             _authoritativeInputBuffer
                 .Save(frame, input);
-
-            //--------------------------------
-            // Compare prediction
-            //--------------------------------
 
             bool hasPredicted =
                 _inputBuffer.TryGet(
@@ -207,9 +170,7 @@ namespace FrameWork.RollBackSystem
                     out var predictedInput);
 
             if (!hasPredicted)
-            {
                 return;
-            }
 
             bool isDifferent =
                 !_inputComparer.IsEqual(
@@ -217,13 +178,7 @@ namespace FrameWork.RollBackSystem
                     input);
 
             if (!isDifferent)
-            {
                 return;
-            }
-
-            //--------------------------------
-            // Rollback
-            //--------------------------------
 
             int targetFrame =
                 CurrentFrame;
@@ -232,21 +187,11 @@ namespace FrameWork.RollBackSystem
                 RollbackTo(frame);
 
             if (!rollbackSuccess)
-            {
                 return;
-            }
-
-            //--------------------------------
-            // Replace Input
-            //--------------------------------
 
             _inputBuffer.Save(
                 frame,
                 input);
-
-            //--------------------------------
-            // Resimulate
-            //--------------------------------
 
             ResimulateTo(
                 targetFrame);
@@ -256,9 +201,6 @@ namespace FrameWork.RollBackSystem
         // Rollback
         //--------------------------------
 
-        /// <summary>
-        /// 回滚到指定逻辑帧最近的历史快照。
-        /// </summary>
         public bool RollbackTo(int frame)
         {
             bool found =
@@ -268,27 +210,13 @@ namespace FrameWork.RollBackSystem
                         out var snapshot);
 
             if (!found)
-            {
                 return false;
-            }
-
-            //--------------------------------
-            // Restore Snapshot
-            //--------------------------------
 
             _world.Restore(
                 snapshot);
 
-            //--------------------------------
-            // Sync Runner
-            //--------------------------------
-
             _runner.SetFrame(
                 snapshot.Frame);
-
-            //--------------------------------
-            // Update Frame
-            //--------------------------------
 
             CurrentFrame =
                 snapshot.Frame;
@@ -302,6 +230,7 @@ namespace FrameWork.RollBackSystem
 
         /// <summary>
         /// 使用历史输入重新模拟后续逻辑帧。
+        /// 帧命令的 Replay 由 WorldRollbackAdapter.Simulate() 在 Tick 前完成。
         /// </summary>
         public void ResimulateTo(
             int targetFrame)
@@ -321,9 +250,7 @@ namespace FrameWork.RollBackSystem
                         out var input);
 
                 if (!found)
-                {
                     break;
-                }
 
                 //--------------------------------
                 // Tick Rollback Frame
@@ -363,18 +290,12 @@ namespace FrameWork.RollBackSystem
         // Checksum
         //--------------------------------
 
-        /// <summary>
-        /// 计算当前 World 的逻辑状态校验值。
-        /// </summary>
         public uint CalculateChecksum()
         {
             return _world
                 .CalculateChecksum();
         }
 
-        /// <summary>
-        /// 保存当前逻辑帧对应的 Checksum。
-        /// </summary>
         private void SaveChecksum()
         {
             uint checksum =
@@ -393,9 +314,6 @@ namespace FrameWork.RollBackSystem
         // Authoritative Checksum
         //--------------------------------
 
-        /// <summary>
-        /// 接收服务器权威 Checksum。
-        /// </summary>
         public void ReceiveAuthoritativeChecksum(
             int frame,
             uint checksum)
@@ -409,9 +327,6 @@ namespace FrameWork.RollBackSystem
                 .Save(frameChecksum);
         }
 
-        /// <summary>
-        /// 校验指定逻辑帧的本地与权威 Checksum 是否一致。
-        /// </summary>
         public ChecksumComparisonResult
             VerifyChecksum(
                 int frame)
