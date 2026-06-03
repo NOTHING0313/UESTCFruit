@@ -122,7 +122,7 @@ internal class EntityManager
             restoredFreeIds.Push(freeId);
         }
 
-        for (int i = 0; i < restoredDatas.Length; i++)
+        for (int i = 0; i < snapshot.DataCount; i++)
         {
             EntityData data = restoredDatas[i];
 

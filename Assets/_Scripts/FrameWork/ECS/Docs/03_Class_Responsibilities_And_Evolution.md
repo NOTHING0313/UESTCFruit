@@ -589,7 +589,8 @@ Commands 页显示命令加入历史和执行历史
 一开始命令历史曾使用 Rollback 相关命名。根据分工文档确认：
 
 ```text
-Rollback / Snapshot / InputBuffer / Resimulate 属于 2 号范围。
+ECS Core 当前提供 World-level Snapshot Capture / Restore 接口。
+Rollback 历史管理、输入保存、回滚触发和 Resimulate 流程属于 2 号范围。
 1 号 ECS Core 不实现完整回滚流程。
 ```
 

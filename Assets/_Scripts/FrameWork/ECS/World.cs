@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using Contracts;
 
 namespace ECSFrameWork
 {
@@ -13,8 +14,10 @@ namespace ECSFrameWork
 /// <summary>
 /// ECS 逻辑世界入口，统一管理 Entity、Component、ArcheType、Query、System 与结构变更缓冲。
 /// </summary>
-public class World
+public class World : IEcsWorldSnapshotProvider
 {
+    private const int SnapshotMaxComponentTypes = 256;
+
     private EntityManager _entityManager;
     private ComponentManager _componentManager;
     private ArcheTypeManager _archeTypeManager;
@@ -623,6 +626,594 @@ public class World
     public void ClearWorldEventsBeforeFrame(int frameNumber)
     {
         _worldEventBuffer.ClearBeforeFrame(frameNumber);
+    }
+
+    /// <summary>
+    /// 捕获当前 ECS 逻辑世界快照；失败时抛出明确异常。
+    /// </summary>
+    public EcsWorldSnapshot CaptureSnapshot(int frameNumber)
+    {
+        if (!TryCaptureSnapshot(frameNumber, out EcsWorldSnapshot snapshot, out EcsWorldSnapshotCaptureResult result))
+            throw new InvalidOperationException(result.ErrorMessage);
+
+        return snapshot;
+    }
+
+    /// <summary>
+    /// 尝试捕获当前 ECS 逻辑世界快照。仅允许在 Idle 且无 pending command 的稳定边界调用。
+    /// </summary>
+    public bool TryCaptureSnapshot(int frameNumber, out EcsWorldSnapshot snapshot, out EcsWorldSnapshotCaptureResult result)
+    {
+        snapshot = null;
+
+        if (!ValidateSnapshotBoundaryForCapture(frameNumber, out string errorMessage))
+        {
+            result = EcsWorldSnapshotCaptureResult.Failure(errorMessage);
+            return false;
+        }
+
+        try
+        {
+            IReadOnlyList<Type> registeredTypes = _registry.CaptureRegisteredTypes();
+            EcsEntityManagerSnapshot entityManagerSnapshot = _entityManager.CaptureSnapshot();
+            List<EcsComponentStoreSnapshot> componentStores = _componentManager.CaptureStoreSnapshots();
+            List<EcsSingletonSnapshot> singletons = CaptureSingletonSnapshots();
+
+            snapshot = new EcsWorldSnapshot(frameNumber, registeredTypes, entityManagerSnapshot, componentStores, singletons);
+            result = EcsWorldSnapshotCaptureResult.SuccessResult(snapshot);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            result = EcsWorldSnapshotCaptureResult.Failure($"Failed to capture ECS World snapshot: {exception.Message}");
+            snapshot = null;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 恢复 ECS 逻辑世界快照；失败时抛出明确异常。
+    /// </summary>
+    public void RestoreSnapshot(EcsWorldSnapshot snapshot)
+    {
+        if (!TryRestoreSnapshot(snapshot, out EcsWorldSnapshotRestoreResult result))
+            throw new InvalidOperationException(result.ErrorMessage);
+    }
+
+    /// <summary>
+    /// 尝试恢复 ECS 逻辑世界快照。所有前置校验通过后才会修改当前 World。
+    /// </summary>
+    public bool TryRestoreSnapshot(EcsWorldSnapshot snapshot, out EcsWorldSnapshotRestoreResult result)
+    {
+        if (!ValidateSnapshotBoundaryForRestore(out string boundaryErrorMessage))
+        {
+            result = EcsWorldSnapshotRestoreResult.Failure(boundaryErrorMessage);
+            return false;
+        }
+
+        if (!ValidateSnapshotForRestore(snapshot, out string validationErrorMessage))
+        {
+            result = EcsWorldSnapshotRestoreResult.Failure(validationErrorMessage);
+            return false;
+        }
+
+        if (!TryPrepareSnapshotRestore(
+            snapshot,
+            out ComponentTypeRegistry preparedRegistry,
+            out EntityManager preparedEntityManager,
+            out ArcheTypeManager preparedArcheTypeManager,
+            out ComponentManager preparedComponentManager,
+            out string prepareErrorMessage))
+        {
+            result = EcsWorldSnapshotRestoreResult.Failure(prepareErrorMessage);
+            return false;
+        }
+
+        int restoredEntityCount = CountAliveEntities(snapshot.EntityManager);
+        int restoredComponentCount = CountComponents(snapshot.ComponentStores);
+        int restoredSingletonCount = snapshot.Singletons.Count;
+
+        try
+        {
+            _registry = preparedRegistry;
+            _entityManager = preparedEntityManager;
+            _archeTypeManager = preparedArcheTypeManager;
+            _componentManager = preparedComponentManager;
+
+            _worldEventBuffer.Clear();
+            _structuralChangeBuffer.Clear();
+            _systemManager.ClearPendingSystemChanges();
+            _singletonEntities.Clear();
+            RestoreSingletonSnapshots(snapshot.Singletons);
+            result = EcsWorldSnapshotRestoreResult.SuccessResult(restoredEntityCount, restoredComponentCount, restoredSingletonCount);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            result = EcsWorldSnapshotRestoreResult.Failure($"Failed to restore ECS World snapshot: {exception.Message}");
+            return false;
+        }
+    }
+
+    private bool TryPrepareSnapshotRestore(
+        EcsWorldSnapshot snapshot,
+        out ComponentTypeRegistry preparedRegistry,
+        out EntityManager preparedEntityManager,
+        out ArcheTypeManager preparedArcheTypeManager,
+        out ComponentManager preparedComponentManager,
+        out string errorMessage)
+    {
+        preparedRegistry = null;
+        preparedEntityManager = null;
+        preparedArcheTypeManager = null;
+        preparedComponentManager = null;
+
+        try
+        {
+            preparedRegistry = new ComponentTypeRegistry();
+            preparedRegistry.RestoreRegisteredTypes(snapshot.RegisteredComponentTypes);
+
+            preparedEntityManager = new EntityManager();
+            preparedEntityManager.RestoreSnapshot(snapshot.EntityManager);
+
+            preparedArcheTypeManager = new ArcheTypeManager(preparedRegistry);
+            preparedComponentManager = new ComponentManager(preparedEntityManager, preparedArcheTypeManager, preparedRegistry);
+
+            if (!preparedComponentManager.RestoreStoreSnapshots(snapshot.ComponentStores, out errorMessage))
+                return false;
+
+            errorMessage = string.Empty;
+            return true;
+        }
+        catch (Exception exception)
+        {
+            errorMessage = $"Failed to prepare ECS World snapshot restore: {exception.Message}";
+            return false;
+        }
+    }
+
+    private bool ValidateSnapshotBoundaryForCapture(int frameNumber, out string errorMessage)
+    {
+        if (frameNumber < 0)
+        {
+            errorMessage = "Snapshot frame number cannot be negative.";
+            return false;
+        }
+
+        return ValidateStableSnapshotBoundary(out errorMessage);
+    }
+
+    private bool ValidateSnapshotBoundaryForRestore(out string errorMessage)
+    {
+        return ValidateStableSnapshotBoundary(out errorMessage);
+    }
+
+    private bool ValidateStableSnapshotBoundary(out string errorMessage)
+    {
+        if (_currentState != WorldStates.Idle)
+        {
+            errorMessage = $"ECS World snapshot is only allowed while World is Idle. Current state: {_currentState}.";
+            return false;
+        }
+
+        if (PendingCommandCount != 0)
+        {
+            errorMessage = $"ECS World snapshot is not allowed while structural commands are pending. Pending count: {PendingCommandCount}.";
+            return false;
+        }
+
+        if (PendingSystemCommandCount != 0)
+        {
+            errorMessage = $"ECS World snapshot is not allowed while system commands are pending. Pending count: {PendingSystemCommandCount}.";
+            return false;
+        }
+
+        errorMessage = string.Empty;
+        return true;
+    }
+
+    private List<EcsSingletonSnapshot> CaptureSingletonSnapshots()
+    {
+        List<EcsSingletonSnapshot> snapshots = new List<EcsSingletonSnapshot>();
+
+        if (_singletonEntities == null || _singletonEntities.Count == 0)
+            return snapshots;
+
+        foreach (KeyValuePair<Type, Entity> pair in _singletonEntities)
+        {
+            Type componentType = pair.Key;
+            Entity entity = pair.Value;
+
+            if (componentType == null || !_entityManager.IsAlive(entity))
+                continue;
+
+            if (!_componentManager.TryGetComponentDebugValue(entity, componentType, out object component) || component == null)
+                continue;
+
+            snapshots.Add(new EcsSingletonSnapshot(componentType, entity));
+        }
+
+        return snapshots;
+    }
+
+    private bool ValidateSnapshotForRestore(EcsWorldSnapshot snapshot, out string errorMessage)
+    {
+        if (snapshot == null)
+        {
+            errorMessage = "ECS World snapshot is null.";
+            return false;
+        }
+
+        if (!ValidateRegisteredComponentTypes(snapshot.RegisteredComponentTypes, out Dictionary<Type, int> registeredTypeIds, out errorMessage))
+            return false;
+
+        if (!ValidateEntityManagerSnapshot(snapshot.EntityManager, out HashSet<Entity> aliveEntities, out errorMessage))
+            return false;
+
+        if (!ValidateComponentStoreSnapshots(snapshot.ComponentStores, registeredTypeIds, aliveEntities, out Dictionary<Type, HashSet<Entity>> storeEntities, out errorMessage))
+            return false;
+
+        if (!ValidateSingletonSnapshots(snapshot.Singletons, registeredTypeIds, aliveEntities, storeEntities, out errorMessage))
+            return false;
+
+        errorMessage = string.Empty;
+        return true;
+    }
+
+    private bool ValidateRegisteredComponentTypes(IReadOnlyList<Type> registeredTypes, out Dictionary<Type, int> registeredTypeIds, out string errorMessage)
+    {
+        registeredTypeIds = null;
+
+        if (registeredTypes == null)
+        {
+            errorMessage = "Snapshot registered component type list is null.";
+            return false;
+        }
+
+        if (registeredTypes.Count > SnapshotMaxComponentTypes)
+        {
+            errorMessage = "Snapshot registered component type count exceeds ComponentMask256 limit.";
+            return false;
+        }
+
+        registeredTypeIds = new Dictionary<Type, int>(registeredTypes.Count);
+
+        for (int i = 0; i < registeredTypes.Count; i++)
+        {
+            Type type = registeredTypes[i];
+
+            if (type == null)
+            {
+                errorMessage = $"Snapshot registered component type at index {i} is null.";
+                return false;
+            }
+
+            if (!typeof(IComponentData).IsAssignableFrom(type))
+            {
+                errorMessage = $"Snapshot registered component type must implement IComponentData: {type.FullName}.";
+                return false;
+            }
+
+            if (!type.IsValueType)
+            {
+                errorMessage = $"Snapshot registered component type must be a struct: {type.FullName}.";
+                return false;
+            }
+
+            if (registeredTypeIds.ContainsKey(type))
+            {
+                errorMessage = $"Snapshot registered component type is duplicated: {type.FullName}.";
+                return false;
+            }
+
+            registeredTypeIds.Add(type, i);
+        }
+
+        errorMessage = string.Empty;
+        return true;
+    }
+
+    private bool ValidateEntityManagerSnapshot(EcsEntityManagerSnapshot snapshot, out HashSet<Entity> aliveEntities, out string errorMessage)
+    {
+        aliveEntities = null;
+
+        if (snapshot == null)
+        {
+            errorMessage = "Snapshot EntityManager data is null.";
+            return false;
+        }
+
+        if (snapshot.DataCount < 0)
+        {
+            errorMessage = "Snapshot EntityManager DataCount cannot be negative.";
+            return false;
+        }
+
+        if (snapshot.Slots == null)
+        {
+            errorMessage = "Snapshot EntityManager slot list is null.";
+            return false;
+        }
+
+        if (snapshot.Slots.Count != snapshot.DataCount)
+        {
+            errorMessage = "Snapshot EntityManager slot count must equal DataCount.";
+            return false;
+        }
+
+        if (snapshot.FreeIdsInPopOrder == null)
+        {
+            errorMessage = "Snapshot EntityManager free id list is null.";
+            return false;
+        }
+
+        aliveEntities = new HashSet<Entity>();
+        bool[] slotFlags = snapshot.DataCount > 0 ? new bool[snapshot.DataCount] : Array.Empty<bool>();
+        bool[] freeIdFlags = snapshot.DataCount > 0 ? new bool[snapshot.DataCount] : Array.Empty<bool>();
+        EcsEntitySlotSnapshot[] slotsById = snapshot.DataCount > 0 ? new EcsEntitySlotSnapshot[snapshot.DataCount] : Array.Empty<EcsEntitySlotSnapshot>();
+
+        for (int i = 0; i < snapshot.Slots.Count; i++)
+        {
+            EcsEntitySlotSnapshot slot = snapshot.Slots[i];
+
+            if (slot == null)
+            {
+                errorMessage = $"Snapshot EntityManager slot at index {i} is null.";
+                return false;
+            }
+
+            if (slot.Id < 0 || slot.Id >= snapshot.DataCount)
+            {
+                errorMessage = $"Snapshot EntityManager slot id is out of range: {slot.Id}.";
+                return false;
+            }
+
+            if (slotFlags[slot.Id])
+            {
+                errorMessage = $"Snapshot EntityManager contains duplicate slot id: {slot.Id}.";
+                return false;
+            }
+
+            if (slot.Version < 0)
+            {
+                errorMessage = $"Snapshot EntityManager slot version cannot be negative: {slot.Id}.";
+                return false;
+            }
+
+            if (slot.IsAlive && slot.Version <= 0)
+            {
+                errorMessage = $"Snapshot EntityManager alive slot must have positive version: {slot.Id}.";
+                return false;
+            }
+
+            slotFlags[slot.Id] = true;
+            slotsById[slot.Id] = slot;
+
+            if (slot.IsAlive)
+                aliveEntities.Add(new Entity(slot.Id, slot.Version));
+        }
+
+        for (int i = 0; i < snapshot.FreeIdsInPopOrder.Count; i++)
+        {
+            int freeId = snapshot.FreeIdsInPopOrder[i];
+
+            if (freeId < 0 || freeId >= snapshot.DataCount)
+            {
+                errorMessage = $"Snapshot EntityManager free id is out of range: {freeId}.";
+                return false;
+            }
+
+            if (freeIdFlags[freeId])
+            {
+                errorMessage = $"Snapshot EntityManager contains duplicate free id: {freeId}.";
+                return false;
+            }
+
+            if (slotsById[freeId] != null && slotsById[freeId].IsAlive)
+            {
+                errorMessage = $"Snapshot EntityManager free id points to alive slot: {freeId}.";
+                return false;
+            }
+
+            freeIdFlags[freeId] = true;
+        }
+
+        for (int i = 0; i < snapshot.DataCount; i++)
+        {
+            EcsEntitySlotSnapshot slot = slotsById[i];
+
+            if (slot == null)
+            {
+                errorMessage = $"Snapshot EntityManager is missing slot id: {i}.";
+                return false;
+            }
+
+            if (!slot.IsAlive && !freeIdFlags[i])
+            {
+                errorMessage = $"Snapshot EntityManager dead slot is missing from free id list: {i}.";
+                return false;
+            }
+        }
+
+        errorMessage = string.Empty;
+        return true;
+    }
+
+    private bool ValidateComponentStoreSnapshots(IReadOnlyList<EcsComponentStoreSnapshot> snapshots, Dictionary<Type, int> registeredTypeIds, HashSet<Entity> aliveEntities, out Dictionary<Type, HashSet<Entity>> storeEntities, out string errorMessage)
+    {
+        storeEntities = null;
+
+        if (snapshots == null)
+        {
+            errorMessage = "Snapshot component store list is null.";
+            return false;
+        }
+
+        storeEntities = new Dictionary<Type, HashSet<Entity>>(snapshots.Count);
+        HashSet<Type> componentTypes = new HashSet<Type>();
+        HashSet<int> registerIds = new HashSet<int>();
+
+        for (int i = 0; i < snapshots.Count; i++)
+        {
+            EcsComponentStoreSnapshot snapshot = snapshots[i];
+
+            if (snapshot == null)
+            {
+                errorMessage = $"Snapshot component store at index {i} is null.";
+                return false;
+            }
+
+            Type componentType = snapshot.ComponentType;
+
+            if (componentType == null || !registeredTypeIds.TryGetValue(componentType, out int registeredId))
+            {
+                errorMessage = $"Snapshot component store type is not registered: {componentType?.FullName ?? "<null>"}.";
+                return false;
+            }
+
+            if (snapshot.RegisterID != registeredId)
+            {
+                errorMessage = $"Snapshot component store register id does not match registered type order: {componentType.FullName}.";
+                return false;
+            }
+
+            if (!componentTypes.Add(componentType))
+            {
+                errorMessage = $"Snapshot contains duplicate component store type: {componentType.FullName}.";
+                return false;
+            }
+
+            if (!registerIds.Add(snapshot.RegisterID))
+            {
+                errorMessage = $"Snapshot contains duplicate component store register id: {snapshot.RegisterID}.";
+                return false;
+            }
+
+            if (snapshot.DenseComponents == null)
+            {
+                errorMessage = $"Snapshot component store dense list is null: {componentType.FullName}.";
+                return false;
+            }
+
+            HashSet<Entity> entities = new HashSet<Entity>();
+
+            for (int denseIndex = 0; denseIndex < snapshot.DenseComponents.Count; denseIndex++)
+            {
+                EcsComponentSnapshot component = snapshot.DenseComponents[denseIndex];
+
+                if (component == null)
+                {
+                    errorMessage = $"Snapshot component at dense index {denseIndex} is null: {componentType.FullName}.";
+                    return false;
+                }
+
+                if (!aliveEntities.Contains(component.Entity))
+                {
+                    errorMessage = $"Snapshot component entity is not alive: {component.Entity}.";
+                    return false;
+                }
+
+                if (!entities.Add(component.Entity))
+                {
+                    errorMessage = $"Snapshot component store contains duplicate entity: {component.Entity}.";
+                    return false;
+                }
+
+                if (component.ComponentValue == null || !componentType.IsInstanceOfType(component.ComponentValue))
+                {
+                    errorMessage = $"Snapshot component value type mismatch: {componentType.FullName}.";
+                    return false;
+                }
+            }
+
+            storeEntities.Add(componentType, entities);
+        }
+
+        errorMessage = string.Empty;
+        return true;
+    }
+
+    private bool ValidateSingletonSnapshots(IReadOnlyList<EcsSingletonSnapshot> snapshots, Dictionary<Type, int> registeredTypeIds, HashSet<Entity> aliveEntities, Dictionary<Type, HashSet<Entity>> storeEntities, out string errorMessage)
+    {
+        if (snapshots == null)
+        {
+            errorMessage = "Snapshot singleton list is null.";
+            return false;
+        }
+
+        HashSet<Type> singletonTypes = new HashSet<Type>();
+
+        for (int i = 0; i < snapshots.Count; i++)
+        {
+            EcsSingletonSnapshot snapshot = snapshots[i];
+
+            if (snapshot == null)
+            {
+                errorMessage = $"Snapshot singleton at index {i} is null.";
+                return false;
+            }
+
+            Type componentType = snapshot.ComponentType;
+
+            if (componentType == null || !registeredTypeIds.ContainsKey(componentType))
+            {
+                errorMessage = $"Snapshot singleton type is not registered: {componentType?.FullName ?? "<null>"}.";
+                return false;
+            }
+
+            if (!singletonTypes.Add(componentType))
+            {
+                errorMessage = $"Snapshot singleton type is duplicated: {componentType.FullName}.";
+                return false;
+            }
+
+            if (!aliveEntities.Contains(snapshot.Entity))
+            {
+                errorMessage = $"Snapshot singleton entity is not alive: {snapshot.Entity}.";
+                return false;
+            }
+
+            if (!storeEntities.TryGetValue(componentType, out HashSet<Entity> entities) || !entities.Contains(snapshot.Entity))
+            {
+                errorMessage = $"Snapshot singleton entity does not own component type: {componentType.FullName}.";
+                return false;
+            }
+        }
+
+        errorMessage = string.Empty;
+        return true;
+    }
+
+    private void RestoreSingletonSnapshots(IReadOnlyList<EcsSingletonSnapshot> snapshots)
+    {
+        for (int i = 0; i < snapshots.Count; i++)
+        {
+            EcsSingletonSnapshot snapshot = snapshots[i];
+            _singletonEntities[snapshot.ComponentType] = snapshot.Entity;
+        }
+    }
+
+    private static int CountAliveEntities(EcsEntityManagerSnapshot snapshot)
+    {
+        int count = 0;
+
+        for (int i = 0; i < snapshot.Slots.Count; i++)
+        {
+            if (snapshot.Slots[i].IsAlive)
+                count++;
+        }
+
+        return count;
+    }
+
+    private static int CountComponents(IReadOnlyList<EcsComponentStoreSnapshot> snapshots)
+    {
+        int count = 0;
+
+        for (int i = 0; i < snapshots.Count; i++)
+            count += snapshots[i].DenseComponents.Count;
+
+        return count;
     }
 
     /// <summary>

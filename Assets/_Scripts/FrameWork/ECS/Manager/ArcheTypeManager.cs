@@ -166,6 +166,16 @@ internal class ArcheTypeManager
     {
         _queryCache.Clear();
     }
+
+    /// <summary>
+    /// 清空所有 ArcheType 分组和 Query 缓存，用于 Snapshot Restore 前重建。
+    /// </summary>
+    internal void ClearAll()
+    {
+        _archeGroups.Clear();
+        _queryCache.Clear();
+        _version++;
+    }
 }
 
 }

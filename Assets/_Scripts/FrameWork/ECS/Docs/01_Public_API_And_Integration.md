@@ -383,7 +383,45 @@ IECSFrameCommandDebugSource
 
 ---
 
-## 11. 当前边界结论
+## 11. World Snapshot 接入
+
+ECS Core 当前提供 World-level Snapshot Capture / Restore 接口，用于让外部回滚系统或调度器在稳定帧边界捕获和恢复 ECS World 状态。
+
+可以直接通过 `World` 调用：
+
+```csharp
+world.TryCaptureSnapshot(frameNumber, out EcsWorldSnapshot snapshot, out EcsWorldSnapshotCaptureResult captureResult);
+world.TryRestoreSnapshot(snapshot, out EcsWorldSnapshotRestoreResult restoreResult);
+```
+
+也可以通过受限接口依赖 Snapshot 能力：
+
+```csharp
+using Contracts;
+using ECSFrameWork;
+
+IEcsWorldSnapshotProvider snapshotProvider = world;
+snapshotProvider.TryCaptureSnapshot(frameNumber, out snapshot, out captureResult);
+snapshotProvider.TryRestoreSnapshot(snapshot, out restoreResult);
+```
+
+`IEcsWorldSnapshotProvider` 位于 `Contracts` 命名空间。Snapshot DTO 和 Capture / Restore Result DTO 位于 `ECSFrameWork` 命名空间。
+
+Snapshot Capture / Restore 只允许在稳定边界调用：
+
+```text
+World.CurrentState == WorldStates.Idle
+PendingCommandCount == 0
+PendingSystemCommandCount == 0
+```
+
+ECS Core 只负责 World-level Snapshot Capture / Restore。Snapshot ring buffer、输入历史保存、回滚触发、Restore 后重模拟流程、View 重同步和 WorldEvent 重放策略仍属于 RollBackSystem 或上层模块。
+
+更完整的 Snapshot 说明见 `04_World_Snapshot_Capture_Restore.md`。
+
+---
+
+## 12. 当前边界结论
 
 当前版本的外部接入原则：
 
@@ -394,5 +432,6 @@ IECSFrameCommandDebugSource
 4. ECS 只保证所有进入 World 的操作在内部保持一致。
 5. System 执行期间的结构变化由 StructuralChangeBuffer / SystemChangeBuffer 延迟处理。
 6. FrameCommand 是可选的按帧外部指令通道，不是所有修改的强制入口。
-7. Rollback / Snapshot / Resimulate 不属于当前 ECS Core 负责实现的范围。
+7. ECS Core 提供 World-level Snapshot Capture / Restore 接口。
+8. RollBack 历史管理、输入保存、回滚触发、重模拟流程和 View 重同步不属于 ECS Core 负责实现的范围。
 ```
