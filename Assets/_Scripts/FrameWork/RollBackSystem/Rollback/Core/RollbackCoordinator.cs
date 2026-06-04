@@ -5,13 +5,13 @@
  * 2. 回滚后必须通过历史输入重新模拟所有后续帧。
  * 3. Snapshot 与 Checksum 必须与逻辑帧保持一致。
  * 4. Coordinator 本身不保存游戏状态，只协调 Buffer、World 与 Runner。
- * 5. 帧命令回放由 WorldRollbackAdapter.Simulate() 在 Tick 前根据 context.isRollback
- *    分发 IFrameCommandSource.ReplayCommandsToWorld / ApplyCommandsToWorld，
- *    RollbackCoordinator 不直接持有 World，因此不在此处调用帧命令。
+ * 5. 帧推进统一走 IRollbackableWorld.Simulate()（内部处理帧命令回放+输入应用+Runner.Tick），
+ *    不直接调 RollbackRunnerAdapter.TickFrame()。
  */
 
 using FrameWork.RollBackSystem.Interfaces;
 using Simulation.Contracts;
+using ECSFrameWork;
 
 namespace FrameWork.RollBackSystem
 {
@@ -75,29 +75,14 @@ namespace FrameWork.RollBackSystem
             ChecksumBuffer checksumBuffer,
             AuthoritativeChecksumBuffer authoritativeChecksumBuffer)
         {
-            _inputBuffer =
-                inputBuffer;
-
-            _authoritativeInputBuffer =
-                authoritativeInputBuffer;
-
-            _snapshotBuffer =
-                snapshotBuffer;
-
-            _world =
-                world;
-
-            _runner =
-                runner;
-
-            _inputComparer =
-                inputComparer;
-
-            _checksumBuffer =
-                checksumBuffer;
-
-            _authoritativeChecksumBuffer =
-                authoritativeChecksumBuffer;
+            _inputBuffer = inputBuffer;
+            _authoritativeInputBuffer = authoritativeInputBuffer;
+            _snapshotBuffer = snapshotBuffer;
+            _world = world;
+            _runner = runner;
+            _inputComparer = inputComparer;
+            _checksumBuffer = checksumBuffer;
+            _authoritativeChecksumBuffer = authoritativeChecksumBuffer;
         }
 
         //--------------------------------
@@ -106,35 +91,20 @@ namespace FrameWork.RollBackSystem
 
         /// <summary>
         /// 推进一个新的逻辑帧。
-        /// 帧命令的 Apply 由 WorldRollbackAdapter.Simulate() 在 Tick 前完成。
+        /// 统一走 IRollbackableWorld.Simulate() 而非直接调 Runner，
+        /// 确保帧命令回放和输入应用都被执行。
         /// </summary>
         public void Step(TInput input)
         {
-            int nextFrame =
-                CurrentFrame + 1;
+            int nextFrame = CurrentFrame + 1;
 
-            //--------------------------------
-            // Save Input
-            //--------------------------------
+            _inputBuffer.Save(nextFrame, input);
 
-            _inputBuffer.Save(
-                nextFrame,
-                input);
+            _world.Simulate(
+                input,
+                new SimulationContext(nextFrame, 0f, false));
 
-            //--------------------------------
-            // Tick
-            //--------------------------------
-
-            _runner.TickFrame(
-                nextFrame,
-                false);
-
-            //--------------------------------
-            // Update Frame
-            //--------------------------------
-
-            CurrentFrame =
-                nextFrame;
+            CurrentFrame = nextFrame;
         }
 
         //--------------------------------
@@ -144,12 +114,12 @@ namespace FrameWork.RollBackSystem
         public void SaveSnapshot()
         {
             TSnapshot snapshot =
-                (TSnapshot)_world
-                    .Capture(CurrentFrame);
+                (TSnapshot)_world.Capture(CurrentFrame);
 
-            _snapshotBuffer.Save(
-                snapshot);
+            if (snapshot == null)
+                return;
 
+            _snapshotBuffer.Save(snapshot);
             SaveChecksum();
         }
 
@@ -161,40 +131,30 @@ namespace FrameWork.RollBackSystem
             int frame,
             in TInput input)
         {
-            _authoritativeInputBuffer
-                .Save(frame, input);
+            _authoritativeInputBuffer.Save(frame, input);
 
             bool hasPredicted =
-                _inputBuffer.TryGet(
-                    frame,
-                    out var predictedInput);
+                _inputBuffer.TryGet(frame, out var predictedInput);
 
             if (!hasPredicted)
                 return;
 
             bool isDifferent =
-                !_inputComparer.IsEqual(
-                    predictedInput,
-                    input);
+                !_inputComparer.IsEqual(predictedInput, input);
 
             if (!isDifferent)
                 return;
 
-            int targetFrame =
-                CurrentFrame;
+            int targetFrame = CurrentFrame;
 
-            bool rollbackSuccess =
-                RollbackTo(frame);
+            bool rollbackSuccess = RollbackTo(frame - 1);
 
             if (!rollbackSuccess)
                 return;
 
-            _inputBuffer.Save(
-                frame,
-                input);
+            _inputBuffer.Save(frame, input);
 
-            ResimulateTo(
-                targetFrame);
+            ResimulateTo(targetFrame);
         }
 
         //--------------------------------
@@ -204,22 +164,18 @@ namespace FrameWork.RollBackSystem
         public bool RollbackTo(int frame)
         {
             bool found =
-                _snapshotBuffer
-                    .TryGetNearestSnapshot(
-                        frame,
-                        out var snapshot);
+                _snapshotBuffer.TryGetNearestSnapshot(
+                    frame,
+                    out var snapshot);
 
             if (!found)
                 return false;
 
-            _world.Restore(
-                snapshot);
+            _world.Restore(snapshot);
 
-            _runner.SetFrame(
-                snapshot.Frame);
+            _runner?.SetFrame(snapshot.Frame);
 
-            CurrentFrame =
-                snapshot.Frame;
+            CurrentFrame = snapshot.Frame;
 
             return true;
         }
@@ -230,59 +186,33 @@ namespace FrameWork.RollBackSystem
 
         /// <summary>
         /// 使用历史输入重新模拟后续逻辑帧。
-        /// 帧命令的 Replay 由 WorldRollbackAdapter.Simulate() 在 Tick 前完成。
+        /// 统一走 IRollbackableWorld.Simulate() 而非直接调 Runner。
         /// </summary>
-        public void ResimulateTo(
-            int targetFrame)
+        public void ResimulateTo(int targetFrame)
         {
             while (CurrentFrame < targetFrame)
             {
-                int nextFrame =
-                    CurrentFrame + 1;
-
-                //--------------------------------
-                // Get Input
-                //--------------------------------
+                int nextFrame = CurrentFrame + 1;
 
                 bool found =
-                    _inputBuffer.TryGet(
-                        nextFrame,
-                        out var input);
+                    _inputBuffer.TryGet(nextFrame, out var input);
 
                 if (!found)
                     break;
 
-                //--------------------------------
-                // Tick Rollback Frame
-                //--------------------------------
-
-                _runner.TickFrame(
-                    nextFrame,
-                    true);
-
-                //--------------------------------
-                // Save Snapshot
-                //--------------------------------
+                _world.Simulate(
+                    input,
+                    new SimulationContext(nextFrame, 0f, true));
 
                 TSnapshot snapshot =
-                    (TSnapshot)_world
-                        .Capture(nextFrame);
+                    (TSnapshot)_world.Capture(nextFrame);
 
-                _snapshotBuffer.Save(
-                    snapshot);
-
-                //--------------------------------
-                // Save Checksum
-                //--------------------------------
+                if (snapshot != null)
+                    _snapshotBuffer.Save(snapshot);
 
                 SaveChecksum();
 
-                //--------------------------------
-                // Update Frame
-                //--------------------------------
-
-                CurrentFrame =
-                    nextFrame;
+                CurrentFrame = nextFrame;
             }
         }
 
@@ -292,22 +222,15 @@ namespace FrameWork.RollBackSystem
 
         public uint CalculateChecksum()
         {
-            return _world
-                .CalculateChecksum();
+            return _world.CalculateChecksum();
         }
 
         private void SaveChecksum()
         {
-            uint checksum =
-                _world.CalculateChecksum();
-
-            FrameChecksum frameChecksum =
-                new FrameChecksum(
-                    CurrentFrame,
-                    checksum);
+            uint checksum = _world.CalculateChecksum();
 
             _checksumBuffer.Save(
-                frameChecksum);
+                new FrameChecksum(CurrentFrame, checksum));
         }
 
         //--------------------------------
@@ -318,57 +241,37 @@ namespace FrameWork.RollBackSystem
             int frame,
             uint checksum)
         {
-            FrameChecksum frameChecksum =
-                new FrameChecksum(
-                    frame,
-                    checksum);
-
-            _authoritativeChecksumBuffer
-                .Save(frameChecksum);
+            _authoritativeChecksumBuffer.Save(
+                new FrameChecksum(frame, checksum));
         }
 
         public ChecksumComparisonResult
-            VerifyChecksum(
-                int frame)
+            VerifyChecksum(int frame)
         {
             bool hasLocal =
-                _checksumBuffer.TryGet(
-                    frame,
-                    out var localChecksum);
+                _checksumBuffer.TryGet(frame, out var localChecksum);
 
             if (!hasLocal)
             {
-                return new ChecksumComparisonResult(
-                    false,
-                    frame,
-                    0,
-                    0);
+                return new ChecksumComparisonResult(false, frame, 0, 0);
             }
 
             bool hasAuthoritative =
-                _authoritativeChecksumBuffer
-                    .TryGet(
-                        frame,
-                        out var authoritativeChecksum);
+                _authoritativeChecksumBuffer.TryGet(
+                    frame,
+                    out var authoritativeChecksum);
 
             if (!hasAuthoritative)
             {
                 return new ChecksumComparisonResult(
-                    false,
-                    frame,
-                    localChecksum.Value,
-                    0);
+                    false, frame, localChecksum.Value, 0);
             }
 
             bool isMatch =
-                localChecksum.Value ==
-                authoritativeChecksum.Value;
+                localChecksum.Value == authoritativeChecksum.Value;
 
             return new ChecksumComparisonResult(
-                isMatch,
-                frame,
-                localChecksum.Value,
-                authoritativeChecksum.Value);
+                isMatch, frame, localChecksum.Value, authoritativeChecksum.Value);
         }
     }
 }

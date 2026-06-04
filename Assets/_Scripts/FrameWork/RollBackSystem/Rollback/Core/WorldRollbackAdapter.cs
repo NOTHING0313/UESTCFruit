@@ -2,15 +2,17 @@
  * 文件说明：WorldRollbackAdapter 负责把 ECS World 接入 Rollback 系统。
  * 设计约束：
  * 1. Adapter 不保存游戏逻辑状态，只负责桥接 World、Runner 与输入应用。
- * 2. Snapshot 与 Restore 必须完整恢复 ECS 世界状态。
+ * 2. Snapshot 与 Restore 通过 IEcsWorldSnapshotProvider（World 实现）完成。
  * 3. Simulate 必须保证相同输入与相同快照下得到一致结果。
  *
  * 联通说明：
- * 使用 Ecs 层的 EcsWorldSnapshot（实现 ISnapshot）替代旧的 Demo 层 WorldSnapshot，
- * EcsWorldSnapshot 直接通过 EcsComponentStoreSnapshot / EcsEntityManagerSnapshot 等
- * 结构化数据捕获完整 ECS 状态，Capture/Restore 逻辑内聚在 EcsWorldSnapshot 自身。
+ * - IEcsWorldSnapshotProvider 提供 TryCaptureSnapshot / TryRestoreSnapshot，
+ *   ECS Core 已验证 Entity ID/Version/ComponentStore/Singleton 恢复。
+ * - 通过接口而非具体 World 类型对接快照，将依赖面限制在 Snapshot 能力上。
+ * - World 类型仍保留用于 Tick、ApplyComponent 等非快照操作。
  */
 
+using Contracts;
 using ECSFrameWork;
 using FrameWork.RollBackSystem.Interfaces;
 using Simulation.Contracts;
@@ -23,37 +25,25 @@ namespace FrameWork.RollBackSystem
     public sealed class WorldRollbackAdapter<TInput>
         : IRollbackableWorld<TInput>
     {
-        /// <summary>
-        /// ECS World。
-        /// </summary>
+        private readonly IEcsWorldSnapshotProvider _snapshotProvider;
         private readonly World _world;
-
-        /// <summary>
-        /// 固定帧推进器。
-        /// </summary>
         private readonly SimulateRunner _runner;
-
-        /// <summary>
-        /// 输入应用器，用于把输入写入 ECS。
-        /// </summary>
-        private readonly IWorldInputApplier<TInput>
-            _inputApplier;
-
-        /// <summary>
-        /// 帧命令回放源。非必需：不提供时帧命令回放被跳过。
-        /// </summary>
-        private readonly IFrameCommandSource
-            _frameCommandSource;
+        private readonly IWorldInputApplier<TInput> _inputApplier;
+        private readonly IFrameCommandSource _frameCommandSource;
 
         /// <summary>
         /// 创建 ECS 回滚适配器。
         /// </summary>
+        /// <param name="snapshotProvider">ECS 快照提供者，通常就是 World 实例</param>
+        /// <param name="world">ECS World，用于 Tick、ApplyComponent 等</param>
         public WorldRollbackAdapter(
+            IEcsWorldSnapshotProvider snapshotProvider,
             World world,
             SimulateRunner runner,
             IWorldInputApplier<TInput> inputApplier,
             IFrameCommandSource frameCommandSource = null)
         {
+            _snapshotProvider = snapshotProvider;
             _world = world;
             _runner = runner;
             _inputApplier = inputApplier;
@@ -67,10 +57,6 @@ namespace FrameWork.RollBackSystem
             TInput input,
             in SimulationContext context)
         {
-            //--------------------------------
-            // Replay / Apply Frame Commands
-            //--------------------------------
-
             if (context.isRollback)
             {
                 _frameCommandSource?.ReplayCommandsToWorld(
@@ -84,17 +70,9 @@ namespace FrameWork.RollBackSystem
                     context.frameNumber);
             }
 
-            //--------------------------------
-            // Apply Input
-            //--------------------------------
-
             _inputApplier.Apply(
                 _world,
                 input);
-
-            //--------------------------------
-            // Tick World
-            //--------------------------------
 
             _runner.TickFrame(
                 context.frameNumber,
@@ -103,27 +81,41 @@ namespace FrameWork.RollBackSystem
 
         /// <summary>
         /// 捕获当前 ECS World 快照。
-        /// 使用 Ecs 层的 EcsWorldSnapshot。
+        /// 通过 IEcsWorldSnapshotProvider 调用，将依赖面限制在 Snapshot 能力上。
         /// </summary>
         public ISnapshot Capture(int frame)
         {
-            return EcsWorldSnapshot.Capture(
-                _world,
-                frame);
+            if (!_snapshotProvider.TryCaptureSnapshot(
+                    frame,
+                    out EcsWorldSnapshot snapshot,
+                    out EcsWorldSnapshotCaptureResult result))
+            {
+                return null;
+            }
+
+            return snapshot;
         }
 
         /// <summary>
         /// 从历史快照恢复 ECS World。
-        /// 使用 Ecs 层的 EcsWorldSnapshot。
+        /// Restore 成功后 ECS 会清空 WorldEventBuffer。
         /// </summary>
         public void Restore(ISnapshot snapshot)
         {
-            EcsWorldSnapshot.Restore(
-                _world,
-                (EcsWorldSnapshot)snapshot);
+            if (snapshot == null)
+                return;
+
+            var ecsSnapshot = (EcsWorldSnapshot)snapshot;
+
+            if (!_snapshotProvider.TryRestoreSnapshot(
+                    ecsSnapshot,
+                    out EcsWorldSnapshotRestoreResult result))
+            {
+                return;
+            }
 
             _runner.SetFrameCount(
-                snapshot.Frame);
+                ecsSnapshot.FrameNumber);
         }
 
         /// <summary>

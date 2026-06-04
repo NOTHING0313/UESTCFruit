@@ -1,12 +1,12 @@
 /*
- * [DEPRECATED] 已被 Ecs 层的 EcsWorldSnapshot 替代。
+ * [DEPRECATED] 已被 ECS Core World 的 TryCaptureSnapshot / TryRestoreSnapshot 替代。
  *
- * EcsWorldSnapshot 位于 Ecs/EcsWorldSnapshot.cs，实现了 ISnapshot 接口，
- * 通过 EcsComponentStoreSnapshot（dense 数组）、EcsEntityManagerSnapshot、
- * EcsSingletonSnapshot 等结构化数据捕获完整 ECS 状态。
+ * ECS Core 的 World 已实现 IEcsWorldSnapshotProvider，提供完整的 Snapshot 能力：
+ *   World.TryCaptureSnapshot(frame, out snapshot, out result)
+ *   World.TryRestoreSnapshot(snapshot, out result)
  *
- * Capture/Restore 逻辑已迁移至 EcsWorldSnapshot.Capture() / Restore()，
- * 反射恢复逻辑已内联到 EcsWorldSnapshot.RestoreComponentViaReflection()。
+ * 且已验证 Entity ID/Version/Alive 恢复、ComponentStore dense 顺序恢复、
+ * Query/ArcheType 重建、Singleton 映射恢复等（见 ECS_WorldSnapshot_Interface_For_RollBackSystem_Reviewed.md）。
  *
  * 保留此文件仅用于参考对比，不可再被编译引用。
  *

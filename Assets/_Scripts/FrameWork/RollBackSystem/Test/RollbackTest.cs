@@ -1,238 +1,117 @@
-//using UnityEngine;
+/*
+ * RollbackTest — 纯逻辑测试，不依赖 Unity。
+ *
+ * 测试流程：
+ *   f1: +1 → pos=1
+ *   f2: +1 → pos=2
+ *   f3: +1 → pos=3
+ *   收到 f1 权威输入(-1) → 回滚到 f0 (pos=0)
+ *   重模拟 f1(-1)→f2(+1)→f3(+1) → 最终 pos=1
+ *
+ * 在 Unity 中作为 MonoBehaviour 挂载，结果通过 Debug.Log 输出。
+ */
 
-//namespace FrameWork.RollBackSystem.Tests
-//{
-//    public class RollbackTest
-//        : MonoBehaviour
-//    {
-//        private void Start()
-//        {
-//            Run();
-//        }
+using System.Text;
+using UnityEngine;
 
-//        private void Run()
-//        {
-//            Debug.Log(
-//                "==============================");
+namespace FrameWork.RollBackSystem.Tests
+{
+    public class RollbackTest : MonoBehaviour
+    {
+        private void Start()
+        {
+            Run();
+        }
 
-//            Debug.Log(
-//                "Rollback Test Start");
+        private void Run()
+        {
+            var log = new StringBuilder();
+            bool allPassed = true;
 
-//            Debug.Log(
-//                "==============================");
+            //--------------------------------
+            // Setup
+            //--------------------------------
 
-//            //--------------------------------
-//            // 创建 World
-//            //--------------------------------
+            var world = new FakeWorld();
+            var coordinator = new RollbackCoordinator<PlayerInput, FakeSnapshot>(
+                inputBuffer:             new InputBuffer<PlayerInput>(),
+                authoritativeInputBuffer: new AuthoritativeInputBuffer<PlayerInput>(),
+                snapshotBuffer:          new SnapshotRingBuffer<FakeSnapshot>(120),
+                world:                   world,
+                runner:                  null,        // FakeWorld 不需要 runner
+                inputComparer:           new PlayerInputComparer(),
+                checksumBuffer:          new ChecksumBuffer(),
+                authoritativeChecksumBuffer: new AuthoritativeChecksumBuffer()
+            );
 
-//            var world =
-//                new FakeWorld();
+            log.AppendLine("=== Rollback Test ===");
 
-//            Debug.Log(
-//                "[Create] FakeWorld");
+            //--------------------------------
+            // Frame 1: predict +1
+            //--------------------------------
+            coordinator.Step(new PlayerInput(1, 0, false));
+            coordinator.SaveSnapshot();
+            log.AppendLine($"f1 Step(+1) → pos={world.Position} (expect 1)");
+            allPassed &= AssertEquals(1, world.Position, "f1 pos", log);
 
-//            //--------------------------------
-//            // 创建 Coordinator
-//            //--------------------------------
+            //--------------------------------
+            // Frame 2: predict +1
+            //--------------------------------
+            coordinator.Step(new PlayerInput(1, 0, false));
+            coordinator.SaveSnapshot();
+            log.AppendLine($"f2 Step(+1) → pos={world.Position} (expect 2)");
+            allPassed &= AssertEquals(2, world.Position, "f2 pos", log);
 
-//            var coordinator =
-//                new RollbackCoordinator
-//                    <PlayerInput, FakeSnapshot>(
-//                    new InputBuffer<PlayerInput>(),
-//                    new AuthoritativeInputBuffer<PlayerInput>(),
-//                    new SnapshotRingBuffer<FakeSnapshot>(120),
-//                    world,
-//                    new PlayerInputComparer(),
-//                    new ChecksumBuffer(),
-//                    new AuthoritativeChecksumBuffer(),
-//                    1f / 60f);
+            //--------------------------------
+            // Frame 3: predict +1
+            //--------------------------------
+            coordinator.Step(new PlayerInput(1, 0, false));
+            coordinator.SaveSnapshot();
+            log.AppendLine($"f3 Step(+1) → pos={world.Position} (expect 3)");
+            allPassed &= AssertEquals(3, world.Position, "f3 pos", log);
 
-//            Debug.Log(
-//                "[Create] RollbackCoordinator");
+            //--------------------------------
+            // Authoritative: f1 was actually -1
+            //--------------------------------
+            log.AppendLine("--- Receive authoritative f1(-1) ---");
+            coordinator.ReceiveAuthoritativeInput(1, new PlayerInput(-1, 0, false));
 
-//            //--------------------------------
-//            // frame0
-//            //--------------------------------
+            log.AppendLine($"After rollback → pos={world.Position} frame={coordinator.CurrentFrame}");
+            log.AppendLine($"Expect pos=1 (f1:-1 + f2:+1 + f3:+1)");
 
-//            Debug.Log(
-//                "--------------------------------");
+            //--------------------------------
+            // Verify
+            //--------------------------------
+            allPassed &= AssertEquals(1, world.Position, "final pos", log);
+            allPassed &= AssertEquals(3, coordinator.CurrentFrame, "final frame", log);
 
-//            Debug.Log(
-//                "[Frame 0] Step");
+            //--------------------------------
+            // Checksum verify
+            //--------------------------------
+            coordinator.ReceiveAuthoritativeChecksum(3, world.CalculateChecksum());
+            var result = coordinator.VerifyChecksum(3);
+            log.AppendLine($"Checksum match: {result.IsMatch}");
+            allPassed &= AssertTrue(result.IsMatch, "checksum match", log);
 
-//            coordinator.Step(
-//                new PlayerInput(
-//                    1,
-//                    0,
-//                    false));
+            //--------------------------------
+            // Result
+            //--------------------------------
+            log.AppendLine(allPassed ? "=== ALL PASSED ===" : "=== SOME FAILED ===");
+            Debug.Log(log.ToString());
+        }
 
-//            Debug.Log(
-//                $"[Frame 0] Position = {world.GetPosition()}");
+        private bool AssertEquals(int expected, int actual, string label, StringBuilder log)
+        {
+            if (expected == actual) return true;
+            log.AppendLine($"  FAIL [{label}]: expected {expected}, got {actual}");
+            return false;
+        }
 
-//            coordinator.SaveSnapshot();
-
-//            Debug.Log(
-//                "[Frame 0] Snapshot Saved");
-
-//            Debug.Log(
-//                $"[Frame 0] Checksum = {world.CalculateChecksum()}");
-
-//            //--------------------------------
-//            // frame1
-//            //--------------------------------
-
-//            Debug.Log(
-//                "--------------------------------");
-
-//            Debug.Log(
-//                "[Frame 1] Step");
-
-//            coordinator.Step(
-//                new PlayerInput(
-//                    1,
-//                    0,
-//                    false));
-
-//            Debug.Log(
-//                $"[Frame 1] Position = {world.GetPosition()}");
-
-//            coordinator.SaveSnapshot();
-
-//            Debug.Log(
-//                "[Frame 1] Snapshot Saved");
-
-//            Debug.Log(
-//                $"[Frame 1] Checksum = {world.CalculateChecksum()}");
-
-//            //--------------------------------
-//            // frame2
-//            //--------------------------------
-
-//            Debug.Log(
-//                "--------------------------------");
-
-//            Debug.Log(
-//                "[Frame 2] Step");
-
-//            coordinator.Step(
-//                new PlayerInput(
-//                    1,
-//                    0,
-//                    false));
-
-//            Debug.Log(
-//                $"[Frame 2] Position = {world.GetPosition()}");
-
-//            coordinator.SaveSnapshot();
-
-//            Debug.Log(
-//                "[Frame 2] Snapshot Saved");
-
-//            Debug.Log(
-//                $"[Frame 2] Checksum = {world.CalculateChecksum()}");
-
-//            //--------------------------------
-//            // rollback前
-//            //--------------------------------
-
-//            Debug.Log(
-//                "================================");
-
-//            Debug.Log(
-//                $"[Before Rollback] Position = {world.GetPosition()}");
-
-//            Debug.Log(
-//                $"[Before Rollback] CurrentFrame = {coordinator.CurrentFrame}");
-
-//            Debug.Log(
-//                "================================");
-
-//            //--------------------------------
-//            // 服务器修正输入
-//            //--------------------------------
-
-//            Debug.Log(
-//                "[Authoritative Input]");
-
-//            Debug.Log(
-//                "Frame 1 Input Corrected");
-
-//            Debug.Log(
-//                "Predicted : +1");
-
-//            Debug.Log(
-//                "Authoritative : -1");
-
-//            //--------------------------------
-//            // rollback
-//            //--------------------------------
-
-//            coordinator.ReceiveAuthoritativeInput(
-//                1,
-//                new PlayerInput(
-//                    -1,
-//                    0,
-//                    false));
-
-//            //--------------------------------
-//            // rollback后
-//            //--------------------------------
-
-//            Debug.Log(
-//                "================================");
-
-//            Debug.Log(
-//                $"[After Rollback] Position = {world.GetPosition()}");
-
-//            Debug.Log(
-//                $"[After Rollback] CurrentFrame = {coordinator.CurrentFrame}");
-
-//            Debug.Log(
-//                $"[After Rollback] Checksum = {world.CalculateChecksum()}");
-
-//            Debug.Log(
-//                "================================");
-
-//            //--------------------------------
-//            // 验证
-//            //--------------------------------
-
-//            int expected = 1;
-
-//            int actual =
-//                world.GetPosition();
-
-//            bool success =
-//                expected == actual;
-
-//            Debug.Log(
-//                $"[Verify] Expected = {expected}");
-
-//            Debug.Log(
-//                $"[Verify] Actual = {actual}");
-
-//            Debug.Log(
-//                $"[Verify] Result = {success}");
-
-//            if (success)
-//            {
-//                Debug.Log(
-//                    "Rollback Test SUCCESS");
-//            }
-//            else
-//            {
-//                Debug.LogError(
-//                    "Rollback Test FAILED");
-//            }
-
-//            Debug.Log(
-//                "==============================");
-
-//            Debug.Log(
-//                "Rollback Test End");
-
-//            Debug.Log(
-//                "==============================");
-//        }
-//    }
-//}
+        private bool AssertTrue(bool condition, string label, StringBuilder log)
+        {
+            if (condition) return true;
+            log.AppendLine($"  FAIL [{label}]: expected true");
+            return false;
+        }
+    }
+}

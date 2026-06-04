@@ -1,9 +1,14 @@
 /*
- * [DEPRECATED] 反射恢复逻辑已内联到 EcsWorldSnapshot.RestoreComponentViaReflection()。
+ * [DEPRECATED] 已被 ECS Core World 的 TryCaptureSnapshot / TryRestoreSnapshot 替代。
  *
- * 旧方案：独立静态工具类，供 EntitySnapshotData.Restore() 调用。
- * 新方案：作为 EcsWorldSnapshot 的 private static 方法，
- * 与其他 Capture/Restore 逻辑内聚在同一类中，减少公开 API 面。
+ * ECS Core 的 World 已实现 IEcsWorldSnapshotProvider，提供：
+ *   World.TryCaptureSnapshot(frame, out snapshot, out result)
+ *   World.TryRestoreSnapshot(snapshot, out result)
+ *
+ * 且已通过 Entity ID/Version 恢复测试（见 ECS_WorldSnapshot_Interface_For_RollBackSystem_Reviewed.md §14）。
+ *
+ * ReflectionComponentRestore 中通过反射绕过 ECS 内部数据结构的方式
+ * 被 World.SetComponent 泛型调用的直接使用取代；不再需要此工具类。
  *
  * 保留此文件仅用于参考对比，不可再被编译引用。
  *

@@ -15,24 +15,24 @@ namespace ECSFrameWork
 /// <summary>
 /// 输入按键位标记。
 /// </summary>
-public enum InputButtonFlags : ulong
+public enum InputButtonFlags : long
 {
     None = 0,
 
-    KeySpace = 1UL << 0,
-    KeyE = 1UL << 1,
-    KeyQ = 1UL << 2,
-    KeyR = 1UL << 3,
-    KeyF = 1UL << 4,
-    KeyLeftShift = 1UL << 5,
-    KeyLeftCtrl = 1UL << 6,
-    KeyEscape = 1UL << 7,
+    KeySpace = 1L << 0,
+    KeyE = 1L << 1,
+    KeyQ = 1L << 2,
+    KeyR = 1L << 3,
+    KeyF = 1L << 4,
+    KeyLeftShift = 1L << 5,
+    KeyLeftCtrl = 1L << 6,
+    KeyEscape = 1L << 7,
 
-    MouseLeft = 1UL << 16,
-    MouseRight = 1UL << 17,
-    MouseMiddle = 1UL << 18,
-    MouseBack = 1UL << 19,
-    MouseForward = 1UL << 20,
+    MouseLeft = 1L << 16,
+    MouseRight = 1L << 17,
+    MouseMiddle = 1L << 18,
+    MouseBack = 1L << 19,
+    MouseForward = 1L << 20,
 }
 
 }
