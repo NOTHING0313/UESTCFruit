@@ -26,7 +26,7 @@ namespace FrameWork.RollBackSystem
         /// <summary>
         /// 保存指定帧的服务器权威输入。
         /// </summary>
-        public void Save(int frame, in TInput input)
+        public void Save(int frame, TInput input)
         {
             _inputs[frame] = input;
         }

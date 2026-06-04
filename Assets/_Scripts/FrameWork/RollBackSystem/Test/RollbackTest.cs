@@ -38,7 +38,6 @@ namespace FrameWork.RollBackSystem.Tests
                 authoritativeInputBuffer: new AuthoritativeInputBuffer<PlayerInput>(),
                 snapshotBuffer:          new SnapshotRingBuffer<FakeSnapshot>(120),
                 world:                   world,
-                runner:                  null,        // FakeWorld 不需要 runner
                 inputComparer:           new PlayerInputComparer(),
                 checksumBuffer:          new ChecksumBuffer(),
                 authoritativeChecksumBuffer: new AuthoritativeChecksumBuffer()

@@ -14,6 +14,6 @@ namespace FrameWork.RollBackSystem.Interfaces
     {
         void Simulate(
             TInput input,
-            in SimulationContext context);
+            SimulationContext context);
     }
 }

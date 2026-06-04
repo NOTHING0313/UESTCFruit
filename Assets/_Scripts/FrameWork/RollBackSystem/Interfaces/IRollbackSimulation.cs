@@ -15,7 +15,7 @@ namespace Simulation.Contracts
 
         void ReceiveAuthoritativeInput(
             int frame,
-            in TInput input);
+            TInput input);
 
         bool RollbackTo(int frame);
 

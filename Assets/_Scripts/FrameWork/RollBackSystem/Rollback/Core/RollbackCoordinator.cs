@@ -4,14 +4,14 @@
  * 1. 所有逻辑推进必须严格基于逻辑帧编号。
  * 2. 回滚后必须通过历史输入重新模拟所有后续帧。
  * 3. Snapshot 与 Checksum 必须与逻辑帧保持一致。
- * 4. Coordinator 本身不保存游戏状态，只协调 Buffer、World 与 Runner。
- * 5. 帧推进统一走 IRollbackableWorld.Simulate()（内部处理帧命令回放+输入应用+Runner.Tick），
- *    不直接调 RollbackRunnerAdapter.TickFrame()。
+ * 4. Coordinator 本身不保存游戏状态，只协调 Buffer 与 World。
+ * 5. Simulate() 只写输入和帧命令，World.Tick() 由外部调用。
  */
 
 using FrameWork.RollBackSystem.Interfaces;
 using Simulation.Contracts;
 using ECSFrameWork;
+using System;
 
 namespace FrameWork.RollBackSystem
 {
@@ -45,9 +45,6 @@ namespace FrameWork.RollBackSystem
         private readonly IRollbackableWorld<TInput>
             _world;
 
-        private readonly RollbackRunnerAdapter
-            _runner;
-
         //--------------------------------
         // Validation
         //--------------------------------
@@ -70,7 +67,6 @@ namespace FrameWork.RollBackSystem
             AuthoritativeInputBuffer<TInput> authoritativeInputBuffer,
             SnapshotRingBuffer<TSnapshot> snapshotBuffer,
             IRollbackableWorld<TInput> world,
-            RollbackRunnerAdapter runner,
             IInputComparer<TInput> inputComparer,
             ChecksumBuffer checksumBuffer,
             AuthoritativeChecksumBuffer authoritativeChecksumBuffer)
@@ -79,7 +75,6 @@ namespace FrameWork.RollBackSystem
             _authoritativeInputBuffer = authoritativeInputBuffer;
             _snapshotBuffer = snapshotBuffer;
             _world = world;
-            _runner = runner;
             _inputComparer = inputComparer;
             _checksumBuffer = checksumBuffer;
             _authoritativeChecksumBuffer = authoritativeChecksumBuffer;
@@ -89,11 +84,7 @@ namespace FrameWork.RollBackSystem
         // Step
         //--------------------------------
 
-        /// <summary>
-        /// 推进一个新的逻辑帧。
-        /// 统一走 IRollbackableWorld.Simulate() 而非直接调 Runner，
-        /// 确保帧命令回放和输入应用都被执行。
-        /// </summary>
+        /// <summary>推进一个新的逻辑帧。只写输入和帧命令，不 Tick。</summary>
         public void Step(TInput input)
         {
             int nextFrame = CurrentFrame + 1;
@@ -129,7 +120,7 @@ namespace FrameWork.RollBackSystem
 
         public void ReceiveAuthoritativeInput(
             int frame,
-            in TInput input)
+            TInput input)
         {
             _authoritativeInputBuffer.Save(frame, input);
 
@@ -145,7 +136,8 @@ namespace FrameWork.RollBackSystem
             if (!isDifferent)
                 return;
 
-            int targetFrame = CurrentFrame;
+            // 保存回滚前的目标帧号（ReceiveAuthoritativeInput 期间外部不能再调 Step）
+            int preRollbackFrame = CurrentFrame;
 
             bool rollbackSuccess = RollbackTo(frame - 1);
 
@@ -154,13 +146,14 @@ namespace FrameWork.RollBackSystem
 
             _inputBuffer.Save(frame, input);
 
-            ResimulateTo(targetFrame);
+            ResimulateTo(preRollbackFrame);
         }
 
         //--------------------------------
         // Rollback
         //--------------------------------
 
+        /// <summary>回滚到指定帧之前的状态（回到该帧执行前）。</summary>
         public bool RollbackTo(int frame)
         {
             bool found =
@@ -173,8 +166,6 @@ namespace FrameWork.RollBackSystem
 
             _world.Restore(snapshot);
 
-            _runner?.SetFrame(snapshot.Frame);
-
             CurrentFrame = snapshot.Frame;
 
             return true;
@@ -184,11 +175,18 @@ namespace FrameWork.RollBackSystem
         // Resimulate
         //--------------------------------
 
-        /// <summary>
-        /// 使用历史输入重新模拟后续逻辑帧。
-        /// 统一走 IRollbackableWorld.Simulate() 而非直接调 Runner。
-        /// </summary>
-        public void ResimulateTo(int targetFrame)
+        /// <summary>使用历史输入重新模拟。每帧写输入，Tick 由外部 onEachFrame 负责。</summary>
+        public void ResimulateTo(int targetFrame, Action<TSnapshot> onEachFrame = null)
+        {
+            ResimulateInternal(targetFrame, onEachFrame);
+        }
+
+        void IRollbackSimulation<TInput>.ResimulateTo(int targetFrame)
+        {
+            ResimulateInternal(targetFrame, null);
+        }
+
+        private void ResimulateInternal(int targetFrame, Action<TSnapshot> onEachFrame)
         {
             while (CurrentFrame < targetFrame)
             {
@@ -213,6 +211,8 @@ namespace FrameWork.RollBackSystem
                 SaveChecksum();
 
                 CurrentFrame = nextFrame;
+
+                onEachFrame?.Invoke(snapshot);
             }
         }
 

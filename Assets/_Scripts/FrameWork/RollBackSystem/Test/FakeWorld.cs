@@ -15,7 +15,7 @@ namespace FrameWork.RollBackSystem.Tests
         public int Position { get; private set; }
         public int CurrentFrame { get; private set; }
 
-        public void Simulate(PlayerInput input, in SimulationContext context)
+        public void Simulate(PlayerInput input, SimulationContext context)
         {
             Position += input.Horizontal;
             CurrentFrame = context.frameNumber;
