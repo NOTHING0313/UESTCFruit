@@ -1221,12 +1221,23 @@ namespace BuffSystem
         private void ApplyCompressedParallelAdd(World world, in SimulationContext context, AddBuffCommand command, in BuffDefinition definition)
         {
             BuffRuntimeKey key = new BuffRuntimeKey(command.Target, command.Source, command.ConfigId);
-            Entity runtimeEntity = TryGetCompressedRuntimeEntity(key, out Entity existingRuntimeEntity)
-                ? existingRuntimeEntity
-                : CreateCompressedParallelRuntime(world, command, in definition);
+            Entity runtimeEntity;
+            CompressedParallelBuffRuntimeComponent runtime;
 
-            if (!runtimeEntity.IsValid || !world.TryGetComponent(runtimeEntity, out CompressedParallelBuffRuntimeComponent runtime))
-                return;
+            if (TryGetCompressedRuntimeEntity(key, out Entity existingRuntimeEntity))
+            {
+                runtimeEntity = existingRuntimeEntity;
+
+                if (!runtimeEntity.IsValid || !world.TryGetComponent(runtimeEntity, out runtime))
+                    return;
+            }
+            else
+            {
+                runtimeEntity = CreateCompressedParallelRuntime(world, command, in definition, out runtime);
+
+                if (!runtimeEntity.IsValid)
+                    return;
+            }
 
             int incoming = command.Stack;
 
@@ -1280,14 +1291,19 @@ namespace BuffSystem
             world.SetComponent(runtimeEntity, runtime);
         }
 
-        private Entity CreateCompressedParallelRuntime(World world, AddBuffCommand command, in BuffDefinition definition)
+        private Entity CreateCompressedParallelRuntime(
+            World world,
+            AddBuffCommand command,
+            in BuffDefinition definition,
+            out CompressedParallelBuffRuntimeComponent runtime)
         {
+            runtime = default;
             Entity runtimeEntity = world.CreateEntity();
 
             if (!runtimeEntity.IsValid)
                 return Entity.Invalid;
 
-            CompressedParallelBuffRuntimeComponent runtime = new CompressedParallelBuffRuntimeComponent
+            runtime = new CompressedParallelBuffRuntimeComponent
             {
                 target = command.Target,
                 source = command.Source,
@@ -1301,7 +1317,6 @@ namespace BuffSystem
 
             BuffRuntimeKey key = new BuffRuntimeKey(command.Target, command.Source, command.ConfigId);
             RegisterCompressedRuntimeLookup(key, runtimeEntity);
-            world.SetComponent(runtimeEntity, runtime);
             return runtimeEntity;
         }
 

@@ -10,25 +10,25 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a78250dae047eeb469650a04aa543dee, type: 3}
-  m_Name: BuffConfigData
+  m_Name: Debug_CompressedParallel_TickSmoke
   m_EditorClassIdentifier: 
-  ID: 1
-  Name: Test1
+  ID: 991001
+  Name: Debug_CompressedParallel_TickSmoke
   Description: 
   Icon: {fileID: 0}
   Priority: 0
   Tags: []
   IsForever: 0
-  Duration: 1
+  Duration: 2
   BuffTriggerType: 0
   TickTime: 1
-  BuffType: 0
+  BuffType: 1
   Unlimited: 0
-  MaxStack: 1
+  MaxStack: 3
   NormalStackPolicy: 0
   ParallelStackUpPolicy: 0
   ParallelStackDownPolicy: 0
-  ParallelStorageMode: 0
+  ParallelStorageMode: 1
   DurationExtendPerStack: 0
-  EffectId: 0
+  EffectId: 990101
   EventIds: 

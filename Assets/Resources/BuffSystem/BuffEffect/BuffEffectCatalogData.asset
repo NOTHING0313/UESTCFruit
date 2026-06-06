@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: BuffEffectCatalogData
   m_EditorClassIdentifier: 
   _entries:
-  - EffectId: 0
-    DisplayName: 
+  - EffectId: 990101
+    DisplayName: Debug_Effect
     Description: 
     SupportedTriggerTypes: 00000000
     DeveloperNote: 

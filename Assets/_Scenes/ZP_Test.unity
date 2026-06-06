@@ -283,6 +283,8 @@ GameObject:
   m_Component:
   - component: {fileID: 1172577857}
   - component: {fileID: 1172577858}
+  - component: {fileID: 1172577860}
+  - component: {fileID: 1172577859}
   m_Layer: 0
   m_Name: BuffConfigLoader
   m_TagString: Untagged
@@ -319,6 +321,35 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   BUFF_CONFIG_DATA_ROOT_PATH: BuffSystem/Buff
   _tickLength: 0.016666668
+--- !u!114 &1172577859
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1172577856}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: caf796ffa5a86554094b54691e7d1e03, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  inputAdapters: []
+--- !u!114 &1172577860
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1172577856}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ed13322f4479aff40a817cdcb3892a74, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _fixedDeltaTime: 0.016666668
+  _maxCompensationTicks: 5
+  _worldViewRoot: {fileID: 0}
+  _debugPanel: {fileID: 0}
 --- !u!1 &1206541731
 GameObject:
   m_ObjectHideFlags: 0

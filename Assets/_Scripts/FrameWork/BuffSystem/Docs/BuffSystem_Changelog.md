@@ -1,5 +1,151 @@
 # BuffSystem Changelog
 
+## Phase 3G-4J - Production compressed pilot validation closeout
+
+### Validated
+
+- `configId = 991001` (`Debug_CompressedParallel_TickSmoke`) now validates the production compressed path through the normal production composition root.
+- After the Phase 3G-4I creation fix, the debug queue trace produced:
+  - AfterAdd `AddQueueCount = 1`.
+  - AfterTick1 `RuntimeCompressed = 1`.
+  - AfterTick1 `LayerCount = 1`.
+  - AfterTick1 `RemainingFrames = 120`.
+  - AfterTick2 `RuntimeCompressed = 1`.
+  - AfterTick2 `TryGetBuffFound = True`.
+  - `GetBuffsCount = 1`.
+  - `CurrentConfigViewCount = 1`.
+  - current ConfigId `EntityPerStackRuntime count = 0`.
+  - `Compressed Path = PASS`.
+- Public query now sees one aggregate `BuffViewData` for the pilot after the capture frame.
+
+### Remaining validation
+
+- `stack = 3` aggregate ViewData validation.
+- Explicit Remove validation.
+- Natural Expire validation.
+- Performance comparison.
+- Rollback snapshot validation.
+
+### Preserved
+
+- No runtime code was changed in this closeout phase.
+- Public APIs, public constructors, `IBuffSystem`, compressed gate / whitelist logic, EntityPerStack behavior, event Effect hot path, assets, scenes, prefabs, and `.meta` files were not modified.
+
+## Phase 3G-4I - Compressed runtime creation layer write fix
+
+### Fixed
+
+- Fixed the production `WorldStates.Ticking` compressed runtime creation path where a newly added `CompressedParallelBuffRuntimeComponent` could be deferred through `StructuralChangeBuffer` as a zero-layer container.
+- `ApplyCompressedParallelAdd` no longer depends on `TryGetComponent` reading back a component that was just added in the same ticking phase.
+- New compressed runtimes are now initialized locally, appended with their requested layers, then written once through `World.SetComponent`.
+
+### Preserved
+
+- Public APIs, public constructors, `IBuffSystem`, compressed gate / whitelist logic, EntityPerStack behavior, event Effect hot path, assets, scenes, prefabs, and `.meta` files were not modified.
+
+## Phase 3G-4C-Fix - Buff debug queued-command wording
+
+### Changed
+
+- Updated the original ECS Debugger `Buff 调试` page so Add / Remove button logs are INFO queued messages instead of PASS validation records.
+- Added `添加 Buff 并 Tick 一帧`, `添加 3 层 Buff 并 Tick 一帧`, and `移除 Buff 并 Tick 一帧` convenience buttons.
+- Added `添加 Buff 并 Tick 两帧` and `添加 3 层 Buff 并 Tick 两帧` for the capture-after-command timing case.
+- Tick-driven refresh now performs the compressed-path validation after the queued command has been consumed by `BuffSystemCore`.
+- Split compressed runtime validation from ViewData visibility. A runtime state of `CompressedRuntime count == 1` and `EntityPerStack count == 0` is shown as compressed path `PASS`; if `TryGetBuff` is still false, the page reports that ViewData is waiting for the next capture frame instead of treating the whole check as failed.
+- `添加 3 层 Buff 并 Tick 两帧` is the recommended aggregate ViewData stack validation path for `Stack = 3`.
+- Added a copyable plain-text debug snapshot area and `复制日志到剪贴板` button using `EditorGUIUtility.systemCopyBuffer`.
+
+### Preserved
+
+- `BuffSystemCore`, public APIs, compressed gate / whitelist logic, runtime logic, assets, scenes, prefabs, and `.meta` files were not modified.
+- The original `Window / ECSFrameWork / World Debugger` remains the main debug entry.
+
+## Phase 3G-4C - ECS World Debugger Chinese layout pass
+
+### Changed
+
+- Returned the main debug entry to the original IMGUI `Window / ECSFrameWork / World Debugger`.
+- Localized the original ECS debugger pages and toolbar with Chinese-first labels while preserving English technical terms.
+- Kept all original pages and existing functionality: `总览 Overview` / `实体 Entities` / `系统 Systems` / `原型 ArcheTypes` / `组件仓库 Stores` / `单例 Singletons` / `世界事件 Events` / `命令 Commands` / `Buff 调试`.
+- Disabled the previous Odin experiment window menu to avoid opening a reduced-function duplicate debugger.
+- The original `Buff 调试` page still keeps pilot `configId = 991001` as the default target and exposes Add / Remove / fixed-frame Tick / query refresh controls.
+
+### Preserved
+
+- `BuffSystemCore`, `IBuffSystem`, public constructors, compressed gate / whitelist logic, event Effect hot path, runtime Buff logic, assets, scenes, prefabs, and `.meta` files were not modified.
+- The original `ECSWorldDebuggerWindow` remains the only recommended main entry.
+- Debug Entity creation still uses the current `World.CreateEntity()`; no Unity `GameObject` is created as an ECS Entity.
+
+### Manual validation focus
+
+- Open `Window / ECSFrameWork / World Debugger`.
+- Select the `Buff 调试` page.
+- For `configId = 991001`, compressed success means current ConfigId `CompressedRuntime count == 1` and current ConfigId `EntityPerStack count == 0`.
+
+## Phase 3G-4B-Fix - ECS Debugger Buff debug page
+
+### Changed
+
+- Added a real `Buff 调试` page to `ECSWorldDebuggerWindow` Pages.
+- The page draws Chinese Buff debug controls in the ECS Debugger right-side content area.
+- The page can create debug target/source ECS `Entity` values from the selected runtime `World`.
+- The page queues Add / Remove through the production `BuffSystemCore`, steps fixed frames through the selected `SimulateRunner`, and shows aggregate query results.
+- The page displays total/config counts for `CompressedParallelBuffRuntimeComponent` and `BuffRuntimeComponent`.
+
+### Preserved
+
+- `BuffSystemCore`, `IBuffSystem`, public constructors, compressed gate / whitelist logic, event Effect hot path, runtime Buff logic, assets, scenes, prefabs, and `.meta` files were not modified.
+- The Odin Inspector and IMGUI helper panel in `LogicFrameDebugPanel` are kept as auxiliary fallback, but they are no longer considered the ECS Debugger integration point.
+- The Buff debug page resolves the current production `BuffSystemCore` only inside the Editor window for debug use; no runtime public API was added.
+
+### Manual validation focus
+
+- Open `Window / ECSFrameWork / World Debugger`.
+- Select the `Buff 调试` page from the left Pages list.
+- For `configId = 991001`, compressed success means current ConfigId `CompressedRuntime count == 1` and current ConfigId `EntityPerStack count == 0`.
+
+## Phase 3G-4B - Odin Chinese Buff debug panel
+
+### Changed
+
+- Added Odin Inspector groups to `LogicFrameDebugPanel` for the `BuffSystem 压缩 Buff 调试面板`.
+- Added Chinese labels, buttons, read-only result fields, runtime type statistics, `GetBuffs(target)` table, and recent operation logs.
+- Kept the existing IMGUI Buff debug panel as a runtime fallback.
+- Extended `SimulationDebugProbe` to expose debug `GetBuffs(target)` rows for Odin TableList display.
+
+### Preserved
+
+- `BuffSystemCore`, `IBuffSystem`, public constructors, compressed gate / whitelist logic, event Effect hot path, runtime Buff logic, assets, scenes, prefabs, and `.meta` files were not modified.
+- Debug Entity creation still uses the current `World.CreateEntity()` through `SimulationDebugProbe`; no GameObject is created as an ECS Entity.
+- Source defaults to target, and Add / Remove / Query use the same target/source pair.
+
+### Manual validation focus
+
+- In Play Mode, select the object containing `LogicFrameDebugPanel` and use the Odin group `BuffSystem 压缩 Buff 调试面板`.
+- For `configId = 991001`, compressed success means current ConfigId `CompressedRuntime count == 1` and current ConfigId `EntityPerStack count == 0`.
+- After adding three layers and ticking once, the aggregate ViewData should be found with `Stack = 3` and only one matching `GetBuffs(target)` row.
+
+## Phase 3G-4A - BuffSystem debug panel pilot entry
+
+### Changed
+
+- Integrated a Buff / Compressed Buff debug area into the existing `LogicFrameDebugPanel`.
+- Added View-layer debug helpers in `SimulationDebugProbe` for queuing Add / Remove commands, stepping fixed frames, reading aggregate `BuffViewData`, and counting runtime component types.
+- The debug panel defaults to `configId = 991001` for `Debug_CompressedParallel_TickSmoke`.
+- The panel displays compressed runtime count and EntityPerStack runtime count for the selected target/config pair.
+
+### Preserved
+
+- `BuffSystemCore`, `IBuffSystem`, public constructors, compressed gate / whitelist logic, event Effect hot path, runtime Buff logic, assets, scenes, prefabs, and `.meta` files were not modified.
+- Debug controls use fixed-frame runner stepping; they do not use `Time.time` or `Time.deltaTime` as Buff runtime logic.
+- The production pilot remains limited by the production whitelist and eligibility checks.
+
+### Manual validation focus
+
+- Add `991001` and advance one fixed frame: `ConfigCompressedRuntimeCount` should become `1`, while `ConfigEntityPerStackRuntimeCount` should stay `0`.
+- Add `991001` x3 and advance one fixed frame: `TryGetBuff` / `GetBuffs` should expose one aggregate ViewData with `Stack = 3`.
+- Tick until expiry or remove all stacks: `TryGetBuff` should become false and `GetBuffs` should no longer contain `991001`.
+
 ## Phase 3G-3D-A - Production factory and pilot whitelist skeleton
 
 ### Changed
@@ -18,7 +164,7 @@
 
 ### Pilot note
 
-The reserved pilot Buff is `Debug_CompressedParallel_TickSmoke` with `configId = 991001` and `EffectId = 990101`. The asset must still be created later through Unity Editor at `Assets/Resources/_Scripts/FrameWork/BuffSystem/BuffConfigDataCollection/Debug_CompressedParallel_TickSmoke.asset`.
+The reserved pilot Buff is `Debug_CompressedParallel_TickSmoke` with `configId = 991001` and `EffectId = 990101`. The project now uses the Resources path `Assets/Resources/BuffSystem/Buff/Debug_CompressedParallel_TickSmoke.asset`.
 
 ## Phase 3G-2F-C - SimulationInitializer loader guard
 

@@ -1,12 +1,207 @@
 # BuffSystem Examples
 
+## Phase 3G-4J - 991001 production compressed pilot evidence
+
+Use the existing ECS Debugger `Buff 调试` page to capture production evidence for `configId = 991001`.
+
+Recommended evidence flow:
+
+```text
+1. Enter Play Mode.
+2. Open Window / ECSFrameWork / World Debugger.
+3. Select Buff 调试.
+4. Use / create a debug Entity.
+5. Run Add queue trace or compressed lifecycle trace for ConfigId = 991001.
+6. Generate the copyable debug snapshot.
+7. Copy the log through the debugger copy button and attach it to the validation record.
+```
+
+Phase 3G-4J accepted evidence:
+
+```text
+AfterAdd AddQueueCount = 1
+AfterTick1 RuntimeCompressed = 1
+AfterTick1 LayerCount = 1
+AfterTick1 RemainingFrames = 120
+AfterTick2 RuntimeCompressed = 1
+AfterTick2 TryGetBuffFound = True
+GetBuffsCount = 1
+CurrentConfigViewCount = 1
+Current ConfigId EntityPerStackRuntime count = 0
+Compressed Path = PASS
+```
+
+This proves that the pilot Buff creates a compressed runtime and exposes one aggregate ViewData row. It does not yet close the later Phase 3H items: `stack = 3` aggregate, explicit Remove, natural Expire, performance comparison, or rollback snapshot validation.
+
+## Phase 3G-4C-Fix - Buff 调试页入队与 Tick
+
+`Buff 调试` page Add / Remove buttons only enqueue commands. The queued command is consumed on the next fixed-frame Tick, so the page now separates queued messages from validation:
+
+```text
+添加 Buff: 已入队，请点击“Tick 一帧”后查看结果。
+添加 3 层 Buff: 已入队 stack=3，请点击“Tick 一帧”后查看结果。
+移除 Buff: 已入队，请点击“Tick 一帧”后查看移除结果。
+```
+
+For one-click validation, use:
+
+```text
+添加 Buff 并 Tick 一帧
+添加 3 层 Buff 并 Tick 一帧
+移除 Buff 并 Tick 一帧
+添加 Buff 并 Tick 两帧
+添加 3 层 Buff 并 Tick 两帧
+```
+
+Validation PASS is only meaningful after Tick refresh. Runtime path and ViewData visibility are separate checks. For `configId = 991001`, the compressed-path success condition remains:
+
+```text
+Current ConfigId CompressedRuntime count == 1
+Current ConfigId EntityPerStack Runtime count == 0
+```
+
+If the compressed runtime is already created but `TryGetBuff` is still false, the debugger reports:
+
+```text
+压缩 Runtime 已创建，ViewData 需下一帧 Capture 后可见，请再 Tick 一帧。
+```
+
+Use `添加 3 层 Buff 并 Tick 两帧` when you want to validate both compressed runtime creation and aggregate ViewData (`Stack = 3`) in one action.
+
+The `可复制日志` text area contains a complete plain-text snapshot that can be pasted into ChatGPT / Codex. Use `生成当前快照日志` to refresh it or `复制日志到剪贴板` to copy it through `EditorGUIUtility.systemCopyBuffer`.
+
+## Phase 3G-4C - ECS World Debugger 中文化主入口
+
+Phase 3G-4C keeps the original IMGUI `ECSWorldDebuggerWindow` as the main debugger and improves its Chinese labels and layout. The previous reduced-function Odin experiment window is no longer a recommended entry.
+
+Open the main debugger in Play Mode:
+
+```text
+Window / ECSFrameWork / World Debugger
+```
+
+Pages:
+
+```text
+总览 Overview
+实体 Entities
+系统 Systems
+原型 ArcheTypes
+组件仓库 Stores
+单例 Singletons
+世界事件 Events
+命令 Commands
+Buff 调试
+```
+
+Use `Buff 调试` for the compressed pilot:
+
+```text
+1. Open Assets/_Scenes/ZP_Test.unity.
+2. Enter Play Mode.
+3. Open Window / ECSFrameWork / World Debugger.
+4. Click 扫描 World, then select the runtime debug source bound to the current World.
+5. Open the Buff 调试 page.
+6. Keep ConfigId = 991001 and Stack = 1.
+7. Click 使用 / 创建调试 Entity.
+8. Click 添加 Buff, then Tick 一帧 if the command has only been queued.
+9. Confirm 当前 ConfigId CompressedRuntime 数量 is 1.
+10. Confirm 当前 ConfigId EntityPerStack Runtime 数量 is 0.
+11. Click 添加 3 层 Buff, then Tick 一帧 if needed.
+12. Confirm TryGetBuff is found and aggregate Stack is 3.
+13. Tick until expiry or remove all stacks, then confirm TryGetBuff is false and GetBuffs(target) no longer contains 991001.
+```
+
+Entity rules:
+
+- Debug target/source are ECS `Entity` values created by the current `World.CreateEntity()`.
+- They are not Unity `GameObject` instances.
+- Source defaults to target.
+- Add / Remove / Query should use the same target/source pair.
+
+Compressed success rule for `991001`:
+
+```text
+Current ConfigId CompressedRuntime count == 1
+Current ConfigId EntityPerStack Runtime count == 0
+```
+
+## Phase 3G-4B-Fix - ECS Debugger Buff 调试页
+
+The ECS Debugger window now has a real left-side page named `Buff 调试`. This is the primary manual validation entry for the production pilot `Debug_CompressedParallel_TickSmoke`.
+
+Use it in Play Mode:
+
+```text
+1. Open Assets/_Scenes/ZP_Test.unity.
+2. Enter Play Mode.
+3. Open Window / ECSFrameWork / World Debugger.
+4. Select the runtime source that is bound to the current World.
+5. Click the left-side page Buff 调试.
+6. Keep ConfigId = 991001 and Stack = 1.
+7. Click 使用 / 创建调试 Entity.
+8. Click 添加 Buff, then Tick 一帧.
+9. Confirm 当前 ConfigId CompressedRuntime count is 1.
+10. Confirm 当前 ConfigId EntityPerStack count is 0.
+11. Click 添加 3 层 Buff, then Tick 一帧.
+12. Confirm TryGetBuff is found and aggregate Stack is 3.
+13. Tick until the duration expires, or remove all stacks, then confirm the Buff is no longer visible.
+```
+
+Entity rules:
+
+- Debug target/source are ECS `Entity` values from the current `World.CreateEntity()`.
+- They are not Unity `GameObject` instances.
+- Source defaults to target.
+- Add / Remove / Query must use the same target/source pair. Remove matching includes source.
+
+The Odin Inspector and IMGUI controls on `LogicFrameDebugPanel` are auxiliary fallback only. The ECS Debugger `Buff 调试` page is the expected validation surface.
+
+## Phase 3G-4A - Buff / Compressed Buff Debug Panel
+
+The existing `LogicFrameDebugPanel` now includes a Buff debug area for the production pilot `Debug_CompressedParallel_TickSmoke`. Phase 3G-4B adds an Odin Inspector Chinese panel and keeps the IMGUI runtime panel as fallback.
+
+Use the Odin panel in Play Mode:
+
+```text
+1. Open Assets/_Scenes/ZP_Test.unity.
+2. Enter Play Mode.
+3. Select the GameObject that contains LogicFrameDebugPanel.
+4. Open the Odin group BuffSystem 压缩 Buff 调试面板.
+5. Keep ConfigId = 991001 and Stack = 1.
+6. Click 使用 / 创建调试 Entity if target/source fields are empty.
+7. Click 添加 Buff, then Tick 一帧.
+8. Confirm 当前 ConfigId CompressedRuntime count is 1.
+9. Confirm 当前 ConfigId EntityPerStack count is 0.
+10. Click 添加 3 层 Buff, then Tick 一帧.
+11. Confirm TryGetBuff is found and aggregate Stack is 3.
+12. Tick until the duration expires, or remove all stacks, then confirm the Buff is no longer visible.
+```
+
+The panel is View/debug-only. It reads through `TryGetBuff` / `GetBuffs`, counts `BuffRuntimeComponent` and `CompressedParallelBuffRuntimeComponent`, and queues normal Add / Remove commands. It does not modify `BuffSystemCore`, public BuffSystem APIs, compressed gate / whitelist logic, or event Effect execution.
+
+Entity rules:
+
+- Debug target/source are ECS `Entity` values from the current `World.CreateEntity()`.
+- They are not Unity `GameObject` instances.
+- Source defaults to target.
+- Add / Remove / Query must use the same target/source pair. This matters because remove matching includes source.
+
+Expected pilot checks:
+
+- `configId = 991001` uses compressed runtime after the command is consumed by a fixed-frame Tick.
+- `ConfigCompressedRuntimeCount == 1`.
+- `ConfigEntityPerStackRuntimeCount == 0`.
+- `GetBuffs(target)` contains only one aggregate ViewData for `991001`.
+- `ViewData.Stack` matches the active compressed layer count.
+
 ## Phase 3G-3D-A - Debug_CompressedParallel_TickSmoke preparation
 
 Production initialization now uses the internal production factory, which enables compressed parallel runtime only for the production whitelist. The current whitelist contains only the reserved pilot `configId = 991001`.
 
-The pilot asset is still not created by code. Create it later through Unity Editor at:
+The pilot asset is created through Unity Editor at:
 
-`Assets/Resources/_Scripts/FrameWork/BuffSystem/BuffConfigDataCollection/Debug_CompressedParallel_TickSmoke.asset`
+`Assets/Resources/BuffSystem/Buff/Debug_CompressedParallel_TickSmoke.asset`
 
 Recommended pilot fields:
 

@@ -1,5 +1,65 @@
 # BuffSystem Parallel Buff
 
+## Phase 3G-4J - Production pilot 991001 validation closeout
+
+`Debug_CompressedParallel_TickSmoke` (`configId = 991001`) is the current single production compressed-pilot Buff. It uses:
+
+```text
+BuffType = parallel
+ParallelStorageMode = CompressedExpiryFrameList
+TriggerType = Tick
+Unlimited = false
+MaxStack = 3
+EffectId = 990101
+```
+
+The production compressed path remains gated by:
+
+```csharp
+gate && whitelist.Contains(configId) && IsCompressedParallelEligible(definition)
+```
+
+The production whitelist is intentionally limited to `991001`. Non-whitelisted Buffs continue to use `EntityPerStack`.
+
+### Phase 3G-4I creation fix
+
+Before the fix, production `WorldStates.Ticking` could defer a newly added `CompressedParallelBuffRuntimeComponent` through `StructuralChangeBuffer`. `ApplyCompressedParallelAdd` then tried to read the just-created component back immediately with `TryGetComponent`, which could fail. The result was a zero-layer compressed runtime container:
+
+```text
+AfterTick1 RuntimeExists = True
+AfterTick1 LayerCount = 0
+AfterTick2 RuntimeExists = False
+```
+
+After the fix, new compressed runtimes are initialized locally, layers are appended locally, and the final component is written once through `World.SetComponent`.
+
+### Verified pilot result
+
+The current production debug trace verifies:
+
+```text
+AfterAdd AddQueueCount = 1
+AfterTick1 RuntimeCompressed = 1
+AfterTick1 LayerCount = 1
+AfterTick1 RemainingFrames = 120
+AfterTick2 RuntimeCompressed = 1
+AfterTick2 TryGetBuffFound = True
+GetBuffsCount = 1
+CurrentConfigViewCount = 1
+Current ConfigId EntityPerStackRuntime count = 0
+Compressed Path = PASS
+```
+
+This confirms that `991001` creates a compressed runtime, does not fall back to EntityPerStack, and becomes visible through aggregate ViewData after capture.
+
+### Still pending before Phase 3H closure
+
+- `stack = 3` aggregate ViewData validation.
+- Explicit Remove validation.
+- Natural Expire validation.
+- Performance comparison.
+- Rollback snapshot validation.
+
 ## Phase 3G-3D-A - Production whitelist smoke-test gate
 
 Phase 3G-3D-A adds a production creation path for `BuffSystemCore` that opens the compressed parallel runtime gate only with a production whitelist. Public constructors remain unchanged and still use `gate=false` with an empty whitelist.
