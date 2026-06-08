@@ -689,6 +689,8 @@ MonoBehaviour:
   _fixedDeltaTime: 0.016666668
   _maxCompensationTicks: 5
   _worldViewRoot: {fileID: 1563020016}
+  _playerPrefab: {fileID: 6661344874274543361, guid: 5a45f6f9737a0894887f22a6c9aae89a, type: 3}
+  _inputAdapter: {fileID: 0}
   _debugPanel: {fileID: 1839187314}
 --- !u!4 &1092610670
 Transform:
@@ -1053,6 +1055,7 @@ MonoBehaviour:
   _entityCountText: {fileID: 215081585}
   _checksumText: {fileID: 1931768436}
   _modeText: {fileID: 899125592}
+  _showBuffDebug: 1
 --- !u!114 &1839187315
 MonoBehaviour:
   m_ObjectHideFlags: 0
