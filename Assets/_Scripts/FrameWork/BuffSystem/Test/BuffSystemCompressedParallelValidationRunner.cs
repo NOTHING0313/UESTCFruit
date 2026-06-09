@@ -234,7 +234,7 @@ namespace BuffSystem
             state.ExpectEqual("RefreshEarliest layerCount unchanged", 3, after.layerCount, 4);
             state.ExpectTrue("RefreshEarliest keeps refreshed layerId", foundEarliest, 4);
             state.ExpectEqual("RefreshEarliest keeps layerRuntimeHandle", earliestBefore.RuntimeHandle, foundEarliest ? refreshed.RuntimeHandle : -1, 4);
-            state.ExpectEqual("RefreshEarliest updates earliest expireFrame", 14, foundEarliest ? refreshed.ExpireFrame : -1, 4);
+            state.ExpectEqual("RefreshEarliest 按同帧 Tick 语义刷新 expireFrame", 13, foundEarliest ? refreshed.ExpireFrame : -1, 4);
             state.ExpectEqual("RefreshEarliest resets then ticks elapsedFrames", 1, foundEarliest ? refreshed.ElapsedFrames : -1, 4);
             state.ExpectEqual("RefreshEarliest resets then ticks ticks", 1, foundEarliest ? refreshed.Ticks : -1, 4);
             state.ExpectTrue("RefreshEarliest keeps second layer expireFrame", foundSecond && secondAfter.ExpireFrame == secondBefore.ExpireFrame, 4);
@@ -280,26 +280,26 @@ namespace BuffSystem
                 return;
             }
 
-            bool firstOk = TryFindLayerById(in after, firstBefore.LayerId, out LayerSnapshot firstAfter)
-                && firstAfter.RuntimeHandle == firstBefore.RuntimeHandle
-                && firstAfter.ExpireFrame == 14
-                && firstAfter.ElapsedFrames == 1
-                && firstAfter.Ticks == 1;
-            bool secondOk = TryFindLayerById(in after, secondBefore.LayerId, out LayerSnapshot secondAfter)
-                && secondAfter.RuntimeHandle == secondBefore.RuntimeHandle
-                && secondAfter.ExpireFrame == 14
-                && secondAfter.ElapsedFrames == 1
-                && secondAfter.Ticks == 1;
-            bool thirdOk = TryFindLayerById(in after, thirdBefore.LayerId, out LayerSnapshot thirdAfter)
-                && thirdAfter.RuntimeHandle == thirdBefore.RuntimeHandle
-                && thirdAfter.ExpireFrame == 14
-                && thirdAfter.ElapsedFrames == 1
-                && thirdAfter.Ticks == 1;
+            bool firstFound = TryFindLayerById(in after, firstBefore.LayerId, out LayerSnapshot firstAfter);
+            bool secondFound = TryFindLayerById(in after, secondBefore.LayerId, out LayerSnapshot secondAfter);
+            bool thirdFound = TryFindLayerById(in after, thirdBefore.LayerId, out LayerSnapshot thirdAfter);
+            bool firstIdentityKept = firstFound && firstAfter.RuntimeHandle == firstBefore.RuntimeHandle;
+            bool secondIdentityKept = secondFound && secondAfter.RuntimeHandle == secondBefore.RuntimeHandle;
+            bool thirdIdentityKept = thirdFound && thirdAfter.RuntimeHandle == thirdBefore.RuntimeHandle;
 
             state.ExpectEqual("RefreshAll layerCount unchanged", 3, after.layerCount, 4);
-            state.ExpectTrue("RefreshAll refreshes first layer and keeps identity", firstOk, 4);
-            state.ExpectTrue("RefreshAll refreshes second layer and keeps identity", secondOk, 4);
-            state.ExpectTrue("RefreshAll refreshes third layer and keeps identity", thirdOk, 4);
+            state.ExpectTrue("RefreshAll keeps first layer identity", firstIdentityKept, 4);
+            state.ExpectTrue("RefreshAll keeps second layer identity", secondIdentityKept, 4);
+            state.ExpectTrue("RefreshAll keeps third layer identity", thirdIdentityKept, 4);
+            state.ExpectEqual("RefreshAll first layer 按同帧 Tick 语义刷新 expireFrame", 13, firstFound ? firstAfter.ExpireFrame : -1, 4);
+            state.ExpectEqual("RefreshAll second layer 按同帧 Tick 语义刷新 expireFrame", 13, secondFound ? secondAfter.ExpireFrame : -1, 4);
+            state.ExpectEqual("RefreshAll third layer 按同帧 Tick 语义刷新 expireFrame", 13, thirdFound ? thirdAfter.ExpireFrame : -1, 4);
+            state.ExpectEqual("RefreshAll first layer resets then ticks elapsedFrames", 1, firstFound ? firstAfter.ElapsedFrames : -1, 4);
+            state.ExpectEqual("RefreshAll second layer resets then ticks elapsedFrames", 1, secondFound ? secondAfter.ElapsedFrames : -1, 4);
+            state.ExpectEqual("RefreshAll third layer resets then ticks elapsedFrames", 1, thirdFound ? thirdAfter.ElapsedFrames : -1, 4);
+            state.ExpectEqual("RefreshAll first layer resets then ticks ticks", 1, firstFound ? firstAfter.Ticks : -1, 4);
+            state.ExpectEqual("RefreshAll second layer resets then ticks ticks", 1, secondFound ? secondAfter.Ticks : -1, 4);
+            state.ExpectEqual("RefreshAll third layer resets then ticks ticks", 1, thirdFound ? thirdAfter.Ticks : -1, 4);
 
             bool tryGet = env.BuffSystem.TryGetBuff(env.Target, RefreshAllBuffId, env.Source, out BuffViewData view);
             state.ExpectTrue("RefreshAll ViewData remains queryable", tryGet, 4);

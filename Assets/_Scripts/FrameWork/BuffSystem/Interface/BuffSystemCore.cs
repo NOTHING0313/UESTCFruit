@@ -219,6 +219,25 @@ namespace BuffSystem
             }
         }
 
+        private sealed class CompressedRuntimeRemovalComparer : IComparer<Entity>
+        {
+            private BuffSystemCore _owner;
+            private World _world;
+            private ParallelBuffStackDownPolicy _policy;
+
+            public void Reset(BuffSystemCore owner, World world, ParallelBuffStackDownPolicy policy)
+            {
+                _owner = owner;
+                _world = world;
+                _policy = policy;
+            }
+
+            public int Compare(Entity left, Entity right)
+            {
+                return _owner.CompareCompressedRuntimeForRemoval(_world, left, right, _policy);
+            }
+        }
+
         private readonly IBuffDefinitionProvider _definitionProvider;
         private readonly BuffEffectRegistry _effectRegistry;
         private readonly bool _enableCompressedParallelRuntime;
@@ -227,6 +246,7 @@ namespace BuffSystem
         private readonly BuffEventCandidateComparer _eventCandidateComparer = new BuffEventCandidateComparer();
         private readonly BuffEffectRequestComparer _effectRequestComparer = new BuffEffectRequestComparer();
         private readonly PendingRemoveRuntimeComparer _pendingRemoveRuntimeComparer = new PendingRemoveRuntimeComparer();
+        private readonly CompressedRuntimeRemovalComparer _compressedRuntimeRemovalComparer = new CompressedRuntimeRemovalComparer();
 
         private readonly List<QueuedCommand> _queuedCommands = new List<QueuedCommand>();
         private readonly List<BuffEffectRequest> _pendingLifecycleEffects = new List<BuffEffectRequest>(64);
@@ -384,6 +404,22 @@ namespace BuffSystem
             return buffs;
         }
 
+        internal void OnWorldRestored(World world)
+        {
+            if (world == null)
+                return;
+
+            // Rollback restore 后，ECS Component 是唯一真状态；本方法只清理和重建 BuffSystem 派生缓存。
+            // 调用方必须保证 World 已在稳定帧边界完成 restore，并由外部 snapshot restore 保证 Entity ID / Version 稳定。
+            ClearTransientStateAfterWorldRestore();
+            EnsureQueries(world);
+            CaptureRuntimeEntities(world, -1);
+            CaptureCompressedRuntimeEntities(world);
+            RebuildRuntimeLookup(world);
+            RebuildCompressedRuntimeLookup(world);
+            MarkCachesDirtyAfterWorldRestore();
+        }
+
         public void Dispose()
         {
             _queuedCommands.Clear();
@@ -418,6 +454,54 @@ namespace BuffSystem
             _runtimeSnapshotFrameNumber = -1;
             _eventRuntimeIndexFrameNumber = -1;
             _queryWorld = null;
+        }
+
+        private void ClearTransientStateAfterWorldRestore()
+        {
+            // 第一版只支持 stable snapshot boundary；Add / Remove 命令必须在边界前被消费。
+            // 因此这里清空当前帧临时队列，不重放半帧命令，也不修改任何 ECS Component 真状态。
+            _queuedCommands.Clear();
+            _pendingLifecycleEffects.Clear();
+            _executingLifecycleEffects.Clear();
+            _pendingRemoveRuntimes.Clear();
+            _pendingRemoveRuntimeSet.Clear();
+            _runtimeEntities.Clear();
+            _runtimeEntitiesThisFrame.Clear();
+            _compressedRuntimeEntitiesThisFrame.Clear();
+            _createdRuntimeEntitiesThisFrame.Clear();
+            _addRequestEntities.Clear();
+            _removeRequestEntities.Clear();
+            _requestEntities.Clear();
+            _scratchEntities.Clear();
+            _removeLookupKeys.Clear();
+            _eventCandidates.Clear();
+            _eventCandidateEntitySet.Clear();
+            _runtimeEntitiesByKey.Clear();
+            _compressedRuntimeEntityByKey.Clear();
+            _runtimeLookupUnusedFrames.Clear();
+            _eventRuntimeEntitiesByEventId.Clear();
+            _pendingRuntimeComponents.Clear();
+            _createdRuntimeComponentsThisFrame.Clear();
+            _viewByKey.Clear();
+            _viewsByTarget.Clear();
+            _validTargetViewCache.Clear();
+            _nextLifecycleEffectSequence = 0;
+            _viewCacheFrameNumber = -1;
+            _runtimeSnapshotFrameNumber = -1;
+            _eventRuntimeIndexFrameNumber = -1;
+        }
+
+        private void MarkCachesDirtyAfterWorldRestore()
+        {
+            // restore 后 ViewCache 和事件索引都必须从恢复后的 Component 真状态重新生成。
+            _viewByKey.Clear();
+            _viewsByTarget.Clear();
+            _validTargetViewCache.Clear();
+            _eventRuntimeEntitiesByEventId.Clear();
+            _viewCacheFrameNumber = -1;
+            _eventRuntimeIndexFrameNumber = -1;
+            MarkViewCacheDirty();
+            MarkEventRuntimeIndexDirty();
         }
 
         private void EnsureQueries(World world)
@@ -1147,6 +1231,13 @@ namespace BuffSystem
             _scratchEntities.Sort(_runtimeRemovalComparer);
         }
 
+        private void SortCompressedRuntimeEntitiesForRemoval(World world, ParallelBuffStackDownPolicy policy)
+        {
+            // MatchAnySource 会跨 source 收集压缩 runtime；排序后再移除，避免依赖 lookup 或 Dictionary 遍历顺序。
+            _compressedRuntimeRemovalComparer.Reset(this, world, policy);
+            _scratchEntities.Sort(_compressedRuntimeRemovalComparer);
+        }
+
         private void MarkViewCacheDirty()
         {
             // 任意 Runtime 改动都会影响 RemainingFrames、Stack 或存在性，下一次读取必须重建视图。
@@ -1271,9 +1362,11 @@ namespace BuffSystem
             if (!command.IsValid || !_definitionProvider.TryGetDefinition(command.ConfigId, out BuffDefinition definition))
                 return;
 
-            // Phase 3C-2 dormant helper 暂不支持 MatchAnySource 压缩移除。
             if (command.MatchAnySource)
+            {
+                ApplyCompressedParallelRemoveAnySource(world, in context, command, in definition);
                 return;
+            }
 
             BuffRuntimeKey key = new BuffRuntimeKey(command.Target, command.Source, command.ConfigId);
 
@@ -1289,6 +1382,56 @@ namespace BuffSystem
 
             RemoveCompressedParallelLayers(world, in context, runtimeEntity, ref runtime, in definition, command.StackCount, policy);
             world.SetComponent(runtimeEntity, runtime);
+        }
+
+        private void ApplyCompressedParallelRemoveAnySource(World world, in SimulationContext context, RemoveBuffCommand command, in BuffDefinition definition)
+        {
+            ParallelBuffStackDownPolicy policy = command.ClearAllStacks
+                ? ParallelBuffStackDownPolicy.ClearAll
+                : definition.ParallelStackDownPolicy;
+
+            if (command.ClearAllStacks)
+            {
+                CollectCompressedRuntimeEntities(world, in command, _scratchEntities);
+                SortCompressedRuntimeEntitiesForRemoval(world, policy);
+
+                for (int i = 0; i < _scratchEntities.Count; i++)
+                {
+                    Entity runtimeEntity = _scratchEntities[i];
+
+                    if (!world.TryGetComponent(runtimeEntity, out CompressedParallelBuffRuntimeComponent runtime))
+                        continue;
+
+                    RemoveCompressedParallelLayers(world, in context, runtimeEntity, ref runtime, in definition, int.MaxValue, policy);
+                    world.SetComponent(runtimeEntity, runtime);
+                }
+
+                return;
+            }
+
+            int remainRemoveCount = command.StackCount;
+
+            while (remainRemoveCount > 0)
+            {
+                CollectCompressedRuntimeEntities(world, in command, _scratchEntities);
+                SortCompressedRuntimeEntitiesForRemoval(world, policy);
+
+                if (_scratchEntities.Count <= 0)
+                    break;
+
+                Entity runtimeEntity = _scratchEntities[0];
+
+                if (!world.TryGetComponent(runtimeEntity, out CompressedParallelBuffRuntimeComponent runtime))
+                    break;
+
+                int removed = RemoveCompressedParallelLayers(world, in context, runtimeEntity, ref runtime, in definition, 1, policy);
+                world.SetComponent(runtimeEntity, runtime);
+
+                if (removed <= 0)
+                    break;
+
+                remainRemoveCount -= removed;
+            }
         }
 
         private Entity CreateCompressedParallelRuntime(
@@ -1899,6 +2042,49 @@ namespace BuffSystem
             }
         }
 
+        private void CollectCompressedRuntimeEntities(World world, in RemoveBuffCommand command, List<Entity> results)
+        {
+            results.Clear();
+
+            if (!command.MatchAnySource)
+            {
+                BuffRuntimeKey key = new BuffRuntimeKey(command.Target, command.Source, command.ConfigId);
+
+                if (TryGetCompressedRuntimeEntity(key, out Entity runtimeEntity))
+                    results.Add(runtimeEntity);
+
+                return;
+            }
+
+            for (int i = 0; i < _compressedRuntimeEntitiesThisFrame.Count; i++)
+                TryAddCompressedRuntimeRemoveCandidate(world, command.Target, command.ConfigId, _compressedRuntimeEntitiesThisFrame[i], results);
+
+            foreach (KeyValuePair<BuffRuntimeKey, Entity> pair in _compressedRuntimeEntityByKey)
+            {
+                if (pair.Key.target != command.Target || pair.Key.configId != command.ConfigId)
+                    continue;
+
+                TryAddCompressedRuntimeRemoveCandidate(world, command.Target, command.ConfigId, pair.Value, results);
+            }
+        }
+
+        private void TryAddCompressedRuntimeRemoveCandidate(World world, Entity target, int configId, Entity runtimeEntity, List<Entity> results)
+        {
+            if (!runtimeEntity.IsValid || IsPendingRemoveRuntime(runtimeEntity))
+                return;
+
+            if (results.Contains(runtimeEntity))
+                return;
+
+            if (world.TryGetComponent(runtimeEntity, out CompressedParallelBuffRuntimeComponent runtime))
+            {
+                if (runtime.target != target || runtime.configId != configId || runtime.layerCount <= 0)
+                    return;
+            }
+
+            results.Add(runtimeEntity);
+        }
+
         private ParallelBuffStackDownPolicy GetRemovePolicyForCommand(World world, RemoveBuffCommand command)
         {
             if (!_definitionProvider.TryGetDefinition(command.ConfigId, out BuffDefinition definition))
@@ -2269,6 +2455,71 @@ namespace BuffSystem
                 return handleCompare;
 
             return CompareEntity(left, right);
+        }
+
+        private int CompareCompressedRuntimeForRemoval(World world, Entity left, Entity right, ParallelBuffStackDownPolicy policy)
+        {
+            bool hasLeft = TryGetCompressedRuntimeRemovalLayer(world, left, policy, out CompressedParallelBuffLayer leftLayer, out CompressedParallelBuffRuntimeComponent leftRuntime);
+            bool hasRight = TryGetCompressedRuntimeRemovalLayer(world, right, policy, out CompressedParallelBuffLayer rightLayer, out CompressedParallelBuffRuntimeComponent rightRuntime);
+
+            if (!hasLeft && !hasRight)
+                return CompareEntity(left, right);
+
+            if (!hasLeft)
+                return 1;
+
+            if (!hasRight)
+                return -1;
+
+            if (policy == ParallelBuffStackDownPolicy.ClearAll)
+                return CompareEntity(left, right);
+
+            int expireCompare = leftLayer.expireFrame.CompareTo(rightLayer.expireFrame);
+
+            if (policy == ParallelBuffStackDownPolicy.RemoveLatest)
+                expireCompare = -expireCompare;
+
+            if (expireCompare != 0)
+                return expireCompare;
+
+            int handleCompare = leftLayer.layerRuntimeHandle.CompareTo(rightLayer.layerRuntimeHandle);
+
+            if (policy == ParallelBuffStackDownPolicy.RemoveLatest)
+                handleCompare = -handleCompare;
+
+            if (handleCompare != 0)
+                return handleCompare;
+
+            int sourceCompare = CompareEntity(leftRuntime.source, rightRuntime.source);
+
+            if (sourceCompare != 0)
+                return sourceCompare;
+
+            return CompareEntity(left, right);
+        }
+
+        private bool TryGetCompressedRuntimeRemovalLayer(
+            World world,
+            Entity runtimeEntity,
+            ParallelBuffStackDownPolicy policy,
+            out CompressedParallelBuffLayer layer,
+            out CompressedParallelBuffRuntimeComponent runtime)
+        {
+            layer = default(CompressedParallelBuffLayer);
+            runtime = default(CompressedParallelBuffRuntimeComponent);
+
+            if (!world.TryGetComponent(runtimeEntity, out runtime) || runtime.layerCount <= 0)
+                return false;
+
+            int index = policy == ParallelBuffStackDownPolicy.RemoveLatest
+                ? runtime.layers.FindLatestIndex(runtime.layerCount)
+                : runtime.layers.FindEarliestIndex(runtime.layerCount);
+
+            if (index < 0)
+                return false;
+
+            layer = runtime.layers.Get(index);
+            return true;
         }
 
         private enum BuffEffectPhase

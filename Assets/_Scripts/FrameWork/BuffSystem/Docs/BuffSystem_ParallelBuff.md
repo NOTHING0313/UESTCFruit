@@ -1,5 +1,60 @@
 # BuffSystem Parallel Buff
 
+## Phase 3H-3B - Rollback restore integration boundary
+
+BuffSystem 现在提供一个 internal 的 rollback restore 后整理 hook：
+
+```csharp
+internal void OnWorldRestored(World world)
+```
+
+该 hook 只用于后续 RollBackSystem 对接。它不属于 `IBuffSystem`，不是 public API，只应由 rollback adapter 或 composition root 在外部 World snapshot restore 完成后调用。
+
+### RollBackSystem 接入要求
+
+BuffSystem 不负责实现 RollBackSystem。外部 rollback 实现必须提供：
+
+- restore 后稳定的 Entity ID / Version；
+- restore 后仍然有效的 `target` / `source` Entity 引用；
+- 可恢复的 `BuffRuntimeComponent` component store；
+- 可恢复的 `CompressedParallelBuffRuntimeComponent` component store；
+- 可作为值类型真状态恢复的 `CompressedParallelBuffLayerBuffer` 字段；
+- command queue 与 pending remove queue 为空的 stable snapshot boundary。
+
+当前 Demo `WorldSnapshot` 路径不能作为 BuffSystem rollback-ready 的依据。它在 restore 时销毁并重建 alive entity，因此 Entity ID / Version、`target` / `source` 引用、runtime lookup key 与 RuntimeHandle 语义都不足以支撑 Buff runtime rollback 验证。
+
+### Hook 职责边界
+
+`OnWorldRestored` 将 ECS Component 视为唯一运行时真状态。它只清理派生 transient state，并从恢复后的 World 重建 lookup：
+
+- runtime lookup；
+- compressed runtime lookup；
+- runtime frame snapshot；
+- compressed runtime frame snapshot；
+- ViewCache；
+- EventRuntimeIndex；
+- pending remove 状态；
+- pending lifecycle effect 状态；
+- event candidate 与 scratch collection；
+- frame guard fields。
+
+随后 hook 从 World 捕获恢复后的 `BuffRuntimeComponent` 与 `CompressedParallelBuffRuntimeComponent` entity，并重建 lookup table。
+
+它不会 AddBuff、RemoveBuff、DestroyEntity、SetComponent 修改 runtime component、重放命令、flush lifecycle effect、执行 Tick 或触发 WorldEvent。
+
+### Stable snapshot boundary
+
+第一版 rollback 对接要求 snapshot 只能发生在稳定帧边界：
+
+- `World.Tick` 已完成；
+- `BuffSystem.Tick` 已完成；
+- lifecycle effects 已 flush；
+- pending remove runtime 已 destroy；
+- command queue 为空；
+- pending remove queue 为空。
+
+该 hook 不支持半帧 snapshot。如果未来 rollback 需要保留半帧 Add / Remove command 或 pending lifecycle effect，这些队列必须通过专门的 RollBackSystem contract 做 snapshot，而不是依赖 BuffSystem transient cache。
+
 ## Phase 3G-4J - Production pilot 991001 validation closeout
 
 `Debug_CompressedParallel_TickSmoke` (`configId = 991001`) is the current single production compressed-pilot Buff. It uses:

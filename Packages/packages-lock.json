@@ -11,6 +11,12 @@
       },
       "hash": "aade29c7dd84b76daae83ac5ce7776d0647a3734"
     },
+    "com.github.siccity.xnode": {
+      "version": "file:xNode-1.8.0",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {}
+    },
     "com.unity.collab-proxy": {
       "version": "2.12.4",
       "depth": 0,

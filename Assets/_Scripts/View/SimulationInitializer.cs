@@ -40,29 +40,24 @@ namespace View
                 return;
             }
 
+            // ---------- Buff 系统（生产组合路径）----------
+            BuffConfigDataLoader definitionProvider = BuffConfigDataLoader.Instance;
+            if (definitionProvider == null)
+            {
+                Debug.LogError("[SimulationInitializer] BuffConfigDataLoader.Instance missing. Please add BuffConfigDataLoader to the scene before starting simulation.");
+                enabled = false;
+                return;
+            }
+
+            definitionProvider.SetTickLength(_fixedDeltaTime);
+            definitionProvider.Init();
+
+            BuffEffectRegistry effectRegistry = new BuffEffectRegistry();
+            BuffEffectRegistryBootstrap.RegisterProductionEffects(effectRegistry);
+            _buffSystem = BuffSystemCore.CreateForProduction(definitionProvider, effectRegistry);
+
             // ---------- 核心世界 ----------
             _world = new World();
-
-            // ---------- Buff 系统（注册测试用 configId=1）----------
-            var defRegistry = new BuffDefinitionRegistry();
-            defRegistry.Register(new BuffDefinition(
-                configId: 1,
-                name: "TestBuff",
-                priority: 0,
-                maxStack: 1,
-                unlimited: false,
-                isForever: false,
-                durationFrames: 60,
-                tickIntervalFrames: 0,
-                durationExtendFramesPerStack: 0,
-                triggerType: BuffTriggerType.Tick,
-                buffType: BuffInstanceType.normal,
-                normalStackPolicy: NormalBuffStackPolicy.RefreshDuration,
-                parallelStackUpPolicy: ParallelBuffStackUpPolicy.Append,
-                parallelStackDownPolicy: ParallelBuffStackDownPolicy.RemoveEarliest,
-                effectId: 0
-            ));
-            _buffSystem = new BuffSystemCore(defRegistry, new BuffEffectRegistry());
 
             // ---------- 固定帧推进 ----------
             _runner = new SimulateRunner(_world, _fixedDeltaTime, _maxCompensationTicks);
@@ -108,7 +103,7 @@ namespace View
             }
 
             Debug.Log("[SimulationInitializer] Initialized. Use WASD to move.");
-            Debug.Log($"[SimulationInitializer] BuffSystem prepared. configId=1 registered? {defRegistry.TryGetDefinition(1, out _)}");
+            Debug.Log($"[SimulationInitializer] BuffSystem production path prepared. loadedDefinitions={definitionProvider.DefinitionCount}");
         }
 
         private void Update()
@@ -151,11 +146,7 @@ namespace View
             _world.SetComponent(_playerEntity, new PlayerInputSnapshotComponent(0f, 0f));
             _world.SetComponent(_playerEntity, new PlayerTagComponent());
             _world.SetComponent(_playerEntity, new MoveSpeedComponent(5f));
-
-            // 测试 Buff
-            var buffCmd = new AddBuffCommand(_playerEntity, configId: 1, source: _playerEntity, stack: 1);
-            _buffSystem.AddBuff(buffCmd);
-
+            // 生产路径不在玩家创建时自动添加调试 Buff；991001 试点请通过 Debug 面板手动添加。
         }
 
         // BuffSystem 桥接

@@ -264,7 +264,9 @@ namespace BuffSystem
             ValidateActiveIndex(index, count);
 
             CompressedParallelBuffLayer layer = Get(index);
-            layer.expireFrame = isForever ? int.MaxValue : frameNumber + durationFrames;
+            // 刷新发生在命令消费阶段，已有 layer 本帧仍会进入 Tick；expireFrame 需要扣除本帧消耗，和 EntityPerStack remainingFrames 语义对齐。
+            int safeDurationFrames = durationFrames > 0 ? durationFrames : 1;
+            layer.expireFrame = isForever ? int.MaxValue : frameNumber + safeDurationFrames - 1;
             layer.elapsedFrames = 0;
             layer.ticks = 0;
             Set(index, in layer);

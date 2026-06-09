@@ -10,7 +10,7 @@ namespace BuffSystem
         protected override bool _isDonDestroyOnLoad => true;
 
         [SerializeField, LabelText("Buff 配置 Resources 路径"), Tooltip("用于 Resources.LoadAll 读取 BuffConfigData 的根路径。")]
-        private string BUFF_CONFIG_DATA_ROOT_PATH = "_Scripts/FrameWork/BuffSystem/BuffConfigDataCollection";
+        private string BUFF_CONFIG_DATA_ROOT_PATH = "BuffSystem/Buff";
 
         [SerializeField, LabelText("模拟帧长"), Tooltip("Authoring 配置转换为 BuffDefinition 时使用的固定帧长度。")]
         private float _tickLength = 1f / 60f;
