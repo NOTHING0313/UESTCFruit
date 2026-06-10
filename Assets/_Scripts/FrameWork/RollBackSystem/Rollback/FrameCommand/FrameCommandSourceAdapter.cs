@@ -2,8 +2,8 @@
  * FrameCommandSourceAdapter — bridges ECS SimulationFrameCommandApplier to
  * the RollBack system's IFrameCommandSource.
  *
- * Normal path: applies new commands to World (via ApplyCommandsToWorld)
- * Replay path: replays cached commands for a given frame (via ReplayCommandsToWorld)
+ * Normal path:  applies new commands to World (via ApplyCommandsToWorld)
+ * Replay path:  replays cached commands for a given frame (via ReplayCommandsToWorld)
  */
 
 using ECSFrameWork;
@@ -20,26 +20,14 @@ namespace FrameWork.RollBackSystem
             _applier = applier;
         }
 
-        public void ApplyCommandsToWorld(World world, int frame)
+        public void ApplyCommandsAtTiming(World world, int frame, SimulationFrameCommandTiming timing, bool isReplay)
         {
-            _applier?.ApplyCommandsToWorld(
-                frame,
-                SimulationFrameCommandTiming.BeforeTick);
+            if (_applier == null) return;
 
-            _applier?.ApplyCommandsToWorld(
-                frame,
-                SimulationFrameCommandTiming.AfterTick);
-        }
-
-        public void ReplayCommandsToWorld(World world, int frame)
-        {
-            _applier?.ReplayCommandsToWorld(
-                frame,
-                SimulationFrameCommandTiming.BeforeTick);
-
-            _applier?.ReplayCommandsToWorld(
-                frame,
-                SimulationFrameCommandTiming.AfterTick);
+            if (isReplay)
+                _applier.ReplayCommandsToWorld(frame, timing);
+            else
+                _applier.ApplyCommandsToWorld(frame, timing);
         }
     }
 }

@@ -15,5 +15,8 @@ namespace FrameWork.RollBackSystem.Interfaces
         void Simulate(
             TInput input,
             SimulationContext context);
+
+        void Tick(
+            SimulationContext context);
     }
 }

@@ -35,33 +35,36 @@ namespace FrameWork.RollBackSystem
             _frameCommandSource = frameCommandSource;
         }
 
-        /// <summary>写入帧命令和输入到 ECS World。</summary>
+        /// <summary>写入输入和 BeforeTick 帧命令到 ECS World。AfterTick 命令留给 Tick 处理。</summary>
         public void Simulate(
             TInput input,
             SimulationContext context)
         {
-            if (context.isRollback)
-            {
-                _frameCommandSource?.ReplayCommandsToWorld(
-                    _world,
-                    context.frameNumber);
-            }
-            else
-            {
-                _frameCommandSource?.ApplyCommandsToWorld(
-                    _world,
-                    context.frameNumber);
-            }
+            // 仅 BeforeTick 命令在 Simulate 阶段执行，与 TimeSimulator.OnBeforeTick 对齐
+            _frameCommandSource?.ApplyCommandsAtTiming(
+                _world,
+                context.frameNumber,
+                SimulationFrameCommandTiming.BeforeTick,
+                context.isRollback);
 
             _inputApplier.Apply(
                 _world,
                 input);
         }
 
-        /// <summary>直接执行 World.Tick。</summary>
+        /// <summary>
+        /// 执行 World.Tick，并在其后执行 AfterTick 帧命令（无论正常还是回滚路径）。
+        /// 与 TimeSimulator 时序一致：BeforeTick 命令（已在 Simulate 中执行）→ World.Tick → AfterTick 命令。
+        /// </summary>
         public void Tick(SimulationContext context)
         {
             _world.Tick(context);
+
+            _frameCommandSource?.ApplyCommandsAtTiming(
+                _world,
+                context.frameNumber,
+                SimulationFrameCommandTiming.AfterTick,
+                context.isRollback);
         }
 
         /// <summary>

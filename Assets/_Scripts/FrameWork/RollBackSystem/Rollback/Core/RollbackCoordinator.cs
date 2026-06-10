@@ -25,6 +25,8 @@ namespace FrameWork.RollBackSystem
             private set;
         }
 
+        public float TickLength { get; set; } = 1f / 60f;
+
         //--------------------------------
         // Buffers
         //--------------------------------
@@ -93,7 +95,7 @@ namespace FrameWork.RollBackSystem
 
             _world.Simulate(
                 input,
-                new SimulationContext(nextFrame, 0f, false));
+                new SimulationContext(nextFrame, TickLength, false));
 
             CurrentFrame = nextFrame;
         }
@@ -198,9 +200,11 @@ namespace FrameWork.RollBackSystem
                 if (!found)
                     break;
 
-                _world.Simulate(
-                    input,
-                    new SimulationContext(nextFrame, 0f, true));
+                var context = new SimulationContext(nextFrame, TickLength, true);
+
+                _world.Simulate(input, context);
+
+                _world.Tick(context);
 
                 TSnapshot snapshot =
                     (TSnapshot)_world.Capture(nextFrame);

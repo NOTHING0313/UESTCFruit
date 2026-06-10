@@ -1,6 +1,7 @@
 using ECSFrameWork;
 using System;
 using System.Collections.Generic;
+using BuffSystem;
 
 namespace FrameWork.RollBackSystem
 {
@@ -13,9 +14,6 @@ namespace FrameWork.RollBackSystem
         /// - Entity 按 (ID, Version) 排序后再遍历。
         /// - Component 类型按 FullName 稳定排序。
         /// - 不使用 object.GetHashCode()，只对已知值类型字段做 hash。
-        ///
-        /// 注意：对非已知业务组件（无法识别字段的组件）当前不参与 hash，
-        /// 避免非确定性污染。新业务组件应在下面 switch 中显式添加字段 hash。
         /// </summary>
         public static uint Calculate(
             World world)
@@ -80,7 +78,6 @@ namespace FrameWork.RollBackSystem
                         if (!success || component == null)
                             continue;
 
-                        // 仅对已知值类型字段做 hash
                         AppendComponentHash(
                             componentType,
                             component,
@@ -94,7 +91,8 @@ namespace FrameWork.RollBackSystem
 
         /// <summary>
         /// 对已知业务组件的值类型字段做确定性 hash。
-        /// 新增业务组件时在此方法中添加对应 hash 逻辑。
+        /// 新增业务组件时在 AppendKnownComponentHash 中显式添加。
+        /// 未识别的组件会输出警告，避免静默漂移。
         /// </summary>
         private static void AppendComponentHash(
             Type componentType,
@@ -103,19 +101,178 @@ namespace FrameWork.RollBackSystem
         {
             unchecked
             {
-                // 使用 FullName 做 switch 不可行，改为 if/else 模式
-                // 新组件在此接入即可
-                string name = componentType.FullName;
-
-                // 通用回退：如果组件实现了 IDeterministicHash，使用它
-                if (component is IDeterministicHash dh)
-                {
-                    dh.AppendHash(ref hash);
+                if (AppendKnownComponentHash(componentType, component, ref hash))
                     return;
-                }
 
-                // 未知组件类型：跳过，避免非确定性 GetHashCode()
-                // 开发者应在确认组件字段全是值类型后，在此添加 hash 逻辑
+                UnityEngine.Debug.LogWarning(
+                    $"[Checksum] Unhashed component: {componentType.FullName}. " +
+                    $"Add it to WorldChecksumCalculator.AppendKnownComponentHash.");
+            }
+        }
+
+        //--------------------------------------------------------------
+        // 已知组件 Hash（仅值类型字段，不使用 object.GetHashCode）
+        //--------------------------------------------------------------
+
+        private static bool AppendKnownComponentHash(Type t, object c, ref uint h)
+        {
+            string name = t.FullName;
+
+            // ---- ECS Unity Components ----
+            if (c is PositionComponent pos)
+            {
+                h = HashFloat(h, pos.x);
+                h = HashFloat(h, pos.y);
+                h = HashFloat(h, pos.z);
+                return true;
+            }
+            if (c is VelocityComponent vel)
+            {
+                h = HashFloat(h, vel.x);
+                h = HashFloat(h, vel.y);
+                h = HashFloat(h, vel.z);
+                return true;
+            }
+            if (c is MoveSpeedComponent spd)
+            {
+                h = HashFloat(h, spd.value);
+                return true;
+            }
+            if (c is ViewComponent view)
+            {
+                h = h * 31u + (uint)view.viewID;
+                return true;
+            }
+            if (c is PrefabViewRequestComponent pvr)
+            {
+                h = h * 31u + (uint)pvr.prefabID;
+                return true;
+            }
+            if (c is ViewDestroyRequestComponent)
+                return true;
+            if (c is EntityDestroyRequestComponent)
+                return true;
+            if (c is PlayerTagComponent)
+                return true;
+
+            // ---- ECS Gameplay Components ----
+            if (c is HealthComponent hp)
+            {
+                h = h * 31u + (uint)hp.current;
+                h = h * 31u + (uint)hp.max;
+                return true;
+            }
+            if (c is StatComponent stat)
+            {
+                h = h * 31u + (uint)stat.attack;
+                h = h * 31u + (uint)stat.defense;
+                h = h * 31u + (uint)stat.moveSpeed;
+                return true;
+            }
+            if (c is DeadTagComponent)
+                return true;
+            if (c is DamageRequestComponent dmg)
+            {
+                h = h * 31u + (uint)dmg.source.ID;
+                h = h * 31u + (uint)dmg.source.Version;
+                h = h * 31u + (uint)dmg.target.ID;
+                h = h * 31u + (uint)dmg.target.Version;
+                h = h * 31u + (uint)dmg.amount;
+                return true;
+            }
+
+            // ---- Player Input Component ----
+            if (c is PlayerInputSnapshotComponent input)
+            {
+                h = h * 31u + (uint)input.inputFrame;
+                h = h * 31u + (uint)input.playerID;
+                h = HashFloat(h, input.moveX);
+                h = HashFloat(h, input.moveY);
+                h = HashFloat(h, input.mouseX);
+                h = HashFloat(h, input.mouseY);
+                h = HashFloat(h, input.mouseDeltaX);
+                h = HashFloat(h, input.mouseDeltaY);
+                h = HashFloat(h, input.scrollX);
+                h = HashFloat(h, input.scrollY);
+                h = h * 31u + (uint)input.pressedButtons;
+                h = h * 31u + (uint)input.heldButtons;
+                h = h * 31u + (uint)input.releasedButtons;
+                return true;
+            }
+
+            // ---- Buff System Components ----
+            if (c is BuffRuntimeComponent buff)
+            {
+                h = h * 31u + (uint)buff.target.ID;
+                h = h * 31u + (uint)buff.target.Version;
+                h = h * 31u + (uint)buff.source.ID;
+                h = h * 31u + (uint)buff.source.Version;
+                h = h * 31u + (uint)buff.configId;
+                h = h * 31u + (uint)buff.runtimeHandle;
+                h = h * 31u + (uint)buff.stack;
+                h = h * 31u + (uint)buff.durationFrames;
+                h = h * 31u + (uint)buff.remainingFrames;
+                h = h * 31u + (uint)buff.tickIntervalFrames;
+                h = h * 31u + (uint)buff.elapsedFrames;
+                h = h * 31u + (uint)buff.ticks;
+                h = h * 31u + (uint)buff.maxStack;
+                h = h * 31u + (uint)buff.priority;
+                h = h * 31u + (buff.unlimited ? 1u : 0u);
+                h = h * 31u + (buff.isForever ? 1u : 0u);
+                h = h * 31u + (uint)(int)buff.buffType;
+                return true;
+            }
+            if (c is CompressedParallelBuffRuntimeComponent cpr)
+            {
+                h = h * 31u + (uint)cpr.target.ID;
+                h = h * 31u + (uint)cpr.target.Version;
+                h = h * 31u + (uint)cpr.source.ID;
+                h = h * 31u + (uint)cpr.source.Version;
+                h = h * 31u + (uint)cpr.configId;
+                h = h * 31u + (uint)cpr.compressedRuntimeHandle;
+                h = h * 31u + (uint)cpr.priority;
+                h = h * 31u + (uint)cpr.layerCount;
+                h = h * 31u + (uint)cpr.nextLayerId;
+                for (int i = 0; i < cpr.layerCount; i++)
+                {
+                    var layer = cpr.layers.Get(i);
+                    h = h * 31u + (uint)layer.layerId;
+                    h = h * 31u + (uint)layer.expireFrame;
+                    h = h * 31u + (uint)layer.elapsedFrames;
+                    h = h * 31u + (uint)layer.ticks;
+                    h = h * 31u + (uint)layer.layerRuntimeHandle;
+                }
+                return true;
+            }
+            if (c is AddBuffRequestComponent addReq)
+            {
+                h = h * 31u + (uint)addReq.command.Target.ID;
+                h = h * 31u + (uint)addReq.command.Target.Version;
+                h = h * 31u + (uint)addReq.command.Source.ID;
+                h = h * 31u + (uint)addReq.command.Source.Version;
+                h = h * 31u + (uint)addReq.command.ConfigId;
+                h = h * 31u + (uint)addReq.command.Stack;
+                return true;
+            }
+            if (c is RemoveBuffRequestComponent remReq)
+            {
+                h = h * 31u + (uint)remReq.command.Target.ID;
+                h = h * 31u + (uint)remReq.command.Target.Version;
+                h = h * 31u + (uint)remReq.command.Source.ID;
+                h = h * 31u + (uint)remReq.command.Source.Version;
+                h = h * 31u + (uint)remReq.command.ConfigId;
+                h = h * 31u + (uint)remReq.command.StackCount;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static uint HashFloat(uint hash, float v)
+        {
+            unchecked
+            {
+                return hash * 31u + (uint)(int)(v * 10000f + 0.5f);
             }
         }
 
