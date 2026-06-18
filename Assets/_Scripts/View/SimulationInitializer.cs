@@ -1,6 +1,8 @@
-﻿using BuffSystem;   // BuffDefinition / BuffDefinitionRegistry 等所在命名空间
+﻿using BuffSystem;
 using Contracts;
 using ECSFrameWork;
+using FrameWork.RollBackSystem;   // 2号回滚系统命名空间
+using System;
 using UnityEngine;
 
 namespace View
@@ -31,6 +33,10 @@ namespace View
 
         private bool _playerBuffUIAttached = false;
 
+        // 回滚相关
+        private RollbackBootstrap _rollbackBootstrap;
+        private SimulationDebugProbe _probe;
+
         private void Start()
         {
             TimeSimulator timeSim = TimeSimulator.Instance;
@@ -40,24 +46,29 @@ namespace View
                 return;
             }
 
-            // ---------- Buff 系统（生产组合路径）----------
-            BuffConfigDataLoader definitionProvider = BuffConfigDataLoader.Instance;
-            if (definitionProvider == null)
-            {
-                Debug.LogError("[SimulationInitializer] BuffConfigDataLoader.Instance missing. Please add BuffConfigDataLoader to the scene before starting simulation.");
-                enabled = false;
-                return;
-            }
-
-            definitionProvider.SetTickLength(_fixedDeltaTime);
-            definitionProvider.Init();
-
-            BuffEffectRegistry effectRegistry = new BuffEffectRegistry();
-            BuffEffectRegistryBootstrap.RegisterProductionEffects(effectRegistry);
-            _buffSystem = BuffSystemCore.CreateForProduction(definitionProvider, effectRegistry);
-
             // ---------- 核心世界 ----------
             _world = new World();
+
+            // ---------- Buff 系统（注册测试用 configId=1）----------
+            var defRegistry = new BuffDefinitionRegistry();
+            defRegistry.Register(new BuffDefinition(
+                configId: 1,
+                name: "TestBuff",
+                priority: 0,
+                maxStack: 1,
+                unlimited: false,
+                isForever: false,
+                durationFrames: 60,
+                tickIntervalFrames: 0,
+                durationExtendFramesPerStack: 0,
+                triggerType: BuffTriggerType.Tick,
+                buffType: BuffInstanceType.normal,
+                normalStackPolicy: NormalBuffStackPolicy.RefreshDuration,
+                parallelStackUpPolicy: ParallelBuffStackUpPolicy.Append,
+                parallelStackDownPolicy: ParallelBuffStackDownPolicy.RemoveEarliest,
+                effectId: 0
+            ));
+            _buffSystem = new BuffSystemCore(defRegistry, new BuffEffectRegistry());
 
             // ---------- 固定帧推进 ----------
             _runner = new SimulateRunner(_world, _fixedDeltaTime, _maxCompensationTicks);
@@ -86,8 +97,7 @@ namespace View
 
             // ---------- 创建玩家实体 ----------
             CreatePlayerEntity();
-            // 测试：检查配置是否存在
-           
+
             // ---------- 输入 ----------
             if (_inputAdapter != null)
             {
@@ -98,23 +108,35 @@ namespace View
             // ---------- 调试面板 ----------
             if (_debugPanel != null)
             {
-                var probe = new SimulationDebugProbe(_world, _buffSystem, _runner);
-                _debugPanel.Initialize(probe);
+                _probe = new SimulationDebugProbe(_world, _buffSystem, _runner);
+                _debugPanel.Initialize(_probe);
             }
 
+            // ---------- 回滚系统自动接入 ----------
+            _rollbackBootstrap = GetComponent<RollbackBootstrap>();
+            if (_rollbackBootstrap != null)
+                Debug.Log("[SimulationInitializer] RollbackBootstrap found – probe will show checksum.");
+            else
+                Debug.Log("[SimulationInitializer] No RollbackBootstrap on this GameObject – checksum will be 0.");
+
             Debug.Log("[SimulationInitializer] Initialized. Use WASD to move.");
-            Debug.Log($"[SimulationInitializer] BuffSystem production path prepared. loadedDefinitions={definitionProvider.DefinitionCount}");
         }
 
         private void Update()
         {
-            
+            // 1. 更新回滚状态到调试面板
+            if (_probe != null && _rollbackBootstrap != null && _rollbackBootstrap.Coordinator != null)
+            {
+                uint checksum = _rollbackBootstrap.Coordinator.CalculateChecksum();
+                bool isRollback = false; // 目前回滚系统未暴露该标志，保持 false
+                _probe.SetRollbackInfo(isRollback, checksum);
+            }
+
+            // 2. 输入采样
             if (_inputAdapter != null)
                 _inputAdapter.SampleInput();
 
-            _debugPanel?.Refresh();
-
-            // 尝试挂载 Buff UI（仅一次，等待视图生成）
+            // 3. 挂载 Buff UI（仅一次）
             if (!_playerBuffUIAttached && _playerEntity.IsValid)
             {
                 if (_binder.TryGetView(_playerEntity, out GameObject view))
@@ -124,8 +146,9 @@ namespace View
                     _playerBuffUIAttached = true;
                 }
             }
-            if (_playerEntity.IsValid && _playerBuffUIAttached && Time.frameCount % 60 == 0)
-                Debug.Log($"[SimulationInitializer] Player buff count: {_buffSystem.GetBuffs(_playerEntity).Count}");
+
+            // 4. 刷新调试面板（放在最后，确保数据最新）
+            _debugPanel?.Refresh();
         }
 
         private void OnDestroy()
@@ -146,10 +169,12 @@ namespace View
             _world.SetComponent(_playerEntity, new PlayerInputSnapshotComponent(0f, 0f));
             _world.SetComponent(_playerEntity, new PlayerTagComponent());
             _world.SetComponent(_playerEntity, new MoveSpeedComponent(5f));
-            // 生产路径不在玩家创建时自动添加调试 Buff；991001 试点请通过 Debug 面板手动添加。
+
+            // 测试 Buff
+            var buffCmd = new AddBuffCommand(_playerEntity, configId: 1, source: _playerEntity, stack: 1);
+            _buffSystem.AddBuff(buffCmd);
         }
 
-        // BuffSystem 桥接
         private class BuffSystemBridge : IFixedStepSystem
         {
             private readonly BuffSystemCore _core;
@@ -159,7 +184,6 @@ namespace View
             public void OnCreate(World world) => _world = world;
             public void Tick(in SimulationContext context) => _core.Tick(_world, context);
             public void OnDestroy(World world) { }
-
         }
     }
 }

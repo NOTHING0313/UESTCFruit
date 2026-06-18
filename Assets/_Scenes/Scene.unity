@@ -667,6 +667,8 @@ GameObject:
   m_Component:
   - component: {fileID: 1092610670}
   - component: {fileID: 1092610669}
+  - component: {fileID: 1092610672}
+  - component: {fileID: 1092610671}
   m_Layer: 0
   m_Name: Bootstrap
   m_TagString: Untagged
@@ -707,6 +709,36 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1092610671
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1092610668}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b2e3f9865debba54baf21a37280fbe1e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _rollbackKey: 32
+  _showGUI: 1
+  _guiFontSize: 18
+--- !u!114 &1092610672
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1092610668}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 90614152d94552a47a7b9d23da8bbf29, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _enable: 1
+  _snapshotRingCapacity: 120
+  _snapshotIntervalFrames: 10
 --- !u!1 &1213471959
 GameObject:
   m_ObjectHideFlags: 0
