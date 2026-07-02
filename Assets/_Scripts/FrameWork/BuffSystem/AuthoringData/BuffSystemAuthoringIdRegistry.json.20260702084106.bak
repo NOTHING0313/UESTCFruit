@@ -1,0 +1,28 @@
+﻿{
+    "version": 1,
+    "nextBuffConfigId": 100002,
+    "nextEffectId": 200002,
+    "buffs": [
+        {
+            "configId": 100001,
+            "buffName": "NewBuffCandidateGraph_1",
+            "graphGuid": "2669906cb8c22fe408bd3cddbd205275",
+            "assetPath": "Assets/Resources/BuffSystem/Buff/100001_NewBuffCandidateGraph_1.asset",
+            "status": "Generated",
+            "createdAt": "2026-06-28T15:33:53.6520389Z",
+            "updatedAt": "2026-06-28T15:33:53.6520389Z"
+        }
+    ],
+    "effects": [
+        {
+            "effectId": 200001,
+            "effectName": "NewBuffCandidateGraph_1Effect",
+            "className": "NewBuffCandidateGraph_1Effect",
+            "scriptPath": "Assets/_Scripts/FrameWork/BuffSystem/Effects/Generated/NewBuffCandidateGraph_1Effect.cs",
+            "graphGuid": "2669906cb8c22fe408bd3cddbd205275",
+            "status": "Generated",
+            "createdAt": "2026-06-28T15:33:53.4983131Z",
+            "updatedAt": "2026-06-28T15:33:53.4983131Z"
+        }
+    ]
+}

@@ -16,14 +16,28 @@ namespace BuffSystem.Editor.AuthoringGraphs
         [MenuItem(MenuPath, priority = 5100)]
         private static void CreateBuffCandidateGraph()
         {
-            string folder = GetSelectedProjectFolder();
-            string assetPath = AssetDatabase.GenerateUniqueAssetPath($"{folder}/{DefaultAssetName}");
+            CreateGraphAsset(GetSelectedProjectFolder(), true, false);
+        }
+
+        /// <summary>
+        /// 在指定目录创建候选图 asset。仅由用户点击菜单或 Hub 按钮时调用。
+        /// </summary>
+        internal static BuffCandidateGraph CreateGraphAsset(string folder, bool ping, bool open)
+        {
+            string safeFolder = string.IsNullOrWhiteSpace(folder) ? "Assets" : folder.Replace('\\', '/');
+            string assetPath = AssetDatabase.GenerateUniqueAssetPath($"{safeFolder}/{DefaultAssetName}");
             BuffCandidateGraph graph = ScriptableObject.CreateInstance<BuffCandidateGraph>();
 
             AssetDatabase.CreateAsset(graph, assetPath);
             AssetDatabase.SaveAssets();
             Selection.activeObject = graph;
-            EditorGUIUtility.PingObject(graph);
+            if (ping)
+                EditorGUIUtility.PingObject(graph);
+
+            if (open)
+                AssetDatabase.OpenAsset(graph);
+
+            return graph;
         }
 
         /// <summary>

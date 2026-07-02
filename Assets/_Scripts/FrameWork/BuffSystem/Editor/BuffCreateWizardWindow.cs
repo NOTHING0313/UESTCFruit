@@ -44,6 +44,8 @@ namespace BuffSystem
         private string _category = BuffAuthoringText.NotValidated;
         private string _targetAssetPath = string.Empty;
         private BuffCandidateGraphSummary _candidateSummary;
+        private bool _autoIdInitialized;
+        private string _pendingAutoIdWarning = string.Empty;
 
         [MenuItem(MenuPath)]
         private static void Open()
@@ -64,6 +66,7 @@ namespace BuffSystem
         internal void DrawEmbedded(BuffCandidateGraphSummary candidateSummary)
         {
             _candidateSummary = candidateSummary;
+            EnsureAutoConfigId();
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
 
             EditorGUILayout.LabelField(BuffAuthoringText.CreateBuffTitle, EditorStyles.boldLabel);
@@ -84,7 +87,17 @@ namespace BuffSystem
         {
             EditorGUILayout.Space(8f);
             EditorGUILayout.LabelField(BuffAuthoringText.BasicInfo, EditorStyles.boldLabel);
+            EditorGUI.BeginChangeCheck();
             _configId = EditorGUILayout.IntField(BuffAuthoringText.ConfigId, _configId);
+            if (EditorGUI.EndChangeCheck())
+            {
+                _pendingAutoIdWarning = string.Empty;
+                Validate();
+            }
+
+            if (GUILayout.Button(BuffAuthoringText.ReallocateBuffId, GUILayout.Height(24f)))
+                ReallocateBuffId();
+
             _buffName = EditorGUILayout.TextField(BuffAuthoringText.BuffName, _buffName);
             EditorGUILayout.LabelField(BuffAuthoringText.Description);
             _description = EditorGUILayout.TextArea(_description, GUILayout.MinHeight(48f));
@@ -155,15 +168,6 @@ namespace BuffSystem
             EditorGUILayout.Space(8f);
             using (new EditorGUILayout.HorizontalScope())
             {
-                using (new EditorGUI.DisabledScope(_candidateSummary == null || _candidateSummary.Graph == null))
-                {
-                    if (GUILayout.Button(BuffAuthoringText.ImportCreateBuffFromGraph, GUILayout.Height(28f)))
-                        ImportFromCandidateGraph();
-                }
-            }
-
-            using (new EditorGUILayout.HorizontalScope())
-            {
                 if (GUILayout.Button(BuffAuthoringText.Validate, GUILayout.Height(28f)))
                     Validate();
 
@@ -205,6 +209,7 @@ namespace BuffSystem
             _stackUpPolicy = draft.StackUpPolicy;
             _stackDownPolicy = draft.StackDownPolicy;
             _effectId = draft.EffectId;
+            ApplyAutoConfigIdAfterImport();
 
             Validate();
 
@@ -234,11 +239,9 @@ namespace BuffSystem
                 _unlimited,
                 _maxStack).IsEligible;
 
-            if (_configId <= 0)
-                _errors.Add("ConfigId 必须大于 0。");
-
-            if (_configIdDuplicate)
-                _errors.Add($"ConfigId 重复：当前 Resources Buff 目录中已经存在 ID={_configId}。");
+            BuffAuthoringIdValidationResult idValidation = BuffAuthoringIdService.ValidateBuffConfigId(_configId, BuffAuthoringHubSettings.Load());
+            _errors.AddRange(idValidation.Errors);
+            _warnings.AddRange(idValidation.Warnings);
 
             if (string.IsNullOrWhiteSpace(_buffName))
                 _errors.Add("Buff Name 不能为空。");
@@ -271,7 +274,7 @@ namespace BuffSystem
         private void AddWarnings(string effectRegistryWarning)
         {
             if (_effectId <= 0)
-                _warnings.Add("EffectId 未设置；草稿可以创建，但不能作为可运行 production Buff。");
+                _warnings.Add("EffectId 未设置：可以创建配置草稿，但该 Buff 暂不能作为可运行 production Buff。");
             else if (!_effectRegistrationKnown)
                 _warnings.Add($"无法稳定检查 Effect 注册状态：{effectRegistryWarning}");
             else if (!_effectRegistered)
@@ -291,6 +294,9 @@ namespace BuffSystem
 
             if (BuffAuthoringValidationUtility.IsDebugOrSmoke(_configId, _buffName))
                 _warnings.Add("Buff Name 包含 Debug / Smoke，建议只作为调试草稿，不作为正式玩法 Buff。");
+
+            if (!string.IsNullOrWhiteSpace(_pendingAutoIdWarning))
+                _warnings.Add(_pendingAutoIdWarning);
 
             if (_duration == 0f)
                 _warnings.Add("Duration=0，请确认是否为预期。");
@@ -317,27 +323,15 @@ namespace BuffSystem
 
         private void CreateDraftAsset()
         {
-            Validate();
+            BuffAuthoringPreflightResult preflightResult = RunPreflightBeforeCreate();
 
-            if (_errors.Count > 0)
+            if (preflightResult.HasError || _errors.Count > 0)
             {
-                EditorUtility.DisplayDialog(BuffAuthoringText.CreateBuffTitle, "存在错误，已阻止创建。", "OK");
+                EditorUtility.DisplayDialog(BuffAuthoringText.CreateBuffTitle, "Preflight 存在错误，已阻止创建。\n\n" + preflightResult.ToDisplayText(), "OK");
                 return;
             }
 
-            if (_warnings.Count > 0)
-            {
-                bool confirm = EditorUtility.DisplayDialog(
-                    BuffAuthoringText.CreateBuffTitle,
-                    "当前配置存在 Warning。是否仍要创建草稿 asset？\n\n" + string.Join("\n", _warnings),
-                    BuffAuthoringText.CreateDraftAsset,
-                    "取消");
-
-                if (!confirm)
-                    return;
-            }
-
-            Directory.CreateDirectory(BuffAssetRoot);
+            Directory.CreateDirectory(Path.GetDirectoryName(_targetAssetPath));
 
             BuffConfigData asset = ScriptableObject.CreateInstance<BuffConfigData>();
             asset.ID = _configId;
@@ -360,11 +354,93 @@ namespace BuffSystem
             Selection.activeObject = asset;
             EditorGUIUtility.PingObject(asset);
 
+            string registryMessage = WriteGeneratedBuffRegistryEntry();
             Debug.Log($"[BuffCreateWizard] Created draft BuffConfigData: {_targetAssetPath}");
             EditorUtility.DisplayDialog(
                 BuffAuthoringText.CreateBuffTitle,
-                $"创建成功：{_targetAssetPath}\n\n建议继续运行 Tools / BuffSystem / Authoring Validator。",
+                $"创建成功：{_targetAssetPath}\n\n{registryMessage}\n\n建议继续运行 Tools / BuffSystem / Authoring Validator。",
                 "OK");
+        }
+
+        private BuffAuthoringPreflightResult RunPreflightBeforeCreate()
+        {
+            BuffAuthoringBuffPreflightDraft draft = new BuffAuthoringBuffPreflightDraft
+            {
+                ConfigId = _configId,
+                BuffName = _buffName,
+                SaveFolder = BuffAssetRoot,
+                BuffType = _buffType,
+                TriggerType = _triggerType,
+                ParallelStorageMode = _parallelStorageMode,
+                Unlimited = _unlimited,
+                MaxStack = _maxStack,
+                Duration = _duration,
+                TickTime = _tickTime,
+                StackUpPolicy = _stackUpPolicy,
+                StackDownPolicy = _stackDownPolicy,
+                EffectId = _effectId
+            };
+
+            BuffAuthoringPreflightResult result = BuffAuthoringPreflightValidator.RunBuffPreflight(draft, BuffAuthoringHubSettings.Load());
+            ApplyPreflightDraft(draft);
+            Validate();
+            AppendPreflightIssues(result);
+            _canCreate = !result.HasError && _errors.Count == 0;
+            _hasValidated = true;
+            return result;
+        }
+
+        private void ApplyPreflightDraft(BuffAuthoringBuffPreflightDraft draft)
+        {
+            _configId = draft.ConfigId;
+            _buffName = draft.BuffName;
+            _buffType = draft.BuffType;
+            _triggerType = draft.TriggerType;
+            _parallelStorageMode = draft.ParallelStorageMode;
+            _unlimited = draft.Unlimited;
+            _maxStack = draft.MaxStack;
+            _duration = draft.Duration;
+            _tickTime = draft.TickTime;
+            _stackUpPolicy = draft.StackUpPolicy;
+            _stackDownPolicy = draft.StackDownPolicy;
+            _effectId = draft.EffectId;
+            _targetAssetPath = draft.TargetAssetPath;
+        }
+
+        private void AppendPreflightIssues(BuffAuthoringPreflightResult result)
+        {
+            for (int i = 0; i < result.Issues.Count; i++)
+            {
+                BuffAuthoringPreflightIssue issue = result.Issues[i];
+                string message = string.IsNullOrWhiteSpace(issue.Code)
+                    ? issue.Message
+                    : $"{issue.Code}: {issue.Message}";
+
+                if (issue.Severity == BuffAuthoringPreflightSeverity.Error)
+                    _errors.Add(message);
+                else if (issue.Severity == BuffAuthoringPreflightSeverity.Warning)
+                    _warnings.Add(message);
+                else
+                    _recommendations.Add(message);
+            }
+        }
+
+        private string WriteGeneratedBuffRegistryEntry()
+        {
+            BuffAuthoringHubSettingsData settings = BuffAuthoringHubSettings.Load();
+            bool success = BuffAuthoringIdRegistryAllocator.UpsertGeneratedBuffEntry(
+                settings.IdRegistryJsonPath,
+                _configId,
+                _buffName,
+                _candidateSummary != null ? _candidateSummary.Graph : null,
+                _targetAssetPath,
+                out string error);
+
+            if (success)
+                return $"ID Registry 已更新：{settings.IdRegistryJsonPath}";
+
+            Debug.LogWarning($"[BuffCreateWizard] Buff 已创建，但 ID Registry 写入失败：{error}");
+            return $"Warning：Buff 已创建，但 ID Registry 写入失败，请检查路径。\n{error}";
         }
 
         private string BuildTargetAssetPath()
@@ -408,6 +484,41 @@ namespace BuffSystem
 
             string absolutePath = Path.GetFullPath(assetPath);
             return File.Exists(absolutePath);
+        }
+
+        private void EnsureAutoConfigId()
+        {
+            if (_autoIdInitialized)
+                return;
+
+            _autoIdInitialized = true;
+            BuffAuthoringHubSettingsData settings = BuffAuthoringHubSettings.Load();
+            if (!settings.AutoAllocateIds)
+                return;
+
+            if (_configId <= 0 || _configId == 100001)
+                _configId = BuffAuthoringIdService.GetNextAvailableBuffConfigId(settings);
+        }
+
+        private void ApplyAutoConfigIdAfterImport()
+        {
+            BuffAuthoringHubSettingsData settings = BuffAuthoringHubSettings.Load();
+            if (!settings.AutoAllocateIds)
+                return;
+
+            if (!BuffAuthoringIdService.ShouldReplaceBuffConfigId(_configId, settings))
+                return;
+
+            int oldId = _configId;
+            _configId = BuffAuthoringIdService.GetNextAvailableBuffConfigId(settings);
+            _pendingAutoIdWarning = $"候选图 ConfigId={oldId} 缺失或冲突，已自动替换为 {_configId}。";
+        }
+
+        private void ReallocateBuffId()
+        {
+            _configId = BuffAuthoringIdService.GetNextAvailableBuffConfigId(BuffAuthoringHubSettings.Load());
+            _pendingAutoIdWarning = string.Empty;
+            Validate();
         }
     }
 }

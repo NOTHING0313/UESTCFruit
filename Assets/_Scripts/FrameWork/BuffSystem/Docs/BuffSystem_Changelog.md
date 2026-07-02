@@ -1,214 +1,228 @@
-# BuffSystem Changelog
+﻿# BuffSystem Changelog
+## Phase 3I-11V - CompositeEffect 文档 closeout 与验证清单
 
-## Phase 3I-10D - BuffCandidateGraph 与 Authoring Hub 快捷编辑工作流集成
+- 整理 CompositeEffect 图形化生成的推荐使用流程。
+- 新增 `BuffSystem_CompositeEffectAuthoring.md`，集中归档适用场景、推荐图结构、节点职责、顺序规则、预览、草稿生成、一键生成、自动注册开关、失败清理策略、验证清单和 production 边界。
+- 明确 `EffectCompositionRootNode` / `EffectNode` / `ScriptActionNode` 的职责边界。
+- 明确 `BuffRootNode` / `EffectBindingNode` / `Action Placeholder` 的 legacy / deprecated 状态。
+- 归档 CompositeEffect 预览、草稿生成、一键 Buff + CompositeEffect 生成的验证流程。
+- 补充自动注册关闭 / 失败时的一键生成边界：不创建 `BuffConfigData`，避免 Buff 指向未注册 Effect。
+- 补充 production whitelist、rollback-ready、runtime truth 的边界说明。
+- 本阶段仅更新文档，未修改 runtime，未生成 Effect / Buff asset，未写 registry / Bootstrap。
 
-- Authoring Hub 顶部新增 `候选图联动 / Candidate Graph Link` 区域，可选择 `BuffCandidateGraph` 并查看候选摘要。
-- 新增 Editor-only 桥接层 `BuffCandidateGraphBridge.cs`，用于从候选图构建摘要、Create Buff 草稿导入数据和 Effect Template 草稿导入数据。
-- `Create Buff` 页面支持从候选图导入基础字段，并触发现有校验预览；该操作不会自动创建 `BuffConfigData`。
-- `Effect Template` 页面支持从候选图导入 Effect 字段，并触发现有校验预览；该操作不会自动生成 Effect `.cs`。
-- `Validator` 页面增加候选图 ConfigId 与真实 `BuffConfigData` 是否存在的对照提示；Validator 仍只扫描真实配置资源。
-- 新增中文文档 `BuffSystem_xNodeAuthoringGraph.md`，说明 xNode 候选图与 Authoring Hub 的分工、推荐流程和边界。
-- 更新 `BuffSystem_AuthoringGuide.md`，增加 xNode 候选图工作流入口说明。
-- 本阶段未修改 runtime / registry / whitelist / compressed eligibility / xNode package / Packages manifest。
-- 本阶段未创建 graph asset，未创建 `BuffConfigData`，未生成 Effect `.cs` 文件，未保存 scene。
+## Phase 3I-11U - 一键创建 Buff + CompositeEffect 草稿
 
-## Phase 3I-10C-Polish - BuffCandidateGraph 节点 UI 可读性修复
+- Authoring Hub 图形化模式的 CompositeEffect 区域新增 `从图一键创建 Buff + CompositeEffect 草稿` 按钮。
+- 一键流程复用 `BuffGraphCompositeEffectPlanBuilder` 与 `BuffGraphCompositeEffectEmitter`，先生成最终 CompositeEffect `.cs` 草稿。
+- 一键流程会写入 Effect ID Registry，并在 Settings 开启自动注册时维护 `BuffEffectRegistryBootstrap.cs` auto 区块。
+- Bootstrap 自动注册成功后，才会创建 `BuffConfigData` 草稿，并确保 `BuffConfigData.EffectId == CompositeEffectId`。
+- 一键流程会写入 Buff ID Registry，并在生成报告中显示 CompositeEffect 路径、CompositeEffectId、CompositeEffectClassName、BuffConfigData 路径、Buff ConfigId、BuffName、BuffConfigData.EffectId 与 Registry 状态。
+- 自动注册关闭或自动注册失败时，一键流程会停止在 Buff 创建前，保留已生成的 CompositeEffect `.cs` 与 Effect ID Registry，并显示 `registry.Register(...)` 手动片段，避免 Buff 指向未注册 Effect。
+- 该流程只注册最终 CompositeEffect，不注册 child EffectNode；旧 `EffectBindingNode` 仍作为 legacy 信息被 Composite 流程忽略。
+- 本阶段不修改 runtime core，不修改 `BuffEffectRegistry` public API，不加入 whitelist，不修改 compressed eligibility，不创建正式 gameplay Buff，不保存 scene。
 
-- 新增 Editor-only 自定义 xNode 节点绘制文件 `BuffCandidateNodeEditors.cs`。
-- 使用 xNode `NodeEditor.CustomNodeEditor`、`OnHeaderGUI`、`OnBodyGUI`、`GetWidth` 和 `NodeEditorGUILayout.PropertyField` 优化节点显示。
-- 为 `BuffCandidateStartNode`、`BuffShapeNode`、`EffectBindingNode`、`CompressedEligibilityNode`、`RuntimeDependencyRiskNode`、`CandidateDecisionNode` 设置更宽的节点宽度。
-- 将节点字段显示改为更短的中文 / 中英混合标签，减少长字段名遮挡。
-- 长文本字段继续复用现有 `TextArea` 序列化显示，不重命名字段，不改变 graph asset 契约。
-- 本阶段只修改 Editor UI 显示，不修改 `BuffCandidateGraph` 契约、evaluation 逻辑、runtime、registry 或 whitelist。
-- 本阶段未创建 graph asset，未创建 `BuffConfigData`，未生成 Effect `.cs` 文件，未保存 scene。
+## Phase 3I-11T - CompositeEffect 真实生成最小实现
 
-## Phase 3I-10C-Fix - BuffCandidateGraph 创建菜单可见性修复
+- Authoring Hub 图形化模式的 CompositeEffect 区域新增 `从图创建 CompositeEffect 草稿` 按钮。
+- 该按钮执行 `BuffCandidateGraph -> BuffGraphCompositeEffectPlan -> BuffGraphCompositeEffectEmitter -> CompositeEffect.cs` 的真实生成链路。
+- 生成成功后会写入 Effect ID Registry，并在 Settings 开启时维护 `BuffEffectRegistryBootstrap.cs` auto 区块。
+- 自动注册关闭时不会修改 Bootstrap，只在生成报告中显示 `registry.Register(...)` 手动片段。
+- CompositeEffectId 优先使用 `EffectCompositionRootNode.FinalEffectId`；缺失且自动分配开启时分配正式段 EffectId；显式使用 990000+ Debug / Smoke / Reserved 保留段会被阻止。
+- CompositeEffectClassName 优先使用 `EffectCompositionRootNode.FinalEffectClassName`，否则使用 BuffName / GraphName 生成 `*CompositeEffect`。
+- 目标 `.cs` 已存在时阻止生成，不覆盖已有文件。
+- 本阶段只注册最终 CompositeEffect，不注册 child EffectNode。
+- 本阶段不创建 BuffConfigData，不实现“一键 Buff + CompositeEffect”，不修改 runtime core，不修改 whitelist / eligibility，不修改 BuffEffectRegistry public API。
 
+## Phase 3I-11R - CompositeEffect Graph Generate 预览接入
+
+- Authoring Hub 图形化模式新增 CompositeEffect 代码预览区。
+- 预览会基于多个 EffectNode 和 ScriptActionNode 生成 CompositeEffect 代码文本。
+- 支持复制预览代码到剪贴板，但不会写入 `.cs` 文件。
+- 预览会显示 CompositeEffectId、CompositeEffectClassName、EffectNode 数量、Action 总数、顺序模式、生命周期摘要、预览状态，以及 Error / Warning / Info。
+- 本阶段复用 `BuffGraphCompositeEffectPlanBuilder` 与 `BuffGraphCompositeEffectEmitter`，只生成字符串预览。
+- 本阶段未生成 Effect 文件，未创建 BuffConfigData，未写 ID Registry，未自动注册 Effect，未修改 runtime / Bootstrap / whitelist / eligibility。
+
+## Phase 3I-11P-GraphSemanticsCleanup - BuffCandidateGraph 图语义收口
+
+- 新增 Editor-only `EffectCompositionRootNode`，作为新图推荐的 Effect 组合入口。
+- 明确 `EffectCompositionRootNode.Effects` / 旧 `BuffRootNode.Effects` 连接表示成员关系，不表示执行顺序。
+- `EffectNode.Next` 形成完整链时作为显式顺序；未使用 `Next` 时 fallback 到 `ExecutionOrder`。
+- `EffectNode.Next` 与 `ExecutionOrder` 同时存在且顺序冲突时，Evaluation / Graph codegen 会报 Error。
+- `ScriptActionNode.Next` 第一版按同生命周期内 Action 链校验，要求与 `ExecutionOrder` 保持一致；冲突会阻止 Graph codegen。
+- `BuffRootNode` 保留旧图兼容，但菜单移动到 Deprecated 分组，节点 UI 显示兼容警告。
+- `EmptyActionPlaceholderNode` 保留旧图兼容，但菜单移动到 Deprecated 分组，节点 UI 和 Evaluation 明确提示不会生成可运行调用。
+- Authoring Hub 候选摘要新增 Effect 组合根、Effect 顺序模式、旧 BuffRoot 使用状态和废弃占位节点数量。
+- Graph Bridge / Generate / Effect codegen 统一读取 Effect 顺序和组合根字段，避免 UI 摘要与生成计划口径不一致。
+- 本阶段未生成 Effect `.cs` / CompositeEffect `.cs`，未创建 `BuffConfigData`，未写入 ID Registry，未自动注册 Effect。
+- 本阶段未修改 runtime、`BuffSystemCore.cs`、`BuffEffectRegistryBootstrap.cs`、whitelist、eligibility、ECS、RollBackSystem、View、Scene / Prefab / `.meta` 或 xNode package。
+
+## Phase 3I-11Q - CompositeEffect Editor-only 最小实现
+
+- 新增 CompositeEffect 的 Editor-only plan / builder / emitter。
+- 支持从多个 EffectNode 收集生命周期 ScriptActionNode，并生成单个 CompositeEffect 代码文本。
+- CompositeEffect 仍是普通 BuffEffectExecutorBase 派生类，不修改 BuffSystem runtime。
+- 复用已有 `BuffGraphEffectActionCallPlan` 与 `BuffScriptActionNodeValidator`，并在 Composite 生成前执行 EffectNode / ScriptActionNode 顺序和 Action 类型校验。
+- CompositeEffect 跨 Effect 顺序复用 `BuffGraphEffectOrderUtility`：完整 `EffectNode.Next` 链优先，未使用 `Next` 时按 `ExecutionOrder`，冲突 / 重复 / 分叉 / 环会进入 error。
+- CompositeEffect 的同 Effect + 同 lifecycle Action 顺序支持 `ScriptActionNode.Next` 完整链；未使用 `Next` 时按 `ExecutionOrder`，冲突 / 重复 / 分叉 / 环会进入 error。
+- CompositeEffect 合并生命周期时按 Effect 顺序再按 Action 顺序生成调用，`OnStackChanged` 仍只调用 `Execute(in context)`，不传递 delta。
+- `EffectBindingNode` 收口为 legacy fallback：菜单移动到 Deprecated 分组；存在 `EffectCompositionRootNode` / `EffectNode` 时，新结构优先，旧节点仅保留兼容。
+- 本阶段未接入 Hub 按钮，未生成 Effect 文件，未自动注册 Effect，未创建 BuffConfigData，未写入 ID Registry。
+- 本阶段未修改 `BuffSystemCore.cs`、`BuffEffectRegistryBootstrap.cs`、whitelist、eligibility、xNode package、Scene / Prefab / `.meta`。
+
+## Phase 3I-11O-UXCleanup - 数值编辑页候选图旧入口收口
+
+- 移除 Create Buff 页中的旧“从候选图导入基础字段”按钮。
+- 移除 Effect Template 页中的旧“从候选图导入 Effect 字段 / 调用链”按钮。
+- 候选图相关创建流程统一收口到“图形化编辑 -> Graph Generate”。
+- 本阶段只调整 Editor UI，未修改 runtime、Bootstrap、whitelist，也未创建 Buff 或 Effect。
+## Phase 3I-11O-FixCompile - 自动注册阶段编译错误修复
+
+- 修复 `BuffAuthoringText.cs` 中因文案字符串断裂导致的 CS1010 / CS1002 编译风险，保留所有常量名并改为合法单行字符串。
+- 修复 `BuffGraphGenerateService.cs` 中多处 report / result 文案字符串断裂导致的 CS1010 / CS1026 编译风险。
+- 对自动注册新增 Editor-only 文件执行字符串静态检查，未发现同类断裂字符串。
+- 本阶段只修复 Editor-only 编译问题，未修改 runtime，未修改 `BuffEffectRegistryBootstrap.cs`，未注册 Effect，未加入 whitelist。
+## Phase 3I-11O - Effect 自动注册黑箱化最小实现
+
+- 新增 Editor-only `BuffEffectBootstrapRegistrationScanner`，只读扫描 `BuffEffectRegistryBootstrap.cs` 中的 `registry.Register(...)` 注册行，并区分手工区与 auto 区块。
+- 新增 Editor-only `BuffEffectBootstrapAutoRegistryPatcher`，只维护 `// <buffsystem-auto-effect-registry>` 与 `// </buffsystem-auto-effect-registry>` 之间的 auto 区块。
+- 新增 Editor-only `BuffEffectBootstrapAutoRegistryReport`，用于向 Authoring Hub 展示自动注册写入结果、错误、警告和提示。
+- Authoring Hub Settings 新增 `自动注册 Effect 到 Bootstrap` 开关，默认开启。
+- Effect Template 生成 `.cs` 草稿成功并写入 ID Registry 后，会按 Settings 尝试维护 Bootstrap auto 区块；失败时保留已生成 Effect 和 ID Registry，不做回滚，并显示可手动复制的注册片段。
+- Graph 生成主 Effect 草稿、以及一键创建 Buff + 主 Effect 草稿后，会在 ID Registry 写入成功时按 Settings 尝试维护 Bootstrap auto 区块。
+- 单独从 Graph 创建 Buff 草稿不会触发 Effect 自动注册。
+- auto 注册会拒绝 `990000+` Debug / Smoke / Reserved 保留段 EffectId，拒绝手工区同 ID / 同 class 冲突，拒绝 auto 区块 marker 不成对的文件。
+- auto 区块内注册按 EffectId 升序写入，格式为 `registry.Register(200001, new GeneratedPoisonEffect());`。
+- 本阶段不自动加入 whitelist，不修改 compressed eligibility，不代表 runtime 验证通过，也不代表 rollback-ready。
+- 本阶段未修改 BuffSystem runtime core、`IBuffSystem`、production whitelist、validation whitelist、ECS、RollBackSystem、View、Scene、Prefab、Packages 或 xNode。
+
+## Phase 3I-11M-Fix - Graph Effect 璋冪敤閾剧敓鎴愬畬鏁存€т慨澶?
+- 淇 Graph 鐢熸垚 Effect 鑽夌鏃惰皟鐢ㄩ摼鎻愮ず涓嶆竻鏅扮殑闂銆?- 褰?`EffectNode` 鐢熷懡鍛ㄦ湡绔彛杩炴帴鏈夋晥 `ScriptActionNode` 鏃讹紝鐢熸垚鐨?Effect 浼氭槑纭寘鍚?`readonly` action 瀛楁鍜?`Execute(in context)` 璋冪敤銆?- 鏂板璋冪敤閾鹃瑙堬紝鏄剧ず `OnApply / OnTick / OnRemove / OnRefresh / OnStackChanged` 鍚勭敓鍛藉懆鏈熷搴旂殑 Action 椤哄簭銆?- 鏂板鐢熸垚瀹屾暣鎬ц鏁帮細`ExpectedActionCallCount`銆乣GeneratedActionFieldCount`銆乣GeneratedActionExecuteCallCount`锛岄伩鍏嶆湁 Action 浣嗙敓鎴愮┖妯℃澘鐨勬儏鍐点€?- `EmptyActionPlaceholderNode` 浼氫綔涓?warning 鏄剧ず锛屼笉浼氱敓鎴愬彲杩愯璋冪敤浠ｇ爜锛屽苟鎻愮ず鏇挎崲涓?`ScriptActionNode`銆?- 鏂囨。鍜屾彁绀烘槑纭尯鍒嗭細Effect 鐢熷懡鍛ㄦ湡璋冪敤閾剧敱宸ュ叿鐢熸垚锛涘叿浣撶帺娉曢€昏緫浠嶅湪 Action 鑴氭湰 `Execute(in context)` 涓疄鐜般€?- 鏈樁娈典笉鑷姩娉ㄥ唽 Effect锛屼笉淇敼 `BuffEffectRegistryBootstrap`锛屼笉鍔犲叆 whitelist锛屼笉淇敼 runtime core銆?
+## Phase 3I-11M - Graph 涓€閿垱寤?Buff + 涓?Effect 鑽夌
+
+- Authoring Hub 鐨勫浘褰㈠寲缂栬緫妯″紡鏂板 `鍥惧舰鍖栫敓鎴?/ Graph Generate` 鍖哄煙銆?- 鏂板涓変釜鍥惧舰鍖栫敓鎴愬叆鍙ｏ細
+  - `浠庡浘鍒涘缓涓?Effect 鑽夌`
+  - `浠庡浘鍒涘缓 Buff 鑽夌`
+  - `浠庡浘涓€閿垱寤?Buff + 涓?Effect 鑽夌`
+- 鏂板 Editor-only 鐢熸垚璁″垝涓庣粨鏋滄ā鍨嬶細
+  - `BuffGraphGeneratePlan.cs`
+  - `BuffGraphGenerateReport.cs`
+  - `BuffGraphGenerateService.cs`
+- 鐢熸垚娴佺▼浼氬厛鏋勫缓 Graph Generate Plan锛屽苟澶嶇敤鐜版湁 ID 鑷姩鍒嗛厤銆丟raph codegen preflight銆丒ffect preflight銆丅uff preflight銆?- 浠讳綍 Error 閮戒細闃绘鍐欏叆锛沇arning / Info 浼氭樉绀哄湪鐢熸垚璁″垝鎴栫敓鎴愮粨鏋滀腑銆?- 涓€閿祦绋嬫寜椤哄簭鍏堢敓鎴愪富 Effect `.cs` 鑽夌锛屽啀鍒涘缓 `BuffConfigData` 鑽夌 asset锛屽苟鍦ㄦ垚鍔熷悗鐢卞伐鍏峰唴閮ㄩ粦绠辨洿鏂?ID Registry銆?- 濡傛灉 Effect 鑽夌宸茬粡鐢熸垚浣?Buff 鑽夌鍒涘缓澶辫触锛屽伐鍏蜂笉浼氳嚜鍔ㄥ垹闄ゅ凡鐢熸垚鐨?Effect 鑽夌锛屼細鍦ㄧ粨鏋滀腑鎻愮ず鐢ㄦ埛鎵嬪姩妫€鏌ユ垨娓呯悊銆?- 涓?Effect 閫夋嫨瑙勫垯娌跨敤 Phase 3I-11L锛氬彧閫夋嫨 `ExecutionOrder` 鏈€灏忕殑 `EffectNode`锛涘 Effect 鍥惧彧鏄剧ず warning锛屼笉鐢熸垚 `CompositeEffect`銆?- 鏈樁娈典笉鑷姩娉ㄥ唽 Effect锛屼笉淇敼 `BuffEffectRegistryBootstrap`锛屼笉鍔犲叆 whitelist锛屼笉淇敼 compressed eligibility锛屼笉淇敼 BuffSystem runtime銆?- 鏈樁娈垫湭淇敼 `BuffSystemCore.cs`銆乣IBuffSystem`銆丒CS銆丷ollBackSystem銆乂iew銆丼cene銆丳refab銆亁Node package銆丳ackages manifest 鎴?`.meta`銆?
+## Phase 3I-11L - Graph 鐢熸垚 Effect 鑽夌璋冪敤閾?
+- Effect Template 鏀寔浠?`BuffCandidateGraph` 瀵煎叆 Effect 璋冪敤閾俱€?- 鐢熸垚 Effect 鑽夌鏃讹紝鍙牴鎹富 `EffectNode` 鐢熷懡鍛ㄦ湡绔彛鍜岀洿鎺ヨ繛鎺ョ殑 `ScriptActionNode` 鐢熸垚 `readonly` action 瀛楁涓?`Execute(in context)` 璋冪敤銆?- 璋冪敤閾炬寜 `ScriptActionNode.ExecutionOrder` 鍗囧簭鐢熸垚锛涘悓涓€鐢熷懡鍛ㄦ湡鍐呴噸澶?`ExecutionOrder` 浼氫綔涓?Graph Codegen Preflight error 闃绘鐢熸垚銆?- 绗竴鐗堝彧鐢熸垚鍗曚釜涓?Effect锛涘綋鍥句腑瀛樺湪澶氫釜 `EffectNode` 鏃讹紝閫夋嫨 `ExecutionOrder` 鏈€灏忕殑鑺傜偣骞舵樉绀?warning锛屼笉鐢熸垚 `CompositeEffect`銆?- `OnStackChanged` 绗竴鐗堜粛璋冪敤 `IBuffGraphAction.Execute(in context)`锛屼笉浼氬悜 Action 浼犻€?`delta`銆?- 鐢熸垚鍓嶄細鎵ц Effect Preflight 涓?Graph Codegen Preflight锛汫raph 閿欒浼氶樆姝㈢敓鎴?`.cs` 鑽夌銆?- 鏈樁娈垫湭鑷姩娉ㄥ唽 Effect锛屾湭淇敼 `BuffEffectRegistryBootstrap`锛屾湭鍔犲叆 whitelist锛屾湭淇敼 runtime core銆?- 鏈樁娈垫湭鍒涘缓 `BuffConfigData`锛屾湭淇敼 xNode package銆丳ackages manifest銆乻cene銆乸refab 鎴?`.meta`銆?
+## Phase 3I-11K - IBuffGraphAction runtime-safe 鏈€灏忔帴鍙?
+- 鏂板 runtime-safe 鎺ュ彛 `IBuffGraphAction`锛屼緵鍚庣画鍥惧舰鍖?Effect 璋冪敤閾剧敓鎴愪娇鐢ㄣ€?- `IBuffGraphAction` 绗竴鐗堝彧鍖呭惈 `Execute(in BuffEffectContext context)`銆?- 绗竴鐗堜笉鏂板鐢熷懡鍛ㄦ湡缁嗗垎鎺ュ彛锛屼篃涓嶅鐞?`OnStackChanged` 鐨?`delta` 鍙傛暟銆?- `ScriptActionNode` 鏍￠獙鍗囩骇锛氳剼鏈繀椤诲疄鐜?`IBuffGraphAction` 鎵嶈兘琚涓烘湁鏁?Action銆?- 鏈疄鐜?`IBuffGraphAction` 鐨勮剼鏈細鍦?`ScriptActionNode` / Authoring Hub 鎽樿涓樉绀轰负 invalid銆?- `public parameterless constructor` 鏆傛椂浠嶄綔涓?warning锛屼笉浣滀负 blocking error銆?- 鎺ㄨ崘 Buff Graph Action 鑴氭湰鐩綍涓?`Assets/_Scripts/FrameWork/BuffSystem/Actions`锛屾湰闃舵涓嶈嚜鍔ㄥ垱寤鸿鐩綍銆?- 鏈樁娈典笉鐢熸垚 Effect 浠ｇ爜锛屼笉鍒涘缓 `BuffConfigData`锛屼笉娉ㄥ唽 Effect锛屼笉鍔犲叆 whitelist銆?- 鏈樁娈垫湭淇敼 `BuffSystemCore`銆乣BuffEffectRegistryBootstrap`銆亁Node package銆丳ackages manifest銆乻cene銆乸refab 鎴?`.meta`銆?
+## Phase 3I-11I - ScriptActionNode Editor-only 鍘熷瀷
+
+- 鏂板 Editor-only `ScriptActionNode`锛屽彲鍦?`BuffCandidateGraph` 涓〃绀鸿剼鏈姛鑳借妭鐐广€?- `ScriptActionNode` 鏀寔鎷栧叆 `MonoScript`锛屽苟鑷姩璇诲彇鑴氭湰绫诲瀷銆佸～鍏?`ActionTypeName`銆乣ActionName` 鍜?`ActionDisplayName`銆?- 鏂板 Editor-only `BuffScriptActionNodeValidator`锛岀敤浜庢鏌ョ┖鑴氭湰銆乣GetClass()` 涓虹┖銆乤bstract銆佹硾鍨嬬被鍨嬪畾涔夈€乣MonoBehaviour` / `UnityEngine.Object` 娲剧敓銆佺被鍚?/ namespace銆佹棤 public 鏃犲弬鏋勯€犮€佹帹鑽愯矾寰勫拰绂佺敤 API 瀛楃涓层€?- `EffectNode` 鐢熷懡鍛ㄦ湡绔彛鍙互杩炴帴 `ScriptActionNode`锛岀敤浜庤〃杈剧敓鍛藉懆鏈熷埌鍔熻兘鑺傜偣鐨勮璁″叧绯汇€?- `BuffCandidateGraphEvaluation` 璇嗗埆 `ScriptActionNode`锛屽苟灏嗘棤鏁堣剼鏈€佸崰浣嶈妭鐐硅繛鎺ャ€侀噸澶?`ExecutionOrder` 绛変綔涓?Editor warning銆?- Authoring Hub 鍥惧舰鍖栨憳瑕佹樉绀?ScriptActionNode 鏁伴噺銆佹湁鏁?/ 鏃犳晥鏁伴噺銆亀arning 鏁伴噺銆丄ction 鎽樿鍜?Action 璀﹀憡銆?- 鏈樁娈典笉鏂板 runtime interface锛屼笉鐢熸垚 Effect 璋冪敤浠ｇ爜锛屼笉鍒涘缓 `BuffConfigData`锛屼笉淇敼 runtime / registry / whitelist銆?- 鏈樁娈垫湭淇敼 `BuffEffectRegistryBootstrap`銆亁Node package銆丳ackages manifest銆乻cene銆乸refab 鎴?`.meta`銆?
+## Phase 3I-11G - EffectNode 鐢熷懡鍛ㄦ湡绔彛涓?Buff 鍥惧 Effect 椤哄簭鍘熷瀷
+
+- 鏂板 Editor-only `BuffRootNode`锛岀敤浜庡湪 `BuffCandidateGraph` 涓〃杈?Buff 鏍硅妭鐐逛笌 Effect 杩炴帴鍏ュ彛銆?- 鏂板 Editor-only `EffectNode`锛岀敤浜庤〃杈?`EffectId`銆丒ffect 鍚嶇О銆丒ffect 绫诲悕鍜?`ExecutionOrder`銆?- `EffectNode` 鏀寔 `OnApply`銆乣OnTick`銆乣OnRemove`銆乣OnRefresh`銆乣OnStackChanged` 鐢熷懡鍛ㄦ湡杈撳嚭绔彛銆?- 鏂板 Editor-only `EmptyActionPlaceholderNode`锛岀敤浜庤鐢熷懡鍛ㄦ湡绔彛鍏堣繛鎺ュ埌鍗犱綅鍔熻兘鑺傜偣銆?- `BuffCandidateGraphEvaluation` 璇嗗埆 `BuffRootNode` / `EffectNode`锛屽苟妫€鏌?Effect 鏁伴噺銆侀噸澶嶆墽琛岄『搴忋€丒ffectId / 绫诲悕鍜岀敓鍛藉懆鏈熻繛鎺ユ憳瑕併€?- 鏃?`EffectBindingNode` 鏆傛椂淇濈暀鍏煎锛汢ridge 浼樺厛璇诲彇鏂?`EffectNode`锛屾病鏈?`EffectNode` 鏃?fallback 鍒版棫鑺傜偣銆?- Authoring Hub 鍥惧舰鍖栨憳瑕佹樉绀?EffectNode 鏁伴噺銆佹墽琛岄『搴忋€佺敓鍛藉懆鏈熻繛鎺ユ憳瑕併€佸 Effect 鎻愮ず鍜屾棫鑺傜偣浣跨敤鐘舵€併€?- 鏈樁娈靛彧瀹炵幇鍥剧粨鏋勫拰 Editor UI锛屼笉鐢熸垚 Effect 浠ｇ爜锛屼笉鍒涘缓 BuffConfigData锛屼笉淇敼 runtime / registry / whitelist銆?- 鏈樁娈垫湭淇敼 registry bootstrap銆亁Node package銆丳ackages manifest銆乻cene銆乸refab 鎴?`.meta`銆?
+## Phase 3I-11F - 鍒涘缓 Buff / Effect 鍓嶇疆 Preflight 涓庨粦绠?Registry 鍐欏叆
+
+- 鏂板 Editor-only Preflight 缁撴灉妯″瀷锛屽寘鍚?`Info`銆乣Warning`銆乣Fixup`銆乣Error` 鍥涚被 issue銆?- Create Buff 鍦ㄥ垱寤?BuffConfigData 鑽夌鍓嶈嚜鍔ㄨ繍琛?Buff Preflight锛岄敊璇細闃绘鍒涘缓锛屽彲淇椤逛細鑷姩琛ラ粯璁ゅ€笺€?- Effect Template 鍦ㄧ敓鎴?Effect `.cs` 鑽夌鍓嶈嚜鍔ㄨ繍琛?Effect Preflight锛岄敊璇細闃绘鐢熸垚銆?- Preflight 閫氳繃鍚庣洿鎺ュ垱寤?/ 鐢熸垚锛屼笉鍐嶅洜 warning 寮瑰嚭浜屾纭銆?- 鍒涘缓 BuffConfigData 鎴愬姛鍚庯紝宸ュ叿浼氬湪鍐呴儴鑷姩缁存姢 ID Registry JSON锛屽苟鍐欏叆 `Generated` 鐘舵€?Buff 鏉＄洰銆?- 鐢熸垚 Effect 妯℃澘鎴愬姛鍚庯紝宸ュ叿浼氬湪鍐呴儴鑷姩缁存姢 ID Registry JSON锛屽苟鍐欏叆 `Generated` 鐘舵€?Effect 鏉＄洰銆?- ID Registry 浠嶄綔涓洪粦绠辨満鍒讹紝涓嶅啀鏆撮湶鎵嬪姩棰勭暀 / 閲嶅缓鎿嶄綔銆?- Graph 瀵煎叆 Create Buff / Effect Template 鍚庯紝鏈€缁堝垱寤?/ 鐢熸垚浠嶈蛋鍚屼竴濂?Preflight銆?- 鏈樁娈垫湭鑷姩娉ㄥ唽 Effect锛屾湭鍔犲叆 whitelist锛屾湭淇敼 runtime銆?- 鏈樁娈垫湭淇敼 registry bootstrap銆亁Node package銆丳ackages manifest銆乻cene銆乸refab 鎴?`.meta`銆?
+## Phase 3I-11E-Fix2 - 鑷姩 ID 鍒嗛厤鏍￠獙 UX 鏀跺彛
+
+- 璋冩暣 Buff / Effect ID 鏍￠獙鎻愮ず锛宍990000+` Debug / Smoke / Reserved 娈靛湪鏅€氬垱寤烘祦绋嬩腑浣滀负涓嶅彲鎺ュ彈 ID銆?- Create Buff 椤甸潰涓墜鍔ㄨ緭鍏ヤ繚鐣欐 ConfigId 鏃朵細鏄庣‘鎻愮ず鐐瑰嚮 `閲嶆柊鍒嗛厤 Buff ID`銆?- Effect Template 椤甸潰涓墜鍔ㄨ緭鍏ヤ繚鐣欐 EffectId 鏃朵細鏄庣‘鎻愮ず鐐瑰嚮 `閲嶆柊鍒嗛厤 Effect ID`銆?- 鑷姩鍒嗛厤鎺ㄨ崘 ID 澧炲姞鍏滃簳淇濇姢锛屼笉浼氳繑鍥?`990000+` 淇濈暀娈点€?- `EffectId` 鏈缃彁绀轰笌 ConfigId 鍚堟硶鎬ф彁绀烘媶鍒嗭紱Create Buff 椤甸潰涓?`EffectId=0` 鍙綔涓?warning锛屼笉褰卞搷 ConfigId 鍚堟硶鎬с€?- 鏈樁娈垫湭鍒涘缓 `BuffConfigData`锛屾湭鐢熸垚 Effect 浠ｇ爜锛屾湭淇敼 runtime / registry / whitelist / compressed eligibility銆?- 鏈樁娈垫湭淇敼 xNode package銆丳ackages manifest銆乻cene銆乸refab 鎴?`.meta`銆?
+## Phase 3I-11E-Fix - ID 鑷姩鍒嗛厤 UX 绠€鍖栦笌榛戠鍖?
+- Settings 椤甸潰绉婚櫎澶嶆潅 ID Registry 鍐欏叆 / 鍒嗛厤鎿嶄綔锛屼笉鍐嶆毚闇插垱寤虹┖ Registry JSON銆侀噸寤?Registry銆佹墜鍔ㄩ鐣?Buff / Effect ID 鎸夐挳銆?- Settings 椤甸潰鏂板 `鑷姩鍒嗛厤 Buff / Effect ID` 寮€鍏筹紝榛樿寮€鍚€?- 鏂板 Editor-only `BuffAuthoringIdService.cs`锛岄泦涓彁渚涗笅涓€涓彲鐢?Buff ConfigId / EffectId 鎺ㄨ崘涓庡敮涓€鎬ф牎楠屻€?- Buff 鍒涘缓娴佺▼鏀寔鑷姩鍒嗛厤 ConfigId锛屽苟鎻愪緵 `閲嶆柊鍒嗛厤 Buff ID` 鎸夐挳銆?- Buff 鍒涘缓娴佺▼鍦ㄧ敤鎴锋墜鍔ㄤ慨鏀?ConfigId 鍚庢墽琛屽敮涓€鎬ф牎楠岋紝鍐茬獊鏃堕樆姝㈠垱寤恒€?- Effect 妯℃澘娴佺▼鏀寔鑷姩鍒嗛厤 EffectId锛屽苟鎻愪緵 `閲嶆柊鍒嗛厤 Effect ID` 鎸夐挳銆?- Effect 妯℃澘娴佺▼鍦ㄧ敤鎴锋墜鍔ㄤ慨鏀?EffectId 鍚庢墽琛屽敮涓€鎬ф牎楠岋紝鍐茬獊鏃堕樆姝㈢敓鎴愩€?- Graph 瀵煎叆 Create Buff / Effect Template 鏃讹紝濡傛灉 ID 缂哄け鎴栧啿绐佷笖鑷姩鍒嗛厤寮€鍚紝浼氭浛鎹负鍙敤 ID銆?- ID Registry Store / Allocator / Scanner 淇濈暀涓哄唴閮ㄦ湇鍔★紝Registry JSON 浠庣敤鎴疯瑙掕浆涓洪粦绠辨満鍒躲€?- 鏈樁娈垫湭鍒涘缓 `BuffConfigData`锛屾湭鐢熸垚 Effect 浠ｇ爜锛屾湭淇敼 runtime / registry / whitelist / compressed eligibility銆?- 鏈樁娈垫湭淇敼 xNode package銆丳ackages manifest銆乻cene銆乸refab 鎴?`.meta`銆?
+## Phase 3I-11E - ID Registry 鍐欏叆涓庤嚜鍔ㄥ垎閰?
+- 鏂板 Editor-only `BuffAuthoringIdRegistryStore.cs`锛岃礋璐?ID Registry JSON 鐨勫畨鍏ㄨ鍙栥€佸垱寤恒€佸啓鍏ャ€佺埗鐩綍鍒涘缓鍜岃鐩栧墠澶囦唤銆?- 鏂板 Editor-only `BuffAuthoringIdRegistryAllocator.cs`锛岃礋璐ｆ帹鑽愬苟棰勭暀涓嬩竴涓?Buff ConfigId / EffectId銆?- ID Registry schema 澧炲姞 `status` 瀛楁锛岀敤浜庡尯鍒?`Reserved`銆乣Generated`銆乣Imported` 鍜?`Unknown`銆?- Authoring Hub 鐨?`Settings` 椤甸潰鏂板 `ID Registry 鍐欏叆 / 鍒嗛厤` 鍖哄煙銆?- 鏀寔鐢ㄦ埛鎵嬪姩鍒涘缓绌?Registry JSON銆?- 鏀寔鐢ㄦ埛鎵嬪姩浠庡綋鍓嶆壂鎻忕粨鏋滈噸寤?Registry JSON銆?- 鏀寔鐢ㄦ埛鎵嬪姩棰勭暀涓嬩竴涓?Buff ConfigId锛屽苟鍐欏叆 Registry JSON銆?- 鏀寔鐢ㄦ埛鎵嬪姩棰勭暀涓嬩竴涓?EffectId锛屽苟鍐欏叆 Registry JSON銆?- 鎺ㄨ崘 ID 榛樿浠?Buff `100001`銆丒ffect `200001` 寮€濮嬶紝骞惰烦杩囧凡鍗犵敤 ID 涓?`990000+` Debug / Smoke / Reserved 娈点€?- Registry 鍐欏叆鍓嶄細妫€鏌ヨ矾寰勫繀椤讳綅浜?`Assets/` 涓嬶紝涓斿凡鏈?JSON 蹇呴』鍙В鏋愶紱鏍煎紡閿欒鏃朵笉浼氳鐩栧師鏂囦欢銆?- 棰勭暀 ID 涓嶄細鍒涘缓 `BuffConfigData`锛屼笉浼氱敓鎴?Effect 浠ｇ爜锛屼笉浼氭敞鍐?Effect銆?- 鏈樁娈垫湭淇敼 runtime / registry / whitelist / compressed eligibility / xNode package / Packages manifest銆?- 鏈樁娈垫湭淇濆瓨 scene锛屾湭淇敼 prefab锛屾湭鎵嬪啓 `.meta`銆?
+## Phase 3I-11D - ID Registry 璁捐涓庡彧璇绘牎楠?
+- 鏂板 ID Registry JSON schema 瀵瑰簲鐨?Editor-only 鏁版嵁缁撴瀯銆?- 鏂板 ID 鍗犵敤鍙鎵弿鑳藉姏锛屽彲鎵弿 `BuffConfigData`銆丒ffect 鑴氭湰銆乣BuffEffectRegistryBootstrap` 鍜屽凡鏈?Registry JSON銆?- Authoring Hub 鐨?`Settings` 椤甸潰澧炲姞 `ID Registry 鍙鏍￠獙` 鍖哄煙銆?- 璇ュ尯鍩熸敮鎸?`鎵弿 ID 鍗犵敤` 鍜?`澶嶅埗鎵弿鎶ュ憡`锛屽苟鏄剧ず鎺ㄨ崘涓嬩竴涓?Buff ConfigId / EffectId銆佹壂鎻忔暟閲忋€丒rrors 涓?Warnings銆?- 鎺ㄨ崘 ID 榛樿浠?Buff `100001`銆丒ffect `200001` 寮€濮嬶紝骞惰烦杩囧凡鍗犵敤 ID 涓?`990000+` Debug / Smoke / Reserved 娈点€?- Registry JSON 涓嶅瓨鍦ㄦ椂鍙樉绀?warning锛屼笉鍒涘缓鏂囦欢銆?- 鏈樁娈典笉鍒涘缓 Registry JSON锛屼笉鍐欏叆 Registry JSON锛屼笉鑷姩鍒嗛厤 ID銆?- 鏈樁娈垫湭鍒涘缓 `BuffConfigData`锛屾湭鐢熸垚 Effect 浠ｇ爜锛屾湭淇敼 runtime / registry / whitelist / compressed eligibility銆?- 鏈樁娈垫湭淇敼 xNode package銆丳ackages manifest銆乻cene銆乸refab 鎴?`.meta`銆?
+## Phase 3I-11C - Authoring Hub 妯″紡閫夋嫨鍗°€佸垱寤哄浘鎸夐挳涓?Settings 闈㈡澘
+
+- Authoring Hub 澧炲姞 `鏁板€肩紪杈慲銆乣鍥惧舰鍖栫紪杈慲 涓?`Settings` 涓変釜椤跺眰妯″紡銆?- `鏁板€肩紪杈慲 妯″紡淇濈暀鍘熸湁 `閰嶇疆妫€鏌ュ櫒`銆乣鍒涘缓 Buff`銆乣Effect 妯℃澘` 涓変釜宸ュ叿銆?- `鍥惧舰鍖栫紪杈慲 妯″紡涓繚鐣欏€欓€夊浘鑱斿姩鍖猴紝骞舵柊澧?`鍒涘缓鍥綻 鎸夐挳銆?- `鍒涘缓鍥綻 浼氬湪 Settings 閰嶇疆鐨勫浘榛樿鐩綍涓垱寤?`BuffCandidateGraph`锛岄粯璁ょ洰褰曚负 `Assets/_Scripts/FrameWork/BuffSystem/AuthoringGraphs`銆?- 鏂板 Editor-only Settings 瀛樺偍绫?`BuffAuthoringHubSettings.cs`锛屼娇鐢?`EditorPrefs` 淇濆瓨鏈満宸ュ叿璺緞鍋忓ソ銆?- Settings 椤甸潰鏀寔閰嶇疆鍥鹃粯璁ょ洰褰曘€丅uff 閰嶇疆鐩綍銆丒ffect 鑴氭湰鐩綍鍜?ID Registry JSON 璺緞銆?- 鏈樁娈典粎瀹炵幇 Editor 宸ュ叿 UI 涓庤矾寰勮缃紝涓嶅垱寤?`BuffConfigData`锛屼笉鐢熸垚 Effect 浠ｇ爜锛屼笉瀹炵幇 ID Registry锛屼笉瀹炵幇 Preflight銆?- 鏈樁娈垫湭淇敼 runtime / registry / whitelist / compressed eligibility / xNode package / Packages manifest銆?- 鏈樁娈垫湭淇濆瓨 scene锛屾湭淇敼 prefab锛屾湭鎵嬪啓 `.meta`銆?
+## Phase 3I-10D - BuffCandidateGraph 涓?Authoring Hub 蹇嵎缂栬緫宸ヤ綔娴侀泦鎴?
+- Authoring Hub 椤堕儴鏂板 `鍊欓€夊浘鑱斿姩 / Candidate Graph Link` 鍖哄煙锛屽彲閫夋嫨 `BuffCandidateGraph` 骞舵煡鐪嬪€欓€夋憳瑕併€?- 鏂板 Editor-only 妗ユ帴灞?`BuffCandidateGraphBridge.cs`锛岀敤浜庝粠鍊欓€夊浘鏋勫缓鎽樿銆丆reate Buff 鑽夌瀵煎叆鏁版嵁鍜?Effect Template 鑽夌瀵煎叆鏁版嵁銆?- `Create Buff` 椤甸潰鏀寔浠庡€欓€夊浘瀵煎叆鍩虹瀛楁锛屽苟瑙﹀彂鐜版湁鏍￠獙棰勮锛涜鎿嶄綔涓嶄細鑷姩鍒涘缓 `BuffConfigData`銆?- `Effect Template` 椤甸潰鏀寔浠庡€欓€夊浘瀵煎叆 Effect 瀛楁锛屽苟瑙﹀彂鐜版湁鏍￠獙棰勮锛涜鎿嶄綔涓嶄細鑷姩鐢熸垚 Effect `.cs`銆?- `Validator` 椤甸潰澧炲姞鍊欓€夊浘 ConfigId 涓庣湡瀹?`BuffConfigData` 鏄惁瀛樺湪鐨勫鐓ф彁绀猴紱Validator 浠嶅彧鎵弿鐪熷疄閰嶇疆璧勬簮銆?- 鏂板涓枃鏂囨。 `BuffSystem_xNodeAuthoringGraph.md`锛岃鏄?xNode 鍊欓€夊浘涓?Authoring Hub 鐨勫垎宸ャ€佹帹鑽愭祦绋嬪拰杈圭晫銆?- 鏇存柊 `BuffSystem_AuthoringGuide.md`锛屽鍔?xNode 鍊欓€夊浘宸ヤ綔娴佸叆鍙ｈ鏄庛€?- 鏈樁娈垫湭淇敼 runtime / registry / whitelist / compressed eligibility / xNode package / Packages manifest銆?- 鏈樁娈垫湭鍒涘缓 graph asset锛屾湭鍒涘缓 `BuffConfigData`锛屾湭鐢熸垚 Effect `.cs` 鏂囦欢锛屾湭淇濆瓨 scene銆?
+## Phase 3I-10C-Polish - BuffCandidateGraph 鑺傜偣 UI 鍙鎬т慨澶?
+- 鏂板 Editor-only 鑷畾涔?xNode 鑺傜偣缁樺埗鏂囦欢 `BuffCandidateNodeEditors.cs`銆?- 浣跨敤 xNode `NodeEditor.CustomNodeEditor`銆乣OnHeaderGUI`銆乣OnBodyGUI`銆乣GetWidth` 鍜?`NodeEditorGUILayout.PropertyField` 浼樺寲鑺傜偣鏄剧ず銆?- 涓?`BuffCandidateStartNode`銆乣BuffShapeNode`銆乣EffectBindingNode`銆乣CompressedEligibilityNode`銆乣RuntimeDependencyRiskNode`銆乣CandidateDecisionNode` 璁剧疆鏇村鐨勮妭鐐瑰搴︺€?- 灏嗚妭鐐瑰瓧娈垫樉绀烘敼涓烘洿鐭殑涓枃 / 涓嫳娣峰悎鏍囩锛屽噺灏戦暱瀛楁鍚嶉伄鎸°€?- 闀挎枃鏈瓧娈电户缁鐢ㄧ幇鏈?`TextArea` 搴忓垪鍖栨樉绀猴紝涓嶉噸鍛藉悕瀛楁锛屼笉鏀瑰彉 graph asset 濂戠害銆?- 鏈樁娈靛彧淇敼 Editor UI 鏄剧ず锛屼笉淇敼 `BuffCandidateGraph` 濂戠害銆乪valuation 閫昏緫銆乺untime銆乺egistry 鎴?whitelist銆?- 鏈樁娈垫湭鍒涘缓 graph asset锛屾湭鍒涘缓 `BuffConfigData`锛屾湭鐢熸垚 Effect `.cs` 鏂囦欢锛屾湭淇濆瓨 scene銆?
+## Phase 3I-10C-Fix - BuffCandidateGraph 鍒涘缓鑿滃崟鍙鎬т慨澶?
 ### Changed
 
-- 为 `BuffCandidateGraph` 的 `CreateAssetMenu` 补充 `order = 5100`，用于提高 Unity Create 菜单排序稳定性。
-- 新增 Editor-only 兜底菜单：
-```text
+- 涓?`BuffCandidateGraph` 鐨?`CreateAssetMenu` 琛ュ厖 `order = 5100`锛岀敤浜庢彁楂?Unity Create 鑿滃崟鎺掑簭绋冲畾鎬с€?- 鏂板 Editor-only 鍏滃簳鑿滃崟锛?```text
 Assets / Create / BuffSystem / Buff Candidate Graph
 ```
-- 该菜单只在用户手动点击时创建 xNode 候选审查图，本阶段未自动创建 graph asset。
-- 保留 `BuffCandidateGraph` 作为 Editor-only authoring / review 原型，不作为 production config source。
-
+- 璇ヨ彍鍗曞彧鍦ㄧ敤鎴锋墜鍔ㄧ偣鍑绘椂鍒涘缓 xNode 鍊欓€夊鏌ュ浘锛屾湰闃舵鏈嚜鍔ㄥ垱寤?graph asset銆?- 淇濈暀 `BuffCandidateGraph` 浣滀负 Editor-only authoring / review 鍘熷瀷锛屼笉浣滀负 production config source銆?
 ### Scope confirmation
 
-- 本阶段未创建 `BuffCandidateGraph` asset。
-- 本阶段未创建或修改 `BuffConfigData` asset。
-- 本阶段未生成 Effect `.cs` 文件。
-- 本阶段未修改 BuffSystem runtime。
-- 本阶段未修改 registry。
-- 本阶段未修改 production whitelist、validation whitelist 或 compressed eligibility runtime 逻辑。
-- 本阶段未修改 xNode package、Packages manifest、ProjectSettings、scene、prefab 或 `.meta`。
+- 鏈樁娈垫湭鍒涘缓 `BuffCandidateGraph` asset銆?- 鏈樁娈垫湭鍒涘缓鎴栦慨鏀?`BuffConfigData` asset銆?- 鏈樁娈垫湭鐢熸垚 Effect `.cs` 鏂囦欢銆?- 鏈樁娈垫湭淇敼 BuffSystem runtime銆?- 鏈樁娈垫湭淇敼 registry銆?- 鏈樁娈垫湭淇敼 production whitelist銆乿alidation whitelist 鎴?compressed eligibility runtime 閫昏緫銆?- 鏈樁娈垫湭淇敼 xNode package銆丳ackages manifest銆丳rojectSettings銆乻cene銆乸refab 鎴?`.meta`銆?
+## Phase 3I-10C - BuffCandidateGraph 鏈€灏?Editor-only 鍘熷瀷
 
-## Phase 3I-10C - BuffCandidateGraph 最小 Editor-only 原型
+### 鏂板
 
-### 新增
-
-- 新增 xNode 候选审查图最小原型代码，目录：
-
+- 鏂板 xNode 鍊欓€夊鏌ュ浘鏈€灏忓師鍨嬩唬鐮侊紝鐩綍锛?
 ```text
 Assets/_Scripts/FrameWork/BuffSystem/Editor/AuthoringGraphs
 ```
 
-- 新增 `BuffCandidateGraph`，用于真实 gameplay Buff 进入 production whitelist 前的可视化候选审查。
-- 新增第一版节点类型：
+- 鏂板 `BuffCandidateGraph`锛岀敤浜庣湡瀹?gameplay Buff 杩涘叆 production whitelist 鍓嶇殑鍙鍖栧€欓€夊鏌ャ€?- 鏂板绗竴鐗堣妭鐐圭被鍨嬶細
   - `BuffCandidateStartNode`
   - `BuffShapeNode`
   - `EffectBindingNode`
   - `CompressedEligibilityNode`
   - `RuntimeDependencyRiskNode`
   - `CandidateDecisionNode`
-- 新增最小 evaluation，仅检查节点数量完整性。
+- 鏂板鏈€灏?evaluation锛屼粎妫€鏌ヨ妭鐐规暟閲忓畬鏁存€с€?
+### 杈圭晫
 
-### 边界
+- `BuffCandidateGraph` 鍙敤浜?Editor authoring / review銆?- 鍥?asset 涓嶅簲鏀惧叆 `Assets/Resources/BuffSystem/Buff`銆?- 鍥句笉鍙備笌 runtime 鍔犺浇銆?- 鍥句笉鏄?production config source銆?- 鏈樁娈典笉鐢熸垚 `BuffConfigData`銆?- 鏈樁娈典笉鐢熸垚 Effect `.cs`銆?- 鏈樁娈典笉娉ㄥ唽 Effect銆?- 鏈樁娈典笉淇敼 registry銆?- 鏈樁娈典笉淇敼 whitelist銆?- 鏈樁娈典笉淇敼 BuffSystem runtime銆?- 鏈樁娈典笉淇敼 xNode package銆丳ackages manifest 鎴?ProjectSettings銆?- 鏈樁娈垫湭鍒涘缓 graph asset锛屾湭淇濆瓨 scene銆?
+### 鍚庣画
 
-- `BuffCandidateGraph` 只用于 Editor authoring / review。
-- 图 asset 不应放入 `Assets/Resources/BuffSystem/Buff`。
-- 图不参与 runtime 加载。
-- 图不是 production config source。
-- 本阶段不生成 `BuffConfigData`。
-- 本阶段不生成 Effect `.cs`。
-- 本阶段不注册 Effect。
-- 本阶段不修改 registry。
-- 本阶段不修改 whitelist。
-- 本阶段不修改 BuffSystem runtime。
-- 本阶段不修改 xNode package、Packages manifest 或 ProjectSettings。
-- 本阶段未创建 graph asset，未保存 scene。
-
-### 后续
-
-- 后续可进入 `Phase 3I-10D`，为 `BuffCandidateGraph` 设计中文 Markdown 审查报告导出。
-- 后续如需连接路径校验，应在 evaluation 中补充 `Start -> Decision` 的端口遍历逻辑。
-- `BuffCandidateGraph` 不能替代 `BuffAuthoringValidator`、Runner 或 Unity 手动验证。
-
+- 鍚庣画鍙繘鍏?`Phase 3I-10D`锛屼负 `BuffCandidateGraph` 璁捐涓枃 Markdown 瀹℃煡鎶ュ憡瀵煎嚭銆?- 鍚庣画濡傞渶杩炴帴璺緞鏍￠獙锛屽簲鍦?evaluation 涓ˉ鍏?`Start -> Decision` 鐨勭鍙ｉ亶鍘嗛€昏緫銆?- `BuffCandidateGraph` 涓嶈兘鏇夸唬 `BuffAuthoringValidator`銆丷unner 鎴?Unity 鎵嬪姩楠岃瘉銆?
 ## Phase 3I-9C-Cleanup - Remove standalone Odin prototype entry
 
 ### Changed
 
-- 用户确认不需要保留独立 Odin Hub prototype。
-- 移除 `Tools / BuffSystem / Authoring Hub Odin Prototype` 对应的 Editor-only prototype 文件。
-- 移除 `BuffAuthoringOdinHubWindow` 以及仅服务该独立窗口的 prototype page / view model。
-- 保留原 `Tools / BuffSystem / Authoring Hub` 作为当前唯一主入口。
-- Odin 后续只作为原 Authoring Hub 内局部增强方向。
-
+- 鐢ㄦ埛纭涓嶉渶瑕佷繚鐣欑嫭绔?Odin Hub prototype銆?- 绉婚櫎 `Tools / BuffSystem / Authoring Hub Odin Prototype` 瀵瑰簲鐨?Editor-only prototype 鏂囦欢銆?- 绉婚櫎 `BuffAuthoringOdinHubWindow` 浠ュ強浠呮湇鍔¤鐙珛绐楀彛鐨?prototype page / view model銆?- 淇濈暀鍘?`Tools / BuffSystem / Authoring Hub` 浣滀负褰撳墠鍞竴涓诲叆鍙ｃ€?- Odin 鍚庣画鍙綔涓哄師 Authoring Hub 鍐呭眬閮ㄥ寮烘柟鍚戙€?
 ### Scope confirmation
 
-- 本阶段未修改原 IMGUI Authoring Hub 逻辑。
-- 本阶段未修改 `BuffAuthoringHubWindow.cs`。
-- 本阶段未修改 `BuffAuthoringValidatorWindow.cs`。
-- 本阶段未修改 `BuffCreateWizardWindow.cs`。
-- 本阶段未修改 `EffectTemplateGeneratorPanel.cs`。
-- 本阶段未修改 BuffSystem runtime。
-- 本阶段未修改 registry。
-- 本阶段未修改 production whitelist、validation whitelist 或 compressed eligibility runtime 逻辑。
-- 本阶段未修改 `BuffConfigData.cs`。
-- 本阶段未创建 Buff asset。
-- 本阶段未生成 Effect 模板文件。
-- 本阶段未保存 scene。
-- 本阶段未安装、升级或删除 Odin / Sirenix 插件。
-
+- 鏈樁娈垫湭淇敼鍘?IMGUI Authoring Hub 閫昏緫銆?- 鏈樁娈垫湭淇敼 `BuffAuthoringHubWindow.cs`銆?- 鏈樁娈垫湭淇敼 `BuffAuthoringValidatorWindow.cs`銆?- 鏈樁娈垫湭淇敼 `BuffCreateWizardWindow.cs`銆?- 鏈樁娈垫湭淇敼 `EffectTemplateGeneratorPanel.cs`銆?- 鏈樁娈垫湭淇敼 BuffSystem runtime銆?- 鏈樁娈垫湭淇敼 registry銆?- 鏈樁娈垫湭淇敼 production whitelist銆乿alidation whitelist 鎴?compressed eligibility runtime 閫昏緫銆?- 鏈樁娈垫湭淇敼 `BuffConfigData.cs`銆?- 鏈樁娈垫湭鍒涘缓 Buff asset銆?- 鏈樁娈垫湭鐢熸垚 Effect 妯℃澘鏂囦欢銆?- 鏈樁娈垫湭淇濆瓨 scene銆?- 鏈樁娈垫湭瀹夎銆佸崌绾ф垨鍒犻櫎 Odin / Sirenix 鎻掍欢銆?
 ## Phase 3I-9C-Fix - Validator layout readability fix
 
 ### Changed
 
-- 修复 Authoring Hub 的 Validator 扫描结果中长字段被截断的问题。
-- `BuffType / TriggerType / ParallelStorageMode / EffectRegistered / CompressedEligibility / Category` 改为多行只读字段显示。
-- 结果项从多个短列横向挤压布局，调整为基础信息、行为配置、Effect / Eligibility 分块布局。
-- 长字段值使用可选中文本显示，避免中文 label 挤压 value 区域。
-
+- 淇 Authoring Hub 鐨?Validator 鎵弿缁撴灉涓暱瀛楁琚埅鏂殑闂銆?- `BuffType / TriggerType / ParallelStorageMode / EffectRegistered / CompressedEligibility / Category` 鏀逛负澶氳鍙瀛楁鏄剧ず銆?- 缁撴灉椤逛粠澶氫釜鐭垪妯悜鎸ゅ帇甯冨眬锛岃皟鏁翠负鍩虹淇℃伅銆佽涓洪厤缃€丒ffect / Eligibility 鍒嗗潡甯冨眬銆?- 闀垮瓧娈靛€间娇鐢ㄥ彲閫変腑鏂囨湰鏄剧ず锛岄伩鍏嶄腑鏂?label 鎸ゅ帇 value 鍖哄煙銆?
 ### Scope confirmation
 
-- 本阶段只修改 Editor UI 显示布局。
-- 本阶段未修改扫描逻辑。
-- 本阶段未修改 validation 逻辑。
-- 本阶段未修改分类逻辑。
-- 本阶段未修改 BuffSystem runtime。
-- 本阶段未修改 registry。
-- 本阶段未修改 production whitelist、validation whitelist 或 compressed eligibility runtime 逻辑。
-- 本阶段未创建 Buff asset。
-- 本阶段未生成 Effect 模板文件。
-- 本阶段未保存 scene。
-- 本阶段未新增独立 Odin Hub。
-- Odin 后续仍作为原 Authoring Hub 内局部增强方向。
-
+- 鏈樁娈靛彧淇敼 Editor UI 鏄剧ず甯冨眬銆?- 鏈樁娈垫湭淇敼鎵弿閫昏緫銆?- 鏈樁娈垫湭淇敼 validation 閫昏緫銆?- 鏈樁娈垫湭淇敼鍒嗙被閫昏緫銆?- 鏈樁娈垫湭淇敼 BuffSystem runtime銆?- 鏈樁娈垫湭淇敼 registry銆?- 鏈樁娈垫湭淇敼 production whitelist銆乿alidation whitelist 鎴?compressed eligibility runtime 閫昏緫銆?- 鏈樁娈垫湭鍒涘缓 Buff asset銆?- 鏈樁娈垫湭鐢熸垚 Effect 妯℃澘鏂囦欢銆?- 鏈樁娈垫湭淇濆瓨 scene銆?- 鏈樁娈垫湭鏂板鐙珛 Odin Hub銆?- Odin 鍚庣画浠嶄綔涓哄師 Authoring Hub 鍐呭眬閮ㄥ寮烘柟鍚戙€?
 ## Phase 3I-9C - Odin Authoring Hub prototype
 
 ### Added
 
-- 新增 Editor-only Odin 原型窗口：`BuffAuthoringOdinHubWindow.cs`。
-- 新增菜单入口：
-
+- 鏂板 Editor-only Odin 鍘熷瀷绐楀彛锛歚BuffAuthoringOdinHubWindow.cs`銆?- 鏂板鑿滃崟鍏ュ彛锛?
 ```text
 Tools / BuffSystem / Authoring Hub Odin Prototype
 ```
 
-- 旧 IMGUI Authoring Hub 保留为 fallback：
-
+- 鏃?IMGUI Authoring Hub 淇濈暀涓?fallback锛?
 ```text
 Tools / BuffSystem / Authoring Hub
 ```
 
 ### Prototype pages
 
-- Odin prototype 当前包含：
-  - `配置检查器 / Validator`
-  - `创建 Buff / Create Buff`
-  - `Effect 模板 / Effect Template`
-- `Validator` page 仅做只读扫描，复用 `BuffAuthoringValidationUtility`，不修改 asset / whitelist / runtime。
-- `Create Buff` page 仅做表单和校验预览，不创建 `BuffConfigData` asset。
-- `Effect Template` page 仅做表单、校验和 registry snippet 复制，不生成 `.cs` 文件。
-
+- Odin prototype 褰撳墠鍖呭惈锛?  - `閰嶇疆妫€鏌ュ櫒 / Validator`
+  - `鍒涘缓 Buff / Create Buff`
+  - `Effect 妯℃澘 / Effect Template`
+- `Validator` page 浠呭仛鍙鎵弿锛屽鐢?`BuffAuthoringValidationUtility`锛屼笉淇敼 asset / whitelist / runtime銆?- `Create Buff` page 浠呭仛琛ㄥ崟鍜屾牎楠岄瑙堬紝涓嶅垱寤?`BuffConfigData` asset銆?- `Effect Template` page 浠呭仛琛ㄥ崟銆佹牎楠屽拰 registry snippet 澶嶅埗锛屼笉鐢熸垚 `.cs` 鏂囦欢銆?
 ### Scope confirmation
 
-- 本阶段未修改现有 IMGUI Authoring Hub 菜单行为。
-- 本阶段未修改 `BuffConfigData.cs`。
-- 本阶段未修改 BuffSystem runtime。
-- 本阶段未修改 `BuffEffectRegistryBootstrap.cs` 或 production registry。
-- 本阶段未修改 public API。
-- 本阶段未修改 production whitelist、validation whitelist 或 compressed eligibility runtime 逻辑。
-- 本阶段未创建 Buff asset。
-- 本阶段未生成 Effect 模板文件。
-- 本阶段未修改 scene / prefab / `.meta`。
-- 本阶段未安装、升级或删除 Odin。
-
+- 鏈樁娈垫湭淇敼鐜版湁 IMGUI Authoring Hub 鑿滃崟琛屼负銆?- 鏈樁娈垫湭淇敼 `BuffConfigData.cs`銆?- 鏈樁娈垫湭淇敼 BuffSystem runtime銆?- 鏈樁娈垫湭淇敼 `BuffEffectRegistryBootstrap.cs` 鎴?production registry銆?- 鏈樁娈垫湭淇敼 public API銆?- 鏈樁娈垫湭淇敼 production whitelist銆乿alidation whitelist 鎴?compressed eligibility runtime 閫昏緫銆?- 鏈樁娈垫湭鍒涘缓 Buff asset銆?- 鏈樁娈垫湭鐢熸垚 Effect 妯℃澘鏂囦欢銆?- 鏈樁娈垫湭淇敼 scene / prefab / `.meta`銆?- 鏈樁娈垫湭瀹夎銆佸崌绾ф垨鍒犻櫎 Odin銆?
 ### Manual verification plan
 
-- 打开 `Tools / BuffSystem / Authoring Hub Odin Prototype`。
-- 在 `配置检查器 / Validator` 执行 `扫描 / 刷新`，确认 `991001 Debug_CompressedParallel_TickSmoke` 被识别为 smoke/debug，且 effect registered / compressed eligibility 均为 true。
-- 在 `创建 Buff / Create Buff` 验证默认值、`ConfigId=991001` duplicate、`EffectId=990101` registered、`EffectId=0` warning、compressed eligibility 和 `Unlimited=true` warning。
-- 在 `Effect 模板 / Effect Template` 验证 `EffectId=990101` 不可生成、`EffectId=100001 + PoisonTickEffect` 可通过校验，并确认 registry snippet 为 `registry.Register(100001, new PoisonTickEffect());`。
-
+- 鎵撳紑 `Tools / BuffSystem / Authoring Hub Odin Prototype`銆?- 鍦?`閰嶇疆妫€鏌ュ櫒 / Validator` 鎵ц `鎵弿 / 鍒锋柊`锛岀‘璁?`991001 Debug_CompressedParallel_TickSmoke` 琚瘑鍒负 smoke/debug锛屼笖 effect registered / compressed eligibility 鍧囦负 true銆?- 鍦?`鍒涘缓 Buff / Create Buff` 楠岃瘉榛樿鍊笺€乣ConfigId=991001` duplicate銆乣EffectId=990101` registered銆乣EffectId=0` warning銆乧ompressed eligibility 鍜?`Unlimited=true` warning銆?- 鍦?`Effect 妯℃澘 / Effect Template` 楠岃瘉 `EffectId=990101` 涓嶅彲鐢熸垚銆乣EffectId=100001 + PoisonTickEffect` 鍙€氳繃鏍￠獙锛屽苟纭 registry snippet 涓?`registry.Register(100001, new PoisonTickEffect());`銆?
 ## Phase 3I-9B - Authoring UI localization text foundation
 
 ### Added
 
-- 新增 Editor-only 文案集中管理类：`BuffAuthoringText.cs`。
-- `BuffAuthoringText` 当前集中管理 Authoring Hub 的主要 UI 文案，供现有 IMGUI 工具和未来 Odin 工具复用。
-
+- 鏂板 Editor-only 鏂囨闆嗕腑绠＄悊绫伙細`BuffAuthoringText.cs`銆?- `BuffAuthoringText` 褰撳墠闆嗕腑绠＄悊 Authoring Hub 鐨勪富瑕?UI 鏂囨锛屼緵鐜版湁 IMGUI 宸ュ叿鍜屾湭鏉?Odin 宸ュ叿澶嶇敤銆?
 ### Localized UI scope
 
-- `BuffAuthoringHubWindow`：
-  - window title / header 改为 `Buff 制作工具 / Authoring Hub`。
-  - tabs 改为 `配置检查器 / 创建 Buff / Effect 模板`。
-  - HelpBox 使用集中中文文案。
-- `BuffAuthoringValidatorWindow`：
-  - 扫描按钮、统计项、字段名、问题标题、Category 显示文案改为中文或中英混合。
-  - `EffectRegistered / CompressedEligibility` 的显示结果改为 `是 / 否 / 未知`。
-- `BuffCreateWizardWindow`：
-  - 主要分组、字段、按钮、校验预览、错误 / 警告 / 建议标题改为中文或中英混合。
-  - Category 显示复用统一中文文案。
-- `EffectTemplateGeneratorPanel`：
-  - 主要分组、字段、按钮、校验预览、错误 / 警告 / 建议标题改为中文或中英混合。
-  - 保留 callback 方法名、registry snippet 和生成类结构。
-
+- `BuffAuthoringHubWindow`锛?  - window title / header 鏀逛负 `Buff 鍒朵綔宸ュ叿 / Authoring Hub`銆?  - tabs 鏀逛负 `閰嶇疆妫€鏌ュ櫒 / 鍒涘缓 Buff / Effect 妯℃澘`銆?  - HelpBox 浣跨敤闆嗕腑涓枃鏂囨銆?- `BuffAuthoringValidatorWindow`锛?  - 鎵弿鎸夐挳銆佺粺璁￠」銆佸瓧娈靛悕銆侀棶棰樻爣棰樸€丆ategory 鏄剧ず鏂囨鏀逛负涓枃鎴栦腑鑻辨贩鍚堛€?  - `EffectRegistered / CompressedEligibility` 鐨勬樉绀虹粨鏋滄敼涓?`鏄?/ 鍚?/ 鏈煡`銆?- `BuffCreateWizardWindow`锛?  - 涓昏鍒嗙粍銆佸瓧娈点€佹寜閽€佹牎楠岄瑙堛€侀敊璇?/ 璀﹀憡 / 寤鸿鏍囬鏀逛负涓枃鎴栦腑鑻辨贩鍚堛€?  - Category 鏄剧ず澶嶇敤缁熶竴涓枃鏂囨銆?- `EffectTemplateGeneratorPanel`锛?  - 涓昏鍒嗙粍銆佸瓧娈点€佹寜閽€佹牎楠岄瑙堛€侀敊璇?/ 璀﹀憡 / 寤鸿鏍囬鏀逛负涓枃鎴栦腑鑻辨贩鍚堛€?  - 淇濈暀 callback 鏂规硶鍚嶃€乺egistry snippet 鍜岀敓鎴愮被缁撴瀯銆?
 ### Preserved technical terms
 
-- 本阶段保留以下技术术语或中英混合显示：
-  - `Buff`
+- 鏈樁娈典繚鐣欎互涓嬫妧鏈湳璇垨涓嫳娣峰悎鏄剧ず锛?  - `Buff`
   - `Effect`
   - `ConfigId`
   - `EffectId`
@@ -221,105 +235,44 @@ Tools / BuffSystem / Authoring Hub
 
 ### Scope confirmation
 
-- 本阶段未修改 validation 逻辑。
-- 本阶段未修改 asset 创建逻辑。
-- 本阶段未修改 Effect 模板生成逻辑。
-- 本阶段未修改 BuffSystem runtime。
-- 本阶段未修改 `BuffEffectRegistryBootstrap.cs` 或 production registry。
-- 本阶段未修改 public API。
-- 本阶段未修改 production whitelist、validation whitelist 或 compressed eligibility runtime 逻辑。
-- 本阶段未创建 Buff asset。
-- 本阶段未生成 Effect 模板文件。
-- 本阶段未修改 scene / prefab / `.meta`。
-- Odin 已检测存在，但本阶段尚未进行 Odin Hub 重构。
-
+- 鏈樁娈垫湭淇敼 validation 閫昏緫銆?- 鏈樁娈垫湭淇敼 asset 鍒涘缓閫昏緫銆?- 鏈樁娈垫湭淇敼 Effect 妯℃澘鐢熸垚閫昏緫銆?- 鏈樁娈垫湭淇敼 BuffSystem runtime銆?- 鏈樁娈垫湭淇敼 `BuffEffectRegistryBootstrap.cs` 鎴?production registry銆?- 鏈樁娈垫湭淇敼 public API銆?- 鏈樁娈垫湭淇敼 production whitelist銆乿alidation whitelist 鎴?compressed eligibility runtime 閫昏緫銆?- 鏈樁娈垫湭鍒涘缓 Buff asset銆?- 鏈樁娈垫湭鐢熸垚 Effect 妯℃澘鏂囦欢銆?- 鏈樁娈垫湭淇敼 scene / prefab / `.meta`銆?- Odin 宸叉娴嬪瓨鍦紝浣嗘湰闃舵灏氭湭杩涜 Odin Hub 閲嶆瀯銆?
 ### Next
 
-- 后续可进入 `Phase 3I-9C：Odin Authoring Hub prototype`。
-- Odin prototype 应优先复用 `BuffAuthoringText` 和 `BuffAuthoringValidationUtility`，并继续保持 runtime 零依赖。
-
+- 鍚庣画鍙繘鍏?`Phase 3I-9C锛歄din Authoring Hub prototype`銆?- Odin prototype 搴斾紭鍏堝鐢?`BuffAuthoringText` 鍜?`BuffAuthoringValidationUtility`锛屽苟缁х画淇濇寔 runtime 闆朵緷璧栥€?
 ## Phase 3I-8 - Authoring Toolkit first-loop closeout
 
 ### Completed first-loop capabilities
 
-- BuffSystem Authoring Toolkit 第一轮闭环已完成。
-- 当前统一入口：
-
+- BuffSystem Authoring Toolkit 绗竴杞棴鐜凡瀹屾垚銆?- 褰撳墠缁熶竴鍏ュ彛锛?
 ```text
 Tools / BuffSystem / Authoring Hub
 ```
 
-- 当前 Hub 已包含：
+- 褰撳墠 Hub 宸插寘鍚細
   - `Validator`
   - `Create Buff`
   - `Effect Template`
-- `BuffAuthoringValidationUtility` 已完成轻量抽取，并接入 `Validator / Create Buff / Effect Template`。
-- `BuffSystem_AuthoringGuide.md` 已完成，并已与当前 UI 字段 / 按钮对齐。
-- Phase 3I-7B 对照复核结果全部 PASS：
-  - `Create Buff` 对照 PASS。
-  - `Effect Template` 对照 PASS。
-  - Changelog 复核 PASS。
-
+- `BuffAuthoringValidationUtility` 宸插畬鎴愯交閲忔娊鍙栵紝骞舵帴鍏?`Validator / Create Buff / Effect Template`銆?- `BuffSystem_AuthoringGuide.md` 宸插畬鎴愶紝骞跺凡涓庡綋鍓?UI 瀛楁 / 鎸夐挳瀵归綈銆?- Phase 3I-7B 瀵圭収澶嶆牳缁撴灉鍏ㄩ儴 PASS锛?  - `Create Buff` 瀵圭収 PASS銆?  - `Effect Template` 瀵圭収 PASS銆?  - Changelog 澶嶆牳 PASS銆?
 ### Confirmed current state
 
-- `Validator` 可识别 `991001 Debug_CompressedParallel_TickSmoke`。
-- `991001 Debug_CompressedParallel_TickSmoke` 当前仍是 smoke/debug pilot，不是正式 gameplay Buff。
-- `990101` 当前仍是 `DebugNoOpTickEffectId`。
-- production whitelist 未扩大。
-- 当前无真实 gameplay Buff 候选进入 compressed whitelist。
-
+- `Validator` 鍙瘑鍒?`991001 Debug_CompressedParallel_TickSmoke`銆?- `991001 Debug_CompressedParallel_TickSmoke` 褰撳墠浠嶆槸 smoke/debug pilot锛屼笉鏄寮?gameplay Buff銆?- `990101` 褰撳墠浠嶆槸 `DebugNoOpTickEffectId`銆?- production whitelist 鏈墿澶с€?- 褰撳墠鏃犵湡瀹?gameplay Buff 鍊欓€夎繘鍏?compressed whitelist銆?
 ### Authoring boundaries
 
-- Authoring Toolkit 不自动注册 Effect。
-- Authoring Toolkit 不自动修改 `BuffEffectRegistryBootstrap`。
-- Authoring Toolkit 不自动加入 whitelist。
-- Authoring Toolkit 不自动修改 runtime。
-- Authoring Toolkit 不自动保存 scene。
-- Authoring Toolkit 不证明 rollback-ready。
-- `Validator` 是 authoring 辅助，不是 runtime 安全证明。
-- EffectId const 静态扫描只是辅助检查，不能覆盖所有动态注册来源。
-- 满足 compressed eligibility 不等于进入 production whitelist。
-
+- Authoring Toolkit 涓嶈嚜鍔ㄦ敞鍐?Effect銆?- Authoring Toolkit 涓嶈嚜鍔ㄤ慨鏀?`BuffEffectRegistryBootstrap`銆?- Authoring Toolkit 涓嶈嚜鍔ㄥ姞鍏?whitelist銆?- Authoring Toolkit 涓嶈嚜鍔ㄤ慨鏀?runtime銆?- Authoring Toolkit 涓嶈嚜鍔ㄤ繚瀛?scene銆?- Authoring Toolkit 涓嶈瘉鏄?rollback-ready銆?- `Validator` 鏄?authoring 杈呭姪锛屼笉鏄?runtime 瀹夊叏璇佹槑銆?- EffectId const 闈欐€佹壂鎻忓彧鏄緟鍔╂鏌ワ紝涓嶈兘瑕嗙洊鎵€鏈夊姩鎬佹敞鍐屾潵婧愩€?- 婊¤冻 compressed eligibility 涓嶇瓑浜庤繘鍏?production whitelist銆?
 ### UX / feature backlog
 
-- [Backlog] `Create Buff` 增加真正的 Reset / Clear 按钮。
-- [Backlog] `Create Buff` 支持从现有 BuffConfigData clone draft。
-- [Backlog] `Create Buff` 支持自动建议下一个可用 ConfigId。
-- [Backlog] `Effect Template` 支持 Event Effect 模板，但需要事件类型选择机制。
-- [Backlog] `Effect Template` 支持打开生成后的 `.cs` 文件。
-- [Backlog] `Validator` 支持导出扫描报告。
-- [Backlog] `Validator` 支持按 Category / EffectRegistered / Eligibility 过滤。
-- [Backlog] Candidate workflow：真实 gameplay Buff 候选审查面板或 Runner。
-- [Backlog] 正式 ID 分段规范待负责人确认。
-- [Backlog] Odin / UI Toolkit 优化可作为后续体验增强，不作为当前硬依赖。
-
+- [Backlog] `Create Buff` 澧炲姞鐪熸鐨?Reset / Clear 鎸夐挳銆?- [Backlog] `Create Buff` 鏀寔浠庣幇鏈?BuffConfigData clone draft銆?- [Backlog] `Create Buff` 鏀寔鑷姩寤鸿涓嬩竴涓彲鐢?ConfigId銆?- [Backlog] `Effect Template` 鏀寔 Event Effect 妯℃澘锛屼絾闇€瑕佷簨浠剁被鍨嬮€夋嫨鏈哄埗銆?- [Backlog] `Effect Template` 鏀寔鎵撳紑鐢熸垚鍚庣殑 `.cs` 鏂囦欢銆?- [Backlog] `Validator` 鏀寔瀵煎嚭鎵弿鎶ュ憡銆?- [Backlog] `Validator` 鏀寔鎸?Category / EffectRegistered / Eligibility 杩囨护銆?- [Backlog] Candidate workflow锛氱湡瀹?gameplay Buff 鍊欓€夊鏌ラ潰鏉挎垨 Runner銆?- [Backlog] 姝ｅ紡 ID 鍒嗘瑙勮寖寰呰礋璐ｄ汉纭銆?- [Backlog] Odin / UI Toolkit 浼樺寲鍙綔涓哄悗缁綋楠屽寮猴紝涓嶄綔涓哄綋鍓嶇‖渚濊禆銆?
 ### Next
 
-- Phase 3I Authoring Toolkit 可暂时封版。
-- 下一步优先等待真实 gameplay Buff 候选提交。
-- 如有候选，进入 `Phase 3H-8A / Production Candidate Review`。
-- 如继续工具线，进入 `Phase 3I-9 UX Backlog 实现设计`。
-
+- Phase 3I Authoring Toolkit 鍙殏鏃跺皝鐗堛€?- 涓嬩竴姝ヤ紭鍏堢瓑寰呯湡瀹?gameplay Buff 鍊欓€夋彁浜ゃ€?- 濡傛湁鍊欓€夛紝杩涘叆 `Phase 3H-8A / Production Candidate Review`銆?- 濡傜户缁伐鍏风嚎锛岃繘鍏?`Phase 3I-9 UX Backlog 瀹炵幇璁捐`銆?
 ### Scope confirmation
 
-- 本阶段只修改 BuffSystem Changelog。
-- 本阶段未新增独立 backlog 文档。
-- 本阶段未修改 BuffSystem runtime。
-- 本阶段未修改 `BuffEffectRegistryBootstrap.cs` 或 production registry。
-- 本阶段未修改 public API。
-- 本阶段未修改 production whitelist、validation whitelist 或 compressed eligibility runtime 逻辑。
-- 本阶段未修改 Editor 工具代码。
-- 本阶段未创建 Buff asset。
-- 本阶段未生成 Effect 模板文件。
-- 本阶段未修改 scene / prefab / `.meta`。
-
+- 鏈樁娈靛彧淇敼 BuffSystem Changelog銆?- 鏈樁娈垫湭鏂板鐙珛 backlog 鏂囨。銆?- 鏈樁娈垫湭淇敼 BuffSystem runtime銆?- 鏈樁娈垫湭淇敼 `BuffEffectRegistryBootstrap.cs` 鎴?production registry銆?- 鏈樁娈垫湭淇敼 public API銆?- 鏈樁娈垫湭淇敼 production whitelist銆乿alidation whitelist 鎴?compressed eligibility runtime 閫昏緫銆?- 鏈樁娈垫湭淇敼 Editor 宸ュ叿浠ｇ爜銆?- 鏈樁娈垫湭鍒涘缓 Buff asset銆?- 鏈樁娈垫湭鐢熸垚 Effect 妯℃澘鏂囦欢銆?- 鏈樁娈垫湭淇敼 scene / prefab / `.meta`銆?
 ## Phase 3I-7A - AuthoringGuide UI field alignment
 
 ### Documentation alignment
 
-- 修正 `BuffSystem_AuthoringGuide.md` 与当前 Editor UI 的字段 / 按钮对照。
-- 补全 `Create Buff` 当前字段、默认值和按钮：
-  - `ConfigId`
+- 淇 `BuffSystem_AuthoringGuide.md` 涓庡綋鍓?Editor UI 鐨勫瓧娈?/ 鎸夐挳瀵圭収銆?- 琛ュ叏 `Create Buff` 褰撳墠瀛楁銆侀粯璁ゅ€煎拰鎸夐挳锛?  - `ConfigId`
   - `Buff Name`
   - `Description`
   - `Save Path`
@@ -339,9 +292,7 @@ Tools / BuffSystem / Authoring Hub
   - `Create Draft Asset`
   - `Open Authoring Validator`
   - `Cancel / Close`
-- 明确当前 `Create Buff` 工具没有重置字段的 `Clear` 按钮；如未来需要，应另开 UX 改进阶段。
-- 补全 `Effect Template` 当前字段、默认值和按钮：
-  - `EffectId`
+- 鏄庣‘褰撳墠 `Create Buff` 宸ュ叿娌℃湁閲嶇疆瀛楁鐨?`Clear` 鎸夐挳锛涘鏈潵闇€瑕侊紝搴斿彟寮€ UX 鏀硅繘闃舵銆?- 琛ュ叏 `Effect Template` 褰撳墠瀛楁銆侀粯璁ゅ€煎拰鎸夐挳锛?  - `EffectId`
   - `Effect Class Name`
   - `Effect Display Name / Note`
   - `Target Folder`
@@ -353,70 +304,26 @@ Tools / BuffSystem / Authoring Hub
   - `Copy Registry Snippet`
   - `Open Effect Folder`
   - `Clear`
-- 补充 `Open Effect Folder` 边界：只打开目标目录，不代表生成模板，不注册 Effect，也不修改 `BuffEffectRegistryBootstrap`。
-
+- 琛ュ厖 `Open Effect Folder` 杈圭晫锛氬彧鎵撳紑鐩爣鐩綍锛屼笉浠ｈ〃鐢熸垚妯℃澘锛屼笉娉ㄥ唽 Effect锛屼篃涓嶄慨鏀?`BuffEffectRegistryBootstrap`銆?
 ### Scope confirmation
 
-- 本阶段只修改 BuffSystem 文档。
-- 本阶段未修改 BuffSystem runtime。
-- 本阶段未修改 `BuffEffectRegistryBootstrap.cs` 或 production registry。
-- 本阶段未修改 public API。
-- 本阶段未修改 production whitelist、validation whitelist 或 compressed eligibility runtime 逻辑。
-- 本阶段未修改 Editor 工具代码。
-- 本阶段未创建 Buff asset。
-- 本阶段未生成 Effect 模板文件。
-- 本阶段未修改 scene / prefab / `.meta`。
-
+- 鏈樁娈靛彧淇敼 BuffSystem 鏂囨。銆?- 鏈樁娈垫湭淇敼 BuffSystem runtime銆?- 鏈樁娈垫湭淇敼 `BuffEffectRegistryBootstrap.cs` 鎴?production registry銆?- 鏈樁娈垫湭淇敼 public API銆?- 鏈樁娈垫湭淇敼 production whitelist銆乿alidation whitelist 鎴?compressed eligibility runtime 閫昏緫銆?- 鏈樁娈垫湭淇敼 Editor 宸ュ叿浠ｇ爜銆?- 鏈樁娈垫湭鍒涘缓 Buff asset銆?- 鏈樁娈垫湭鐢熸垚 Effect 妯℃澘鏂囦欢銆?- 鏈樁娈垫湭淇敼 scene / prefab / `.meta`銆?
 ## Phase 3I-6 - Authoring Guide added
 
 ### Added documentation
 
-- 新增 `BuffSystem_AuthoringGuide.md`，用于归档 Buff / Effect authoring 工具链的推荐使用流程。
-- 文档覆盖以下内容：
-  - `Tools / BuffSystem / Authoring Hub` 统一入口。
-  - `Validator / Create Buff / Effect Template` 三个 tab 的用途。
-  - 从零制作 Buff 的推荐流程。
-  - Effect 模板生成流程。
-  - 人工注册 Effect 的边界。
-  - Create Buff 创建 BuffConfigData 草稿的流程。
-  - Validator 检查项。
-  - compressed whitelist 候选标准。
-  - Effect 编写约束。
-  - ID 使用建议。
-  - 工具不会自动做什么。
-  - 常见错误与处理建议。
-  - 当前已知边界。
-  - 最小示例流程。
-
+- 鏂板 `BuffSystem_AuthoringGuide.md`锛岀敤浜庡綊妗?Buff / Effect authoring 宸ュ叿閾剧殑鎺ㄨ崘浣跨敤娴佺▼銆?- 鏂囨。瑕嗙洊浠ヤ笅鍐呭锛?  - `Tools / BuffSystem / Authoring Hub` 缁熶竴鍏ュ彛銆?  - `Validator / Create Buff / Effect Template` 涓変釜 tab 鐨勭敤閫斻€?  - 浠庨浂鍒朵綔 Buff 鐨勬帹鑽愭祦绋嬨€?  - Effect 妯℃澘鐢熸垚娴佺▼銆?  - 浜哄伐娉ㄥ唽 Effect 鐨勮竟鐣屻€?  - Create Buff 鍒涘缓 BuffConfigData 鑽夌鐨勬祦绋嬨€?  - Validator 妫€鏌ラ」銆?  - compressed whitelist 鍊欓€夋爣鍑嗐€?  - Effect 缂栧啓绾︽潫銆?  - ID 浣跨敤寤鸿銆?  - 宸ュ叿涓嶄細鑷姩鍋氫粈涔堛€?  - 甯歌閿欒涓庡鐞嗗缓璁€?  - 褰撳墠宸茬煡杈圭晫銆?  - 鏈€灏忕ず渚嬫祦绋嬨€?
 ### Authoring boundaries
 
-- `Effect Template` 只生成 Effect 草稿模板，不自动注册 Effect。
-- `Create Buff` 只创建 BuffConfigData 草稿，不自动加入 whitelist。
-- `Validator` 是 authoring 辅助，不替代 Runner / 场景验证 / 人工审批。
-- 满足 compressed eligibility 不等于自动进入 production whitelist。
-- EventTrigger / Unlimited / 依赖逐层 runtime entity 的 Buff 当前不进入 compressed whitelist。
-- `991001 Debug_CompressedParallel_TickSmoke` 仍是 smoke/debug pilot，不是正式 gameplay Buff。
-- 正式 ID 分段规范仍待项目负责人确认。
-- BuffSystem 仍不能宣称 rollback-ready。
-
+- `Effect Template` 鍙敓鎴?Effect 鑽夌妯℃澘锛屼笉鑷姩娉ㄥ唽 Effect銆?- `Create Buff` 鍙垱寤?BuffConfigData 鑽夌锛屼笉鑷姩鍔犲叆 whitelist銆?- `Validator` 鏄?authoring 杈呭姪锛屼笉鏇夸唬 Runner / 鍦烘櫙楠岃瘉 / 浜哄伐瀹℃壒銆?- 婊¤冻 compressed eligibility 涓嶇瓑浜庤嚜鍔ㄨ繘鍏?production whitelist銆?- EventTrigger / Unlimited / 渚濊禆閫愬眰 runtime entity 鐨?Buff 褰撳墠涓嶈繘鍏?compressed whitelist銆?- `991001 Debug_CompressedParallel_TickSmoke` 浠嶆槸 smoke/debug pilot锛屼笉鏄寮?gameplay Buff銆?- 姝ｅ紡 ID 鍒嗘瑙勮寖浠嶅緟椤圭洰璐熻矗浜虹‘璁ゃ€?- BuffSystem 浠嶄笉鑳藉绉?rollback-ready銆?
 ### Scope confirmation
 
-- 本阶段只修改 BuffSystem 文档。
-- 本阶段未修改 BuffSystem runtime。
-- 本阶段未修改 `BuffEffectRegistryBootstrap.cs` 或 production registry。
-- 本阶段未修改 public API。
-- 本阶段未修改 production whitelist、validation whitelist 或 compressed eligibility runtime 逻辑。
-- 本阶段未修改 Editor 工具代码。
-- 本阶段未创建 Buff asset。
-- 本阶段未生成 Effect 模板文件。
-- 本阶段未修改 scene / prefab / `.meta`。
-
+- 鏈樁娈靛彧淇敼 BuffSystem 鏂囨。銆?- 鏈樁娈垫湭淇敼 BuffSystem runtime銆?- 鏈樁娈垫湭淇敼 `BuffEffectRegistryBootstrap.cs` 鎴?production registry銆?- 鏈樁娈垫湭淇敼 public API銆?- 鏈樁娈垫湭淇敼 production whitelist銆乿alidation whitelist 鎴?compressed eligibility runtime 閫昏緫銆?- 鏈樁娈垫湭淇敼 Editor 宸ュ叿浠ｇ爜銆?- 鏈樁娈垫湭鍒涘缓 Buff asset銆?- 鏈樁娈垫湭鐢熸垚 Effect 妯℃澘鏂囦欢銆?- 鏈樁娈垫湭淇敼 scene / prefab / `.meta`銆?
 ## Phase 3I-5B - BuffAuthoringValidationUtility closeout
 
 ### Implemented utility
 
-- 已新增 Editor-only shared validation utility：`BuffAuthoringValidationUtility.cs`。
-- 该 utility 当前集中复用以下只读 authoring 检查能力：
+- 宸叉柊澧?Editor-only shared validation utility锛歚BuffAuthoringValidationUtility.cs`銆?- 璇?utility 褰撳墠闆嗕腑澶嶇敤浠ヤ笅鍙 authoring 妫€鏌ヨ兘鍔涳細
   - `ScanBuffAssets`
   - `BuildConfigIdIndex`
   - `IsConfigIdDuplicate`
@@ -432,11 +339,10 @@ Tools / BuffSystem / Authoring Hub
 
 ### Integrated tools
 
-- `BuffAuthoringValidationUtility` 已接入以下 Editor 工具：
-  - `BuffAuthoringValidatorWindow`
+- `BuffAuthoringValidationUtility` 宸叉帴鍏ヤ互涓?Editor 宸ュ叿锛?  - `BuffAuthoringValidatorWindow`
   - `BuffCreateWizardWindow`
   - `EffectTemplateGeneratorPanel`
-- compressed eligibility Editor 检查口径保持不变：
+- compressed eligibility Editor 妫€鏌ュ彛寰勪繚鎸佷笉鍙橈細
 
 ```text
 BuffType == parallel
@@ -448,10 +354,7 @@ MaxStack <= CompressedParallelBuffLayerBuffer.Capacity
 
 ### Manual verification
 
-- Unity Console 手动确认无 error。
-- `Validator` tab 仍能扫描到 `991001 Debug_CompressedParallel_TickSmoke`。
-- Validator 统计仍为：
-
+- Unity Console 鎵嬪姩纭鏃?error銆?- `Validator` tab 浠嶈兘鎵弿鍒?`991001 Debug_CompressedParallel_TickSmoke`銆?- Validator 缁熻浠嶄负锛?
 ```text
 Total=1
 Eligible=0
@@ -459,7 +362,7 @@ Smoke=1
 Invalid=0
 ```
 
-- `991001 Debug_CompressedParallel_TickSmoke` 仍显示：
+- `991001 Debug_CompressedParallel_TickSmoke` 浠嶆樉绀猴細
 
 ```text
 EffectRegistered=True
@@ -467,8 +370,7 @@ CompressedEligibility=True
 Category=Smoke / Debug Only
 ```
 
-- `Create Buff` tab 默认字段正常显示：
-  - `ConfigId = 100001`
+- `Create Buff` tab 榛樿瀛楁姝ｅ父鏄剧ず锛?  - `ConfigId = 100001`
   - `Buff Name = NewBuff`
   - `Save Path = Assets/Resources/BuffSystem/Buff`
   - `Target Asset = Assets/Resources/BuffSystem/Buff/100001_NewBuff.asset`
@@ -483,51 +385,30 @@ Category=Smoke / Debug Only
   - `StackDownPolicy = Remove Earliest`
   - `EffectId = 0`
   - `EffectRegistered = Unknown`
-- `Effect Template` tab 正常显示：
-  - `EffectId = 0`
+- `Effect Template` tab 姝ｅ父鏄剧ず锛?  - `EffectId = 0`
   - `Effect Class Name = NewBuffEffect`
   - `Target Folder = Assets/_Scripts/FrameWork/BuffSystem/Effects`
   - `Namespace = BuffSystem`
-  - 默认 callbacks：`OnApply / OnTick / OnRemove` enabled，`OnRefresh / OnStackChanged` disabled。
-
+  - 榛樿 callbacks锛歚OnApply / OnTick / OnRemove` enabled锛宍OnRefresh / OnStackChanged` disabled銆?
 ### Scope confirmation
 
-- 本阶段未创建 Buff asset。
-- 本阶段未生成 Effect 模板文件。
-- 本阶段未创建或修改 `.meta`。
-- 本阶段未修改 BuffSystem runtime。
-- 本阶段未修改 public API。
-- 本阶段未修改 production registry 或 `BuffEffectRegistryBootstrap.cs`。
-- 本阶段未修改 production whitelist、validation whitelist 或 compressed eligibility runtime 逻辑。
-- 本阶段未修改 scene / prefab。
-
+- 鏈樁娈垫湭鍒涘缓 Buff asset銆?- 鏈樁娈垫湭鐢熸垚 Effect 妯℃澘鏂囦欢銆?- 鏈樁娈垫湭鍒涘缓鎴栦慨鏀?`.meta`銆?- 鏈樁娈垫湭淇敼 BuffSystem runtime銆?- 鏈樁娈垫湭淇敼 public API銆?- 鏈樁娈垫湭淇敼 production registry 鎴?`BuffEffectRegistryBootstrap.cs`銆?- 鏈樁娈垫湭淇敼 production whitelist銆乿alidation whitelist 鎴?compressed eligibility runtime 閫昏緫銆?- 鏈樁娈垫湭淇敼 scene / prefab銆?
 ### Boundaries
 
-- `BuffAuthoringValidationUtility` 仅为 Editor authoring 工具服务。
-- `BuffAuthoringValidationUtility` 不进入 runtime 设计。
-- `BuffAuthoringValidationUtility` 不替代 `BuffDefinition` 或 runtime validator。
-- EffectId const 静态扫描仍只是辅助静态检查，不代表覆盖所有动态注册来源。
-- 本阶段不证明 BuffSystem rollback-ready。
-
+- `BuffAuthoringValidationUtility` 浠呬负 Editor authoring 宸ュ叿鏈嶅姟銆?- `BuffAuthoringValidationUtility` 涓嶈繘鍏?runtime 璁捐銆?- `BuffAuthoringValidationUtility` 涓嶆浛浠?`BuffDefinition` 鎴?runtime validator銆?- EffectId const 闈欐€佹壂鎻忎粛鍙槸杈呭姪闈欐€佹鏌ワ紝涓嶄唬琛ㄨ鐩栨墍鏈夊姩鎬佹敞鍐屾潵婧愩€?- 鏈樁娈典笉璇佹槑 BuffSystem rollback-ready銆?
 ### Next
 
-- `BuffAuthoringValidationUtility` 当前可视为轻量抽取完成。
-- 下一步建议进入 `Phase 3I-6：Authoring 工具链文档与使用流程归档`，或继续做 `Create Buff` / `Effect Template` 的细项体验验证。
-
+- `BuffAuthoringValidationUtility` 褰撳墠鍙涓鸿交閲忔娊鍙栧畬鎴愩€?- 涓嬩竴姝ュ缓璁繘鍏?`Phase 3I-6锛欰uthoring 宸ュ叿閾炬枃妗ｄ笌浣跨敤娴佺▼褰掓。`锛屾垨缁х画鍋?`Create Buff` / `Effect Template` 鐨勭粏椤逛綋楠岄獙璇併€?
 ## Phase 3I-4C - EffectTemplateGenerator closeout
 
 ### Implemented tool
 
-- `Buff Authoring Hub -> Effect Template` tab 已替换 placeholder。
-- 已新增 Editor-only 面板 `EffectTemplateGeneratorPanel.cs`。
-- 面板当前支持：
-  - `EffectId`
+- `Buff Authoring Hub -> Effect Template` tab 宸叉浛鎹?placeholder銆?- 宸叉柊澧?Editor-only 闈㈡澘 `EffectTemplateGeneratorPanel.cs`銆?- 闈㈡澘褰撳墠鏀寔锛?  - `EffectId`
   - `Effect Class Name`
   - `Effect Display Name / Note`
   - `Target Folder`
   - `Namespace`
-  - callback 勾选
-  - `Validate`
+  - callback 鍕鹃€?  - `Validate`
   - `Generate Template`
   - `Copy Registry Snippet`
   - `Open Effect Folder`
@@ -535,90 +416,49 @@ Category=Smoke / Debug Only
 
 ### Manual verification
 
-- 已确认 `EffectId = 990101` 会被识别为 production registry 已注册，并禁止生成重复模板。
-- 已确认 `EffectId = 100001` + `PoisonTickEffect` 可通过校验。
-- 已确认 `Copy Registry Snippet` 输出格式：
-
+- 宸茬‘璁?`EffectId = 990101` 浼氳璇嗗埆涓?production registry 宸叉敞鍐岋紝骞剁姝㈢敓鎴愰噸澶嶆ā鏉裤€?- 宸茬‘璁?`EffectId = 100001` + `PoisonTickEffect` 鍙€氳繃鏍￠獙銆?- 宸茬‘璁?`Copy Registry Snippet` 杈撳嚭鏍煎紡锛?
 ```csharp
 registry.Register(100001, new PoisonTickEffect());
 ```
 
-- 已临时生成并检查 `TempGeneratedEffect_DeleteMe.cs`。
-- 生成模板包含：
-  - 正确 class name
+- 宸蹭复鏃剁敓鎴愬苟妫€鏌?`TempGeneratedEffect_DeleteMe.cs`銆?- 鐢熸垚妯℃澘鍖呭惈锛?  - 姝ｇ‘ class name
   - `internal const int EffectId`
   - `BuffEffectExecutorBase`
-  - 已选 callbacks
-- 已删除临时 `.cs` 文件。
-- 临时 `.meta` 未生成，最终不存在。
-
+  - 宸查€?callbacks
+- 宸插垹闄や复鏃?`.cs` 鏂囦欢銆?- 涓存椂 `.meta` 鏈敓鎴愶紝鏈€缁堜笉瀛樺湪銆?
 ### Template wording fix
 
-- 已修正模板注释禁用词。
-- 后续生成模板不再包含：
-  - `Time.time`
+- 宸蹭慨姝ｆā鏉挎敞閲婄鐢ㄨ瘝銆?- 鍚庣画鐢熸垚妯℃澘涓嶅啀鍖呭惈锛?  - `Time.time`
   - `Time.deltaTime`
   - `GameObject`
   - `MonoBehaviour`
-- 原提示语义保留为：
-  - 不要使用 Unity 帧时间 API 作为 Buff runtime 逻辑时间。
-  - 不要直接依赖 View 或 Unity 对象组件。
-  - Effect 应优先写 ECS 状态。
-  - production 使用前仍需手动注册。
-
+- 鍘熸彁绀鸿涔変繚鐣欎负锛?  - 涓嶈浣跨敤 Unity 甯ф椂闂?API 浣滀负 Buff runtime 閫昏緫鏃堕棿銆?  - 涓嶈鐩存帴渚濊禆 View 鎴?Unity 瀵硅薄缁勪欢銆?  - Effect 搴斾紭鍏堝啓 ECS 鐘舵€併€?  - production 浣跨敤鍓嶄粛闇€鎵嬪姩娉ㄥ唽銆?
 ### Scope confirmation
 
-- 本阶段未修改 BuffSystem runtime。
-- 本阶段未修改 `BuffEffectRegistryBootstrap.cs` 或 production registry。
-- 本阶段未修改 public API。
-- 本阶段未修改 production whitelist、validation whitelist 或 compressed eligibility。
-- 本阶段未修改 Buff asset。
-- 本阶段未修改 scene / prefab / `.meta`。
-- 本阶段未创建或保留临时模板文件。
-
+- 鏈樁娈垫湭淇敼 BuffSystem runtime銆?- 鏈樁娈垫湭淇敼 `BuffEffectRegistryBootstrap.cs` 鎴?production registry銆?- 鏈樁娈垫湭淇敼 public API銆?- 鏈樁娈垫湭淇敼 production whitelist銆乿alidation whitelist 鎴?compressed eligibility銆?- 鏈樁娈垫湭淇敼 Buff asset銆?- 鏈樁娈垫湭淇敼 scene / prefab / `.meta`銆?- 鏈樁娈垫湭鍒涘缓鎴栦繚鐣欎复鏃舵ā鏉挎枃浠躲€?
 ### Boundaries
 
-- `EffectTemplateGenerator` 只生成草稿模板，不代表 Effect 已进入 production registry。
-- `EffectTemplateGenerator` 不自动修改 `BuffEffectRegistryBootstrap`。
-- `EffectTemplateGenerator` 不自动创建正式 gameplay Effect。
-- `EffectTemplateGenerator` 不修改 whitelist。
-- `EffectTemplateGenerator` 不证明 rollback-ready。
-- 生成的 Effect 仍必须由人工实现逻辑，并手动提交注册审批。
-- production 使用前仍需运行 `BuffAuthoringValidator` 和相关验证。
-
+- `EffectTemplateGenerator` 鍙敓鎴愯崏绋挎ā鏉匡紝涓嶄唬琛?Effect 宸茶繘鍏?production registry銆?- `EffectTemplateGenerator` 涓嶈嚜鍔ㄤ慨鏀?`BuffEffectRegistryBootstrap`銆?- `EffectTemplateGenerator` 涓嶈嚜鍔ㄥ垱寤烘寮?gameplay Effect銆?- `EffectTemplateGenerator` 涓嶄慨鏀?whitelist銆?- `EffectTemplateGenerator` 涓嶈瘉鏄?rollback-ready銆?- 鐢熸垚鐨?Effect 浠嶅繀椤荤敱浜哄伐瀹炵幇閫昏緫锛屽苟鎵嬪姩鎻愪氦娉ㄥ唽瀹℃壒銆?- production 浣跨敤鍓嶄粛闇€杩愯 `BuffAuthoringValidator` 鍜岀浉鍏抽獙璇併€?
 ### Next
 
-- `EffectTemplateGenerator` 当前可视为最小实现完成。
-- 下一步可进入 `Phase 3I-5：Authoring 工具链体验打磨 / shared validation utility 抽取`。
-
+- `EffectTemplateGenerator` 褰撳墠鍙涓烘渶灏忓疄鐜板畬鎴愩€?- 涓嬩竴姝ュ彲杩涘叆 `Phase 3I-5锛欰uthoring 宸ュ叿閾句綋楠屾墦纾?/ shared validation utility 鎶藉彇`銆?
 ## Phase 3I-3C - Buff Authoring Hub manual verification closeout
 
 ### Implemented tool integration
 
-- 已新增统一 Editor 工具入口 `Tools / BuffSystem / Authoring Hub`。
-- Hub 当前包含三个 tab：
-  - `Validator`
+- 宸叉柊澧炵粺涓€ Editor 宸ュ叿鍏ュ彛 `Tools / BuffSystem / Authoring Hub`銆?- Hub 褰撳墠鍖呭惈涓変釜 tab锛?  - `Validator`
   - `Create Buff`
   - `Effect Template`
-- 旧菜单入口仍保留：
-  - `Tools / BuffSystem / Authoring Validator`
+- 鏃ц彍鍗曞叆鍙ｄ粛淇濈暀锛?  - `Tools / BuffSystem / Authoring Validator`
   - `Tools / BuffSystem / Buff Create Wizard`
-- 旧菜单入口已改为打开 `Buff Authoring Hub` 并跳转到对应 tab。
-
+- 鏃ц彍鍗曞叆鍙ｅ凡鏀逛负鎵撳紑 `Buff Authoring Hub` 骞惰烦杞埌瀵瑰簲 tab銆?
 ### Manual verification
 
-- Unity Editor 中已确认 `Buff Authoring Hub` 窗口可打开。
-- `Validator / Create Buff / Effect Template` 三个 tab 均显示正常。
-- `Validator` tab 点击 `Scan / Refresh` 后，扫描结果符合预期：
-  - `Total = 1`
+- Unity Editor 涓凡纭 `Buff Authoring Hub` 绐楀彛鍙墦寮€銆?- `Validator / Create Buff / Effect Template` 涓変釜 tab 鍧囨樉绀烘甯搞€?- `Validator` tab 鐐瑰嚮 `Scan / Refresh` 鍚庯紝鎵弿缁撴灉绗﹀悎棰勬湡锛?  - `Total = 1`
   - `Eligible = 0`
   - `Smoke = 1`
   - `Invalid = 0`
-- 当前扫描到 `991001 Debug_CompressedParallel_TickSmoke`。
-- `EffectRegistered = True`。
-- `CompressedEligibility = True`。
-- `Category = Smoke / Debug Only`。
-- `Create Buff` tab 可显示默认字段：
+- 褰撳墠鎵弿鍒?`991001 Debug_CompressedParallel_TickSmoke`銆?- `EffectRegistered = True`銆?- `CompressedEligibility = True`銆?- `Category = Smoke / Debug Only`銆?- `Create Buff` tab 鍙樉绀洪粯璁ゅ瓧娈碉細
   - `ConfigId = 100001`
   - `Buff Name = NewBuff`
   - `BuffType = parallel`
@@ -629,146 +469,86 @@ registry.Register(100001, new PoisonTickEffect());
   - `Duration = 1`
   - `TickTime = 1`
   - `EffectId = 0`
-- `Effect Template` tab 当前仅显示 Phase 3I-4 placeholder，没有实现代码生成。
-
+- `Effect Template` tab 褰撳墠浠呮樉绀?Phase 3I-4 placeholder锛屾病鏈夊疄鐜颁唬鐮佺敓鎴愩€?
 ### Pending manual checks
 
-以下 `Create Buff` 细项尚未在本次 closeout 中归档为已验证，后续可进入 `Phase 3I-3D` 单独补测：
-
-- `ConfigId = 991001` duplicate error。
-- `EffectId = 990101` registered validation。
-- `EffectId = 0` warning。
-- `CompressedExpiryFrameList` eligibility preview。
-- `Unlimited = true` warning。
-- `Open Authoring Validator` button switching back to `Validator` tab。
-
+浠ヤ笅 `Create Buff` 缁嗛」灏氭湭鍦ㄦ湰娆?closeout 涓綊妗ｄ负宸查獙璇侊紝鍚庣画鍙繘鍏?`Phase 3I-3D` 鍗曠嫭琛ユ祴锛?
+- `ConfigId = 991001` duplicate error銆?- `EffectId = 990101` registered validation銆?- `EffectId = 0` warning銆?- `CompressedExpiryFrameList` eligibility preview銆?- `Unlimited = true` warning銆?- `Open Authoring Validator` button switching back to `Validator` tab銆?
 ### Scope confirmation
 
-- 本阶段未创建任何 Buff asset。
-- 本阶段未修改 BuffSystem runtime。
-- 本阶段未修改 public API。
-- 本阶段未修改 production whitelist、validation whitelist 或 compressed eligibility。
-- 本阶段未修改已有 Buff asset。
-- `Effect Template` tab 仍只是占位，不生成 Effect 代码、不注册 Effect。
-
+- 鏈樁娈垫湭鍒涘缓浠讳綍 Buff asset銆?- 鏈樁娈垫湭淇敼 BuffSystem runtime銆?- 鏈樁娈垫湭淇敼 public API銆?- 鏈樁娈垫湭淇敼 production whitelist銆乿alidation whitelist 鎴?compressed eligibility銆?- 鏈樁娈垫湭淇敼宸叉湁 Buff asset銆?- `Effect Template` tab 浠嶅彧鏄崰浣嶏紝涓嶇敓鎴?Effect 浠ｇ爜銆佷笉娉ㄥ唽 Effect銆?
 ### Next
 
-- 下一步可进入 `Phase 3I-4：EffectTemplateGenerator 设计阶段`。
-- 如果需要补齐 Create Buff 细项验收，可先进入 `Phase 3I-3D：Create Buff validation 细项手动验证`。
-
+- 涓嬩竴姝ュ彲杩涘叆 `Phase 3I-4锛欵ffectTemplateGenerator 璁捐闃舵`銆?- 濡傛灉闇€瑕佽ˉ榻?Create Buff 缁嗛」楠屾敹锛屽彲鍏堣繘鍏?`Phase 3I-3D锛欳reate Buff validation 缁嗛」鎵嬪姩楠岃瘉`銆?
 ## Phase 3I-2A - BuffAuthoringValidator manual verification closeout
 
 ### Implemented tool
 
-- 已新增 Editor-only 工具 `BuffAuthoringValidatorWindow.cs`。
-- 菜单入口为 `Tools / BuffSystem / Authoring Validator`。
-- 默认扫描路径为 `Assets/Resources/BuffSystem/Buff`。
-- 工具只读扫描 `BuffConfigData` asset，显示关键字段摘要、Effect 注册状态、compressed eligibility、配置问题和候选分类。
-- 工具不修改 asset、runtime、production whitelist、validation whitelist 或 compressed eligibility。
-
+- 宸叉柊澧?Editor-only 宸ュ叿 `BuffAuthoringValidatorWindow.cs`銆?- 鑿滃崟鍏ュ彛涓?`Tools / BuffSystem / Authoring Validator`銆?- 榛樿鎵弿璺緞涓?`Assets/Resources/BuffSystem/Buff`銆?- 宸ュ叿鍙鎵弿 `BuffConfigData` asset锛屾樉绀哄叧閿瓧娈垫憳瑕併€丒ffect 娉ㄥ唽鐘舵€併€乧ompressed eligibility銆侀厤缃棶棰樺拰鍊欓€夊垎绫汇€?- 宸ュ叿涓嶄慨鏀?asset銆乺untime銆乸roduction whitelist銆乿alidation whitelist 鎴?compressed eligibility銆?
 ### Manual verification
 
-- Unity Editor 中打开 `Tools / BuffSystem / Authoring Validator` 并点击 `Scan / Refresh` 后，扫描结果符合预期：
-  - `Total = 1`
+- Unity Editor 涓墦寮€ `Tools / BuffSystem / Authoring Validator` 骞剁偣鍑?`Scan / Refresh` 鍚庯紝鎵弿缁撴灉绗﹀悎棰勬湡锛?  - `Total = 1`
   - `Eligible = 0`
   - `Smoke = 1`
   - `Invalid = 0`
-- 当前扫描到 `991001 Debug_CompressedParallel_TickSmoke`。
-- `EffectRegistered = True`。
-- `CompressedEligibility = True`。
-- `Category = Smoke / Debug Only`。
-
+- 褰撳墠鎵弿鍒?`991001 Debug_CompressedParallel_TickSmoke`銆?- `EffectRegistered = True`銆?- `CompressedEligibility = True`銆?- `Category = Smoke / Debug Only`銆?
 ### Conclusion
 
-- `991001` 满足 compressed eligibility，且 `990101` Effect 已注册。
-- `991001` 是 Debug / Smoke asset，不应作为正式玩法 Buff 候选。
-- 当前没有真实 production Buff candidate。
-- 当前不扩大 production whitelist。
-- 当前不新增正式生产 Buff。
-
+- `991001` 婊¤冻 compressed eligibility锛屼笖 `990101` Effect 宸叉敞鍐屻€?- `991001` 鏄?Debug / Smoke asset锛屼笉搴斾綔涓烘寮忕帺娉?Buff 鍊欓€夈€?- 褰撳墠娌℃湁鐪熷疄 production Buff candidate銆?- 褰撳墠涓嶆墿澶?production whitelist銆?- 褰撳墠涓嶆柊澧炴寮忕敓浜?Buff銆?
 ### Next
 
-- 下一步建议进入 `Phase 3I-3：BuffCreateWizard 设计 / 合同阶段`。
-
+- 涓嬩竴姝ュ缓璁繘鍏?`Phase 3I-3锛欱uffCreateWizard 璁捐 / 鍚堝悓闃舵`銆?
 ## Phase 3H-8 - Production candidate intake plan closeout
 
 ### Current state
 
-- 当前没有真实生产 Buff 候选。
-- 当前 `Assets/Resources/BuffSystem/Buff` 下唯一 Resources production buff asset 是 `991001 Debug_CompressedParallel_TickSmoke`。
-- `991001` 已在当前 View production path 中作为 smoke pilot 生效，但它是 smoke/debug pilot，不是正式玩法 Buff。
-- 当前 production whitelist 继续保持单点 `991001`。
-- 当前不扩大 production whitelist。
-- 当前不实现 `BuffSystemProductionCandidateValidationRunner`。
-- 只有负责人 / 策划提交真实 gameplay Buff 候选后，才进入候选审查。
-
+- 褰撳墠娌℃湁鐪熷疄鐢熶骇 Buff 鍊欓€夈€?- 褰撳墠 `Assets/Resources/BuffSystem/Buff` 涓嬪敮涓€ Resources production buff asset 鏄?`991001 Debug_CompressedParallel_TickSmoke`銆?- `991001` 宸插湪褰撳墠 View production path 涓綔涓?smoke pilot 鐢熸晥锛屼絾瀹冩槸 smoke/debug pilot锛屼笉鏄寮忕帺娉?Buff銆?- 褰撳墠 production whitelist 缁х画淇濇寔鍗曠偣 `991001`銆?- 褰撳墠涓嶆墿澶?production whitelist銆?- 褰撳墠涓嶅疄鐜?`BuffSystemProductionCandidateValidationRunner`銆?- 鍙湁璐熻矗浜?/ 绛栧垝鎻愪氦鐪熷疄 gameplay Buff 鍊欓€夊悗锛屾墠杩涘叆鍊欓€夊鏌ャ€?
 ### Candidate intake requirements
 
-真实 gameplay Buff 候选进入 compressed production whitelist 前必须满足：
+鐪熷疄 gameplay Buff 鍊欓€夎繘鍏?compressed production whitelist 鍓嶅繀椤绘弧瓒筹細
 
 - `BuffType == parallel`
 - `TriggerType == Tick`
 - `ParallelStorageMode == CompressedExpiryFrameList`
 - `Unlimited == false`
 - `MaxStack <= CompressedParallelBuffLayerBuffer.Capacity`
-- `EffectId` 已注册到 production registry
-- 不依赖 EventTrigger compressed
-- 不依赖逐层 runtime entity
-- 不依赖 rollback-ready 结论
+- `EffectId` 宸叉敞鍐屽埌 production registry
+- 涓嶄緷璧?EventTrigger compressed
+- 涓嶄緷璧栭€愬眰 runtime entity
+- 涓嶄緷璧?rollback-ready 缁撹
 
 ### Required validation before whitelist
 
-候选进入 whitelist 前必须通过：
-
-- asset 字段审查
-- effect 注册审查
-- EntityPerStack vs Compressed 行为一致性验证
-- Add / Tick / Remove / Expire 验证
-- TryGetBuff / GetBuffs 验证
-- Source 匹配验证
-- Stack policy 验证
-- View production path 手动验证
-- 性能观察
-- 回退方案确认
+鍊欓€夎繘鍏?whitelist 鍓嶅繀椤婚€氳繃锛?
+- asset 瀛楁瀹℃煡
+- effect 娉ㄥ唽瀹℃煡
+- EntityPerStack vs Compressed 琛屼负涓€鑷存€ч獙璇?- Add / Tick / Remove / Expire 楠岃瘉
+- TryGetBuff / GetBuffs 楠岃瘉
+- Source 鍖归厤楠岃瘉
+- Stack policy 楠岃瘉
+- View production path 鎵嬪姩楠岃瘉
+- 鎬ц兘瑙傚療
+- 鍥為€€鏂规纭
 
 ### Rejection rules
 
-- EventTrigger Buff 不进入 compressed whitelist。
-- Unlimited Buff 不进入 compressed whitelist。
-- `MaxStack` 超过 `CompressedParallelBuffLayerBuffer.Capacity` 的 Buff 不进入 compressed whitelist。
-- 非 Tick Buff 不进入 compressed whitelist。
-- 非 parallel Buff 不进入 compressed whitelist。
-- Effect 未注册、依赖逐层 runtime entity、依赖 View 层直接枚举 runtime entity、缺少行为一致性验证或缺少回退方案的 Buff 不进入 compressed whitelist。
-
+- EventTrigger Buff 涓嶈繘鍏?compressed whitelist銆?- Unlimited Buff 涓嶈繘鍏?compressed whitelist銆?- `MaxStack` 瓒呰繃 `CompressedParallelBuffLayerBuffer.Capacity` 鐨?Buff 涓嶈繘鍏?compressed whitelist銆?- 闈?Tick Buff 涓嶈繘鍏?compressed whitelist銆?- 闈?parallel Buff 涓嶈繘鍏?compressed whitelist銆?- Effect 鏈敞鍐屻€佷緷璧栭€愬眰 runtime entity銆佷緷璧?View 灞傜洿鎺ユ灇涓?runtime entity銆佺己灏戣涓轰竴鑷存€ч獙璇佹垨缂哄皯鍥為€€鏂规鐨?Buff 涓嶈繘鍏?compressed whitelist銆?
 ### Boundary
 
-- 当前仍不能宣称 BuffSystem rollback-ready。
-- 当前仍不能宣称更多生产 Buff 可以进入 compressed whitelist。
-- 当前仍不能宣称 `991001` 是正式玩法 Buff。
-- 当前仍不能宣称所有真实生产场景均已完整回归。
-- 本阶段不修改 `BuffSystemCore.cs`、BuffSystem runtime、public API、production whitelist、validation whitelist、compressed eligibility、BuffConfigData asset、Runner、`SimulationInitializer.cs`、ECS Core、RollBackSystem、ViewSpawnSystem、Scene、Prefab 或 `.meta`。
-
+- 褰撳墠浠嶄笉鑳藉绉?BuffSystem rollback-ready銆?- 褰撳墠浠嶄笉鑳藉绉版洿澶氱敓浜?Buff 鍙互杩涘叆 compressed whitelist銆?- 褰撳墠浠嶄笉鑳藉绉?`991001` 鏄寮忕帺娉?Buff銆?- 褰撳墠浠嶄笉鑳藉绉版墍鏈夌湡瀹炵敓浜у満鏅潎宸插畬鏁村洖褰掋€?- 鏈樁娈典笉淇敼 `BuffSystemCore.cs`銆丅uffSystem runtime銆乸ublic API銆乸roduction whitelist銆乿alidation whitelist銆乧ompressed eligibility銆丅uffConfigData asset銆丷unner銆乣SimulationInitializer.cs`銆丒CS Core銆丷ollBackSystem銆乂iewSpawnSystem銆丼cene銆丳refab 鎴?`.meta`銆?
 ### Closeout
 
-- Compressed parallel production pilot 当前进入稳定等待状态。
-- `991001` 单点 smoke pilot 保持。
-- production whitelist 暂不扩大。
-- 等待真实 gameplay Buff 候选提交后，再进入 Phase 3H-8A 候选审查。
-
+- Compressed parallel production pilot 褰撳墠杩涘叆绋冲畾绛夊緟鐘舵€併€?- `991001` 鍗曠偣 smoke pilot 淇濇寔銆?- production whitelist 鏆備笉鎵╁ぇ銆?- 绛夊緟鐪熷疄 gameplay Buff 鍊欓€夋彁浜ゅ悗锛屽啀杩涘叆 Phase 3H-8A 鍊欓€夊鏌ャ€?
 ## Phase 3H-6C - View production smoke pilot closeout
 
 ### Validated
 
-- `SimulationInitializer.cs` 已完成最小 production composition path 接入，当前 View production path 使用 `BuffConfigDataLoader.Instance`、`BuffEffectRegistryBootstrap.RegisterProductionEffects(...)` 与 `BuffSystemCore.CreateForProduction(...)`。
-- 接入后五个 BuffSystem Unity Editor 手动 Runner 均保持 PASS：
-  - `BuffSystemPhase2AValidationRunner`
+- `SimulationInitializer.cs` 宸插畬鎴愭渶灏?production composition path 鎺ュ叆锛屽綋鍓?View production path 浣跨敤 `BuffConfigDataLoader.Instance`銆乣BuffEffectRegistryBootstrap.RegisterProductionEffects(...)` 涓?`BuffSystemCore.CreateForProduction(...)`銆?- 鎺ュ叆鍚庝簲涓?BuffSystem Unity Editor 鎵嬪姩 Runner 鍧囦繚鎸?PASS锛?  - `BuffSystemPhase2AValidationRunner`
   - `BuffSystemCompressedParallelValidationRunner`
   - `BuffSystemRestoreHookValidationRunner`
   - `BuffSystemStorageBehaviorConsistencyRunner`
   - `BuffSystemStoragePerformanceRunner`
-- `BuffConfigDataLoader` Root Path 为 `BuffSystem/Buff`，loader 成功加载 1 个 Buff definition。
-- 当前加载到的 configId 为 `991001`，`TryGetDefinition(991001) = true`。
-- `991001 Debug_CompressedParallel_TickSmoke` 的关键 definition 字段已确认：
+- `BuffConfigDataLoader` Root Path 涓?`BuffSystem/Buff`锛宭oader 鎴愬姛鍔犺浇 1 涓?Buff definition銆?- 褰撳墠鍔犺浇鍒扮殑 configId 涓?`991001`锛宍TryGetDefinition(991001) = true`銆?- `991001 Debug_CompressedParallel_TickSmoke` 鐨勫叧閿?definition 瀛楁宸茬‘璁わ細
   - `BuffType = parallel`
   - `TriggerType = Tick`
   - `ParallelStorageMode = CompressedExpiryFrameList`
@@ -777,137 +557,95 @@ registry.Register(100001, new PoisonTickEffect());
   - `DurationFrames = 120`
   - `TickIntervalFrames = 60`
   - `EffectId = 990101`
-- `BuffEffectRegistryBootstrap` 注册的 `990101 DebugNoOpTickEffect` 已在 View production path 中可用，`EffectRegistered = true`。
-- `991001` 的 eligibility、compressed gate、production whitelist 均通过：
-  - `Eligibility = true`
+- `BuffEffectRegistryBootstrap` 娉ㄥ唽鐨?`990101 DebugNoOpTickEffect` 宸插湪 View production path 涓彲鐢紝`EffectRegistered = true`銆?- `991001` 鐨?eligibility銆乧ompressed gate銆乸roduction whitelist 鍧囬€氳繃锛?  - `Eligibility = true`
   - `CompressedGate = true`
   - `WhitelistHit = true`
   - `WhitelistConfigIds = 991001`
   - `ShouldUseCompressedParallelExpected = true`
-- 手动 Add `991001` 并 Tick 后，View production path 创建 compressed runtime：
-  - `CompressedRuntime count = 1`
+- 鎵嬪姩 Add `991001` 骞?Tick 鍚庯紝View production path 鍒涘缓 compressed runtime锛?  - `CompressedRuntime count = 1`
   - `EntityPerStackRuntime count = 0`
   - `Compressed Path = PASS`
-- public query 结果已确认：
+- public query 缁撴灉宸茬‘璁わ細
   - `TryGetBuff = true`
   - `GetBuffs count = 1`
   - `Current ConfigId View count = 1`
-  - aggregate `BuffViewData` 可见，`Stack = 1`，`RemainingFrames = 119`。
-
+  - aggregate `BuffViewData` 鍙锛宍Stack = 1`锛宍RemainingFrames = 119`銆?
 ### Conclusion
 
-- 当前可以宣称：`991001 Debug_CompressedParallel_TickSmoke` 已在当前 View production path 中作为 smoke pilot 生效。
-- 当前可以宣称：`991001` 命中 compressed production whitelist，并创建 `CompressedRuntime = 1`、`EntityPerStackRuntime = 0`。
-- 当前可以宣称：接入后 BuffSystem 测试路径与 View production smoke pilot 均未发现 BuffSystem runtime 回归。
-
+- 褰撳墠鍙互瀹ｇО锛歚991001 Debug_CompressedParallel_TickSmoke` 宸插湪褰撳墠 View production path 涓綔涓?smoke pilot 鐢熸晥銆?- 褰撳墠鍙互瀹ｇО锛歚991001` 鍛戒腑 compressed production whitelist锛屽苟鍒涘缓 `CompressedRuntime = 1`銆乣EntityPerStackRuntime = 0`銆?- 褰撳墠鍙互瀹ｇО锛氭帴鍏ュ悗 BuffSystem 娴嬭瘯璺緞涓?View production smoke pilot 鍧囨湭鍙戠幇 BuffSystem runtime 鍥炲綊銆?
 ### Boundary
 
-- 本阶段不修改 `BuffSystemCore.cs`、BuffSystem runtime、Runner、production whitelist、validation whitelist、compressed eligibility、ECS Core、RollBackSystem、Scene、Prefab、`.meta` 或 BuffConfigData asset。
-- 当前不扩大 production whitelist。
-- 当前不新增正式生产 Buff。
-- `991001` 仍只作为 production pilot smoke asset，不视为正式玩法 Buff。
-- 当前仍不能宣称 BuffSystem rollback-ready。
-- 当前仍不能宣称更多生产 Buff 可以进入 compressed whitelist。
-- 当前仍不能宣称所有真实生产场景均已回归。
-
+- 鏈樁娈典笉淇敼 `BuffSystemCore.cs`銆丅uffSystem runtime銆丷unner銆乸roduction whitelist銆乿alidation whitelist銆乧ompressed eligibility銆丒CS Core銆丷ollBackSystem銆丼cene銆丳refab銆乣.meta` 鎴?BuffConfigData asset銆?- 褰撳墠涓嶆墿澶?production whitelist銆?- 褰撳墠涓嶆柊澧炴寮忕敓浜?Buff銆?- `991001` 浠嶅彧浣滀负 production pilot smoke asset锛屼笉瑙嗕负姝ｅ紡鐜╂硶 Buff銆?- 褰撳墠浠嶄笉鑳藉绉?BuffSystem rollback-ready銆?- 褰撳墠浠嶄笉鑳藉绉版洿澶氱敓浜?Buff 鍙互杩涘叆 compressed whitelist銆?- 褰撳墠浠嶄笉鑳藉绉版墍鏈夌湡瀹炵敓浜у満鏅潎宸插洖褰掋€?
 ### Known non-blocking warning
 
-- Console 中存在 `[ViewSpawnSystem] Failed to spawn view. PrefabID = 1`。
-- 该问题归类为 `ViewSpawnSystem / Prefab 映射问题`，本阶段不处理。
-- 该 warning 不影响本阶段 BuffSystem compressed path 验证结论，因为 provider、definition、effect、whitelist、binding、runtime count 与 public query 均已验证通过。
-
+- Console 涓瓨鍦?`[ViewSpawnSystem] Failed to spawn view. PrefabID = 1`銆?- 璇ラ棶棰樺綊绫讳负 `ViewSpawnSystem / Prefab 鏄犲皠闂`锛屾湰闃舵涓嶅鐞嗐€?- 璇?warning 涓嶅奖鍝嶆湰闃舵 BuffSystem compressed path 楠岃瘉缁撹锛屽洜涓?provider銆乨efinition銆乪ffect銆亀hitelist銆乥inding銆乺untime count 涓?public query 鍧囧凡楠岃瘉閫氳繃銆?
 ### Meta note
 
-- `BuffSystem_Changelog.md.meta` 曾出现 invalid GUID，导致 Unity 忽略对应文档 asset。
-- 已删除 malformed `.meta`，并由 Unity 刷新后重新生成；当前 Console 不再显示该 invalid GUID 报错。
-- 该问题只影响 BuffSystem 文档 asset 导入，不影响 BuffSystem runtime、Runner、production whitelist、compressed eligibility 或 `991001` View production smoke pilot 验证结论。
-- 本阶段不手写 GUID，不处理其他 `.meta` 文件。
-
+- `BuffSystem_Changelog.md.meta` 鏇惧嚭鐜?invalid GUID锛屽鑷?Unity 蹇界暐瀵瑰簲鏂囨。 asset銆?- 宸插垹闄?malformed `.meta`锛屽苟鐢?Unity 鍒锋柊鍚庨噸鏂扮敓鎴愶紱褰撳墠 Console 涓嶅啀鏄剧ず璇?invalid GUID 鎶ラ敊銆?- 璇ラ棶棰樺彧褰卞搷 BuffSystem 鏂囨。 asset 瀵煎叆锛屼笉褰卞搷 BuffSystem runtime銆丷unner銆乸roduction whitelist銆乧ompressed eligibility 鎴?`991001` View production smoke pilot 楠岃瘉缁撹銆?- 鏈樁娈典笉鎵嬪啓 GUID锛屼笉澶勭悊鍏朵粬 `.meta` 鏂囦欢銆?
 ## Phase 3H-5A - Storage performance validation closeout
 
 ### Validated
 
-- Phase 3H-5A 已完成，五个 BuffSystem Unity Editor 手动 Runner 均 PASS：
-  - `BuffSystemPhase2AValidationRunner`：`========== Result: PASS ==========`
-  - `BuffSystemCompressedParallelValidationRunner`：`========== Compressed Parallel Validation Result: PASS ==========`
-  - `BuffSystemRestoreHookValidationRunner`：`========== Result: PASS ==========`
-  - `BuffSystemStorageBehaviorConsistencyRunner`：`========== EntityPerStack vs Compressed Strategy Behavior Result: PASS ==========`
-  - `BuffSystemStoragePerformanceRunner`：`========== EntityPerStack vs Compressed Performance Result: PASS ==========`
-- `BuffSystemStoragePerformanceRunner` 的 PASS 只表示性能测量流程完成，不表示 Compressed 必须在所有场景都更快。
-
+- Phase 3H-5A 宸插畬鎴愶紝浜斾釜 BuffSystem Unity Editor 鎵嬪姩 Runner 鍧?PASS锛?  - `BuffSystemPhase2AValidationRunner`锛歚========== Result: PASS ==========`
+  - `BuffSystemCompressedParallelValidationRunner`锛歚========== Compressed Parallel Validation Result: PASS ==========`
+  - `BuffSystemRestoreHookValidationRunner`锛歚========== Result: PASS ==========`
+  - `BuffSystemStorageBehaviorConsistencyRunner`锛歚========== EntityPerStack vs Compressed Strategy Behavior Result: PASS ==========`
+  - `BuffSystemStoragePerformanceRunner`锛歚========== EntityPerStack vs Compressed Performance Result: PASS ==========`
+- `BuffSystemStoragePerformanceRunner` 鐨?PASS 鍙〃绀烘€ц兘娴嬮噺娴佺▼瀹屾垚锛屼笉琛ㄧず Compressed 蹇呴』鍦ㄦ墍鏈夊満鏅兘鏇村揩銆?
 ### Performance summary
 
-- AddBuff + Tick 消费：Compressed / EntityPerStack 倍率分别为 `0.658`、`0.489`、`0.823`。
-- Tick：Compressed / EntityPerStack 倍率分别为 `0.607`、`0.615`、`0.673`。
-- RemoveEarliest / RemoveLatest / ClearAll 均显示 Compressed 更快；典型倍率包括 `0.393`、`0.505`、`0.636`。
-- TryGetBuff 收益明显，典型倍率包括 `0.213`、`0.360`、`0.773`。
-- GetBuffs(target) 在大规模场景下收益接近 0，但未见明显退化；典型倍率包括 `0.979`、`0.980`。
-- EventTrigger 配置下 CompressedParallel 按设计 fallback EntityPerStack；Raise 结果仅用于确认测量流程，不作为 compressed runtime 性能收益依据。
-- 本轮性能测量报告的所有测量项 `GCBytes = 0`。
-
+- AddBuff + Tick 娑堣垂锛欳ompressed / EntityPerStack 鍊嶇巼鍒嗗埆涓?`0.658`銆乣0.489`銆乣0.823`銆?- Tick锛欳ompressed / EntityPerStack 鍊嶇巼鍒嗗埆涓?`0.607`銆乣0.615`銆乣0.673`銆?- RemoveEarliest / RemoveLatest / ClearAll 鍧囨樉绀?Compressed 鏇村揩锛涘吀鍨嬪€嶇巼鍖呮嫭 `0.393`銆乣0.505`銆乣0.636`銆?- TryGetBuff 鏀剁泭鏄庢樉锛屽吀鍨嬪€嶇巼鍖呮嫭 `0.213`銆乣0.360`銆乣0.773`銆?- GetBuffs(target) 鍦ㄥぇ瑙勬ā鍦烘櫙涓嬫敹鐩婃帴杩?0锛屼絾鏈鏄庢樉閫€鍖栵紱鍏稿瀷鍊嶇巼鍖呮嫭 `0.979`銆乣0.980`銆?- EventTrigger 閰嶇疆涓?CompressedParallel 鎸夎璁?fallback EntityPerStack锛汻aise 缁撴灉浠呯敤浜庣‘璁ゆ祴閲忔祦绋嬶紝涓嶄綔涓?compressed runtime 鎬ц兘鏀剁泭渚濇嵁銆?- 鏈疆鎬ц兘娴嬮噺鎶ュ憡鐨勬墍鏈夋祴閲忛」 `GCBytes = 0`銆?
 ### Conclusion
 
-- BuffSystem 测试路径和 compressed parallel runtime 行为稳定。
-- CompressedParallel 在 Add / Tick / Remove / TryGetBuff 上整体稳定优于 EntityPerStack。
-- 本轮没有发现需要修改 `BuffSystemCore` 的 runtime 问题。
-
+- BuffSystem 娴嬭瘯璺緞鍜?compressed parallel runtime 琛屼负绋冲畾銆?- CompressedParallel 鍦?Add / Tick / Remove / TryGetBuff 涓婃暣浣撶ǔ瀹氫紭浜?EntityPerStack銆?- 鏈疆娌℃湁鍙戠幇闇€瑕佷慨鏀?`BuffSystemCore` 鐨?runtime 闂銆?
 ### Boundary
 
-- 本阶段只归档验证结果，不修改 runtime、Runner、public API、`IBuffSystem`、compressed gate / whitelist / eligibility、asset、scene、prefab、`.meta`、View、ECS 或 RollBackSystem。
-- `SimulationInitializer.cs` 仍未接入 `BuffConfigDataLoader + BuffEffectRegistryBootstrap + BuffSystemCore.CreateForProduction(...)`；该文件属于 View composition root，本阶段未修改，需要负责人批准后单独处理。
-- 因此，不能因为本次 Runner PASS 宣称 `991001` 已在当前 View production path 中生效，也不能宣称当前 View production pilot 已验证通过。
-
+- 鏈樁娈靛彧褰掓。楠岃瘉缁撴灉锛屼笉淇敼 runtime銆丷unner銆乸ublic API銆乣IBuffSystem`銆乧ompressed gate / whitelist / eligibility銆乤sset銆乻cene銆乸refab銆乣.meta`銆乂iew銆丒CS 鎴?RollBackSystem銆?- `SimulationInitializer.cs` 浠嶆湭鎺ュ叆 `BuffConfigDataLoader + BuffEffectRegistryBootstrap + BuffSystemCore.CreateForProduction(...)`锛涜鏂囦欢灞炰簬 View composition root锛屾湰闃舵鏈慨鏀癸紝闇€瑕佽礋璐ｄ汉鎵瑰噯鍚庡崟鐙鐞嗐€?- 鍥犳锛屼笉鑳藉洜涓烘湰娆?Runner PASS 瀹ｇО `991001` 宸插湪褰撳墠 View production path 涓敓鏁堬紝涔熶笉鑳藉绉板綋鍓?View production pilot 宸查獙璇侀€氳繃銆?
 ## Phase 3G-State-Reconcile-Fix-A - BuffConfigDataLoader default Resources path
 
 ### Changed
 
-- `BuffConfigDataLoader` 默认 Resources Root Path 已从 `_Scripts/FrameWork/BuffSystem/BuffConfigDataCollection` 收敛为 `BuffSystem/Buff`。
-- 当前 production pilot asset `Debug_CompressedParallel_TickSmoke.asset` 位于 `Assets/Resources/BuffSystem/Buff`，`Resources.LoadAll<BuffConfigData>("BuffSystem/Buff")` 可覆盖该默认路径。
-
+- `BuffConfigDataLoader` 榛樿 Resources Root Path 宸蹭粠 `_Scripts/FrameWork/BuffSystem/BuffConfigDataCollection` 鏀舵暃涓?`BuffSystem/Buff`銆?- 褰撳墠 production pilot asset `Debug_CompressedParallel_TickSmoke.asset` 浣嶄簬 `Assets/Resources/BuffSystem/Buff`锛宍Resources.LoadAll<BuffConfigData>("BuffSystem/Buff")` 鍙鐩栬榛樿璺緞銆?
 ### Boundary
 
-- 本阶段只修复 BuffSystem 侧默认路径，不修改 View composition root、ECS、RollBackSystem、scene、prefab 或 `.meta`。
-- `SimulationInitializer.cs` 仍未接入 `BuffConfigDataLoader + BuffEffectRegistryBootstrap + BuffSystemCore.CreateForProduction(...)`；该文件属于 View composition root，本阶段未修改，需要负责人批准后单独处理。
-- 因此，不能因为本次默认路径修复就宣称 `991001` 已在当前 View production path 中生效。
-- 未修改 public API、public constructor、`IBuffSystem`、compressed gate / whitelist / eligibility，也未新增 production Buff。
-
+- 鏈樁娈靛彧淇 BuffSystem 渚ч粯璁よ矾寰勶紝涓嶄慨鏀?View composition root銆丒CS銆丷ollBackSystem銆乻cene銆乸refab 鎴?`.meta`銆?- `SimulationInitializer.cs` 浠嶆湭鎺ュ叆 `BuffConfigDataLoader + BuffEffectRegistryBootstrap + BuffSystemCore.CreateForProduction(...)`锛涜鏂囦欢灞炰簬 View composition root锛屾湰闃舵鏈慨鏀癸紝闇€瑕佽礋璐ｄ汉鎵瑰噯鍚庡崟鐙鐞嗐€?- 鍥犳锛屼笉鑳藉洜涓烘湰娆￠粯璁よ矾寰勪慨澶嶅氨瀹ｇО `991001` 宸插湪褰撳墠 View production path 涓敓鏁堛€?- 鏈慨鏀?public API銆乸ublic constructor銆乣IBuffSystem`銆乧ompressed gate / whitelist / eligibility锛屼篃鏈柊澧?production Buff銆?
 ## Phase 3H-3C - Restore hook validation runner
 
-### 新增
+### 鏂板
 
-- 新增 `BuffSystemRestoreHookValidationRunner`，作为 `BuffSystemCore.OnWorldRestored(World world)` 的 Unity Editor 手动验证入口。
-- Runner 验证 EntityPerStack runtime 在 `OnWorldRestored` 前后 `TryGetBuff` / `GetBuffs` 查询结果一致。
-- Runner 验证 compressed runtime 在 `OnWorldRestored` 后仍可通过 aggregate ViewData 查询，且 `layerCount` 与 `Stack` 一致。
-- Runner 验证 EventTrigger Buff 在 `OnWorldRestored` 后仍可通过 `Raise<TEvent>` 触发对应事件 Effect。
-- Runner 通过手动修改 runtime component 模拟 World restore 后的组件真状态变化，验证 ViewCache 不返回 stale data。
-- Runner 验证 `OnWorldRestored` 本身不会触发 `OnApply` / `OnTick` / `OnRemove` / `OnEvent`。
+- 鏂板 `BuffSystemRestoreHookValidationRunner`锛屼綔涓?`BuffSystemCore.OnWorldRestored(World world)` 鐨?Unity Editor 鎵嬪姩楠岃瘉鍏ュ彛銆?
+- Runner 楠岃瘉 EntityPerStack runtime 鍦?`OnWorldRestored` 鍓嶅悗 `TryGetBuff` / `GetBuffs` 鏌ヨ缁撴灉涓€鑷淬€?
+- Runner 楠岃瘉 compressed runtime 鍦?`OnWorldRestored` 鍚庝粛鍙€氳繃 aggregate ViewData 鏌ヨ锛屼笖 `layerCount` 涓?`Stack` 涓€鑷淬€?
+- Runner 楠岃瘉 EventTrigger Buff 鍦?`OnWorldRestored` 鍚庝粛鍙€氳繃 `Raise<TEvent>` 瑙﹀彂瀵瑰簲浜嬩欢 Effect銆?
+- Runner 閫氳繃鎵嬪姩淇敼 runtime component 妯℃嫙 World restore 鍚庣殑缁勪欢鐪熺姸鎬佸彉鍖栵紝楠岃瘉 ViewCache 涓嶈繑鍥?stale data銆?
+- Runner 楠岃瘉 `OnWorldRestored` 鏈韩涓嶄細瑙﹀彂 `OnApply` / `OnTick` / `OnRemove` / `OnEvent`銆?
 
-### 保持不变
+### 淇濇寔涓嶅彉
 
-- 未修改 RollBackSystem、ECS、Contracts、Utility、PoolSystem、public API、`IBuffSystem`、compressed gate / whitelist、asset、scene、prefab 和 `.meta` 文件。
-- 本阶段不接入 RollBackSystem，不实现 snapshot restore，不宣称 BuffSystem rollback-ready。
+- 鏈慨鏀?RollBackSystem銆丒CS銆丆ontracts銆乁tility銆丳oolSystem銆乸ublic API銆乣IBuffSystem`銆乧ompressed gate / whitelist銆乤sset銆乻cene銆乸refab 鍜?`.meta` 鏂囦欢銆?
+- 鏈樁娈典笉鎺ュ叆 RollBackSystem锛屼笉瀹炵幇 snapshot restore锛屼笉瀹ｇО BuffSystem rollback-ready銆?
 
 ## Phase 3H-3B - Rollback restore transient cache hook
 
-### 新增
+### 鏂板
 
-- 新增 internal `BuffSystemCore.OnWorldRestored(World world)`，用于后续 RollBackSystem 完成 World restore 后整理 BuffSystem 派生缓存。
-- 该 hook 只清理 BuffSystem transient state，并从恢复后的 ECS World 重新捕获 runtime entity、重建 lookup。
-- ECS Component 仍是唯一运行时真状态。该 hook 不 AddBuff、不 RemoveBuff、不 DestroyEntity、不 SetComponent 修改业务状态、不执行生命周期 Effect、不触发事件、不执行 Tick。
-- 调用方必须保证外部 RollBackSystem 已在稳定帧边界完成 World restore。
-- Entity ID / Version 的稳定性必须由外部 snapshot restore 实现保证。
+- 鏂板 internal `BuffSystemCore.OnWorldRestored(World world)`锛岀敤浜庡悗缁?RollBackSystem 瀹屾垚 World restore 鍚庢暣鐞?BuffSystem 娲剧敓缂撳瓨銆?
+- 璇?hook 鍙竻鐞?BuffSystem transient state锛屽苟浠庢仮澶嶅悗鐨?ECS World 閲嶆柊鎹曡幏 runtime entity銆侀噸寤?lookup銆?
+- ECS Component 浠嶆槸鍞竴杩愯鏃剁湡鐘舵€併€傝 hook 涓?AddBuff銆佷笉 RemoveBuff銆佷笉 DestroyEntity銆佷笉 SetComponent 淇敼涓氬姟鐘舵€併€佷笉鎵ц鐢熷懡鍛ㄦ湡 Effect銆佷笉瑙﹀彂浜嬩欢銆佷笉鎵ц Tick銆?
+- 璋冪敤鏂瑰繀椤讳繚璇佸閮?RollBackSystem 宸插湪绋冲畾甯ц竟鐣屽畬鎴?World restore銆?
+- Entity ID / Version 鐨勭ǔ瀹氭€у繀椤荤敱澶栭儴 snapshot restore 瀹炵幇淇濊瘉銆?
 
-### 清理 / 重建
+### 娓呯悊 / 閲嶅缓
 
-- 清空 command queue、lifecycle effect queue、pending remove 状态、runtime frame snapshot、compressed runtime frame snapshot、请求临时列表、event candidate、runtime lookup、compressed runtime lookup、ViewCache、EventRuntimeIndex 和 frame guard。
-- 从恢复后的 World 重新捕获 `BuffRuntimeComponent` 与 `CompressedParallelBuffRuntimeComponent` entity。
-- 重建 EntityPerStack 与 compressed runtime lookup。
-- 标记 ViewCache 与 EventRuntimeIndex dirty。
+- 娓呯┖ command queue銆乴ifecycle effect queue銆乸ending remove 鐘舵€併€乺untime frame snapshot銆乧ompressed runtime frame snapshot銆佽姹備复鏃跺垪琛ㄣ€乪vent candidate銆乺untime lookup銆乧ompressed runtime lookup銆乂iewCache銆丒ventRuntimeIndex 鍜?frame guard銆?
+- 浠庢仮澶嶅悗鐨?World 閲嶆柊鎹曡幏 `BuffRuntimeComponent` 涓?`CompressedParallelBuffRuntimeComponent` entity銆?
+- 閲嶅缓 EntityPerStack 涓?compressed runtime lookup銆?
+- 鏍囪 ViewCache 涓?EventRuntimeIndex dirty銆?
 
-### 保持不变
+### 淇濇寔涓嶅彉
 
-- 未修改 RollBackSystem、ECS snapshot、`WorldRollbackAdapter`、`RollbackCoordinator`、Demo `WorldSnapshot`、public API、`IBuffSystem`、compressed gate / whitelist、asset、scene、prefab 和 `.meta` 文件。
-- 本阶段不宣称 BuffSystem rollback-ready。Demo `WorldSnapshot` 仍不能作为 Buff runtime rollback-ready 依据，因为它不能保证稳定的 Entity ID / Version。
+- 鏈慨鏀?RollBackSystem銆丒CS snapshot銆乣WorldRollbackAdapter`銆乣RollbackCoordinator`銆丏emo `WorldSnapshot`銆乸ublic API銆乣IBuffSystem`銆乧ompressed gate / whitelist銆乤sset銆乻cene銆乸refab 鍜?`.meta` 鏂囦欢銆?
+- 鏈樁娈典笉瀹ｇО BuffSystem rollback-ready銆侱emo `WorldSnapshot` 浠嶄笉鑳戒綔涓?Buff runtime rollback-ready 渚濇嵁锛屽洜涓哄畠涓嶈兘淇濊瘉绋冲畾鐨?Entity ID / Version銆?
 
 ## Phase 3G-4J - Production compressed pilot validation closeout
 
@@ -956,13 +694,13 @@ registry.Register(100001, new PoisonTickEffect());
 
 ### Changed
 
-- Updated the original ECS Debugger `Buff 调试` page so Add / Remove button logs are INFO queued messages instead of PASS validation records.
-- Added `添加 Buff 并 Tick 一帧`, `添加 3 层 Buff 并 Tick 一帧`, and `移除 Buff 并 Tick 一帧` convenience buttons.
-- Added `添加 Buff 并 Tick 两帧` and `添加 3 层 Buff 并 Tick 两帧` for the capture-after-command timing case.
+- Updated the original ECS Debugger `Buff 璋冭瘯` page so Add / Remove button logs are INFO queued messages instead of PASS validation records.
+- Added `娣诲姞 Buff 骞?Tick 涓€甯, `娣诲姞 3 灞?Buff 骞?Tick 涓€甯, and `绉婚櫎 Buff 骞?Tick 涓€甯 convenience buttons.
+- Added `娣诲姞 Buff 骞?Tick 涓ゅ抚` and `娣诲姞 3 灞?Buff 骞?Tick 涓ゅ抚` for the capture-after-command timing case.
 - Tick-driven refresh now performs the compressed-path validation after the queued command has been consumed by `BuffSystemCore`.
 - Split compressed runtime validation from ViewData visibility. A runtime state of `CompressedRuntime count == 1` and `EntityPerStack count == 0` is shown as compressed path `PASS`; if `TryGetBuff` is still false, the page reports that ViewData is waiting for the next capture frame instead of treating the whole check as failed.
-- `添加 3 层 Buff 并 Tick 两帧` is the recommended aggregate ViewData stack validation path for `Stack = 3`.
-- Added a copyable plain-text debug snapshot area and `复制日志到剪贴板` button using `EditorGUIUtility.systemCopyBuffer`.
+- `娣诲姞 3 灞?Buff 骞?Tick 涓ゅ抚` is the recommended aggregate ViewData stack validation path for `Stack = 3`.
+- Added a copyable plain-text debug snapshot area and `澶嶅埗鏃ュ織鍒板壀璐存澘` button using `EditorGUIUtility.systemCopyBuffer`.
 
 ### Preserved
 
@@ -975,9 +713,9 @@ registry.Register(100001, new PoisonTickEffect());
 
 - Returned the main debug entry to the original IMGUI `Window / ECSFrameWork / World Debugger`.
 - Localized the original ECS debugger pages and toolbar with Chinese-first labels while preserving English technical terms.
-- Kept all original pages and existing functionality: `总览 Overview` / `实体 Entities` / `系统 Systems` / `原型 ArcheTypes` / `组件仓库 Stores` / `单例 Singletons` / `世界事件 Events` / `命令 Commands` / `Buff 调试`.
+- Kept all original pages and existing functionality: `鎬昏 Overview` / `瀹炰綋 Entities` / `绯荤粺 Systems` / `鍘熷瀷 ArcheTypes` / `缁勪欢浠撳簱 Stores` / `鍗曚緥 Singletons` / `涓栫晫浜嬩欢 Events` / `鍛戒护 Commands` / `Buff 璋冭瘯`.
 - Disabled the previous Odin experiment window menu to avoid opening a reduced-function duplicate debugger.
-- The original `Buff 调试` page still keeps pilot `configId = 991001` as the default target and exposes Add / Remove / fixed-frame Tick / query refresh controls.
+- The original `Buff 璋冭瘯` page still keeps pilot `configId = 991001` as the default target and exposes Add / Remove / fixed-frame Tick / query refresh controls.
 
 ### Preserved
 
@@ -988,14 +726,14 @@ registry.Register(100001, new PoisonTickEffect());
 ### Manual validation focus
 
 - Open `Window / ECSFrameWork / World Debugger`.
-- Select the `Buff 调试` page.
+- Select the `Buff 璋冭瘯` page.
 - For `configId = 991001`, compressed success means current ConfigId `CompressedRuntime count == 1` and current ConfigId `EntityPerStack count == 0`.
 
 ## Phase 3G-4B-Fix - ECS Debugger Buff debug page
 
 ### Changed
 
-- Added a real `Buff 调试` page to `ECSWorldDebuggerWindow` Pages.
+- Added a real `Buff 璋冭瘯` page to `ECSWorldDebuggerWindow` Pages.
 - The page draws Chinese Buff debug controls in the ECS Debugger right-side content area.
 - The page can create debug target/source ECS `Entity` values from the selected runtime `World`.
 - The page queues Add / Remove through the production `BuffSystemCore`, steps fixed frames through the selected `SimulateRunner`, and shows aggregate query results.
@@ -1010,14 +748,14 @@ registry.Register(100001, new PoisonTickEffect());
 ### Manual validation focus
 
 - Open `Window / ECSFrameWork / World Debugger`.
-- Select the `Buff 调试` page from the left Pages list.
+- Select the `Buff 璋冭瘯` page from the left Pages list.
 - For `configId = 991001`, compressed success means current ConfigId `CompressedRuntime count == 1` and current ConfigId `EntityPerStack count == 0`.
 
 ## Phase 3G-4B - Odin Chinese Buff debug panel
 
 ### Changed
 
-- Added Odin Inspector groups to `LogicFrameDebugPanel` for the `BuffSystem 压缩 Buff 调试面板`.
+- Added Odin Inspector groups to `LogicFrameDebugPanel` for the `BuffSystem 鍘嬬缉 Buff 璋冭瘯闈㈡澘`.
 - Added Chinese labels, buttons, read-only result fields, runtime type statistics, `GetBuffs(target)` table, and recent operation logs.
 - Kept the existing IMGUI Buff debug panel as a runtime fallback.
 - Extended `SimulationDebugProbe` to expose debug `GetBuffs(target)` rows for Odin TableList display.
@@ -1030,7 +768,7 @@ registry.Register(100001, new PoisonTickEffect());
 
 ### Manual validation focus
 
-- In Play Mode, select the object containing `LogicFrameDebugPanel` and use the Odin group `BuffSystem 压缩 Buff 调试面板`.
+- In Play Mode, select the object containing `LogicFrameDebugPanel` and use the Odin group `BuffSystem 鍘嬬缉 Buff 璋冭瘯闈㈡澘`.
 - For `configId = 991001`, compressed success means current ConfigId `CompressedRuntime count == 1` and current ConfigId `EntityPerStack count == 0`.
 - After adding three layers and ticking once, the aggregate ViewData should be found with `Stack = 3` and only one matching `GetBuffs(target)` row.
 
@@ -1313,98 +1051,98 @@ removeSnapshot.remainingFrames = 0;
 
 ## Phase 3C-2 - Compressed Add / Refresh / Remove dormant helpers
 
-### 新增
+### 鏂板
 
-- 新增 `ApplyCompressedParallelAdd`、`ApplyCompressedParallelRemove`、`CreateCompressedParallelRuntime` 等 compressed runtime dormant helper。
-- 新增 compressed lookup helper：`TryGetCompressedRuntimeEntity`、`RegisterCompressedRuntimeLookup`、`RemoveCompressedRuntimeLookup`。
-- 新增单层 snapshot helper：`CreateCompressedLayerSnapshot`。
-- 新增 Append、RefreshEarliest、RefreshAll、ReplaceEarliestWhenFull、RemoveEarliest、RemoveLatest、ClearAll 对应的 compressed helper。
+- 鏂板 `ApplyCompressedParallelAdd`銆乣ApplyCompressedParallelRemove`銆乣CreateCompressedParallelRuntime` 绛?compressed runtime dormant helper銆?
+- 鏂板 compressed lookup helper锛歚TryGetCompressedRuntimeEntity`銆乣RegisterCompressedRuntimeLookup`銆乣RemoveCompressedRuntimeLookup`銆?
+- 鏂板鍗曞眰 snapshot helper锛歚CreateCompressedLayerSnapshot`銆?
+- 鏂板 Append銆丷efreshEarliest銆丷efreshAll銆丷eplaceEarliestWhenFull銆丷emoveEarliest銆丷emoveLatest銆丆learAll 瀵瑰簲鐨?compressed helper銆?
 
-### 保持不变
+### 淇濇寔涓嶅彉
 
-- `ShouldUseCompressedParallel` 仍返回 false，`CompressedExpiryFrameList` 不会实际生效。
-- 未修改 `ApplyAddCommand` 或 `ApplyRemoveCommand`，compressed helper 不会被现有主流程调用。
-- 未接入 Tick、自然到期 Expire、TryGetBuff、GetBuffs 或 ViewData。
-- 未扩展 `BuffEffectRequest`，未修改 `BuffEffectContext` 或 public API。
-- 当前 EntityPerStack 行为不变。
+- `ShouldUseCompressedParallel` 浠嶈繑鍥?false锛宍CompressedExpiryFrameList` 涓嶄細瀹為檯鐢熸晥銆?
+- 鏈慨鏀?`ApplyAddCommand` 鎴?`ApplyRemoveCommand`锛宑ompressed helper 涓嶄細琚幇鏈変富娴佺▼璋冪敤銆?
+- 鏈帴鍏?Tick銆佽嚜鐒跺埌鏈?Expire銆乀ryGetBuff銆丟etBuffs 鎴?ViewData銆?
+- 鏈墿灞?`BuffEffectRequest`锛屾湭淇敼 `BuffEffectContext` 鎴?public API銆?
+- 褰撳墠 EntityPerStack 琛屼负涓嶅彉銆?
 
-### Replace Effect 顺序
+### Replace Effect 椤哄簭
 
-压缩 helper 中 ReplaceEarliestWhenFull 的状态变更按策略执行，但生命周期 Effect Flush 仍由 Phase 2A phaseOrder 决定。文档和测试不得假设同帧 Replace 中 Remove Effect 一定早于 Apply Effect。
+鍘嬬缉 helper 涓?ReplaceEarliestWhenFull 鐨勭姸鎬佸彉鏇存寜绛栫暐鎵ц锛屼絾鐢熷懡鍛ㄦ湡 Effect Flush 浠嶇敱 Phase 2A phaseOrder 鍐冲畾銆傛枃妗ｅ拰娴嬭瘯涓嶅緱鍋囪鍚屽抚 Replace 涓?Remove Effect 涓€瀹氭棭浜?Apply Effect銆?
 
 ## Phase 3C-1 - Compressed parallel preparation helpers
 
-### 新增
+### 鏂板
 
-- `BuffSystemCore` 新增 `_compressedRuntimeEntityByKey` lookup cache 字段，并只在清理路径中清空；本阶段不在主流程读写它。
-- 新增 `ShouldUseCompressedParallel`，本阶段保持返回 false，确保 `CompressedExpiryFrameList` 不会实际生效。
-- 新增 `IsCompressedParallelEligible`，规则为 parallel buff、`CompressedExpiryFrameList`、Tick 触发、非 Unlimited、`MaxStack <= CompressedParallelBuffLayerBuffer.Capacity`。
-- `CompressedParallelBuffLayerBuffer` 新增 `RemoveAt`、`FindEarliestIndex`、`FindLatestIndex`、`FindExpiredEarliestIndex`、`AppendLayer`、`RefreshLayer` helper。
+- `BuffSystemCore` 鏂板 `_compressedRuntimeEntityByKey` lookup cache 瀛楁锛屽苟鍙湪娓呯悊璺緞涓竻绌猴紱鏈樁娈典笉鍦ㄤ富娴佺▼璇诲啓瀹冦€?
+- 鏂板 `ShouldUseCompressedParallel`锛屾湰闃舵淇濇寔杩斿洖 false锛岀‘淇?`CompressedExpiryFrameList` 涓嶄細瀹為檯鐢熸晥銆?
+- 鏂板 `IsCompressedParallelEligible`锛岃鍒欎负 parallel buff銆乣CompressedExpiryFrameList`銆乀ick 瑙﹀彂銆侀潪 Unlimited銆乣MaxStack <= CompressedParallelBuffLayerBuffer.Capacity`銆?
+- `CompressedParallelBuffLayerBuffer` 鏂板 `RemoveAt`銆乣FindEarliestIndex`銆乣FindLatestIndex`銆乣FindExpiredEarliestIndex`銆乣AppendLayer`銆乣RefreshLayer` helper銆?
 
-### 保持不变
+### 淇濇寔涓嶅彉
 
-- 不接入 Add、Refresh、Remove、Tick、Query 或 EffectRequest 主流程。
-- 不扩展 `BuffEffectRequest` 或 `BuffEffectContext`。
-- 不修改 public BuffSystem API、`IBuffEffectExecutor` 或 `IBuffEventEffectExecutor<TEvent>`。
-- 当前 EntityPerStack 行为不变。
+- 涓嶆帴鍏?Add銆丷efresh銆丷emove銆乀ick銆丵uery 鎴?EffectRequest 涓绘祦绋嬨€?
+- 涓嶆墿灞?`BuffEffectRequest` 鎴?`BuffEffectContext`銆?
+- 涓嶄慨鏀?public BuffSystem API銆乣IBuffEffectExecutor` 鎴?`IBuffEventEffectExecutor<TEvent>`銆?
+- 褰撳墠 EntityPerStack 琛屼负涓嶅彉銆?
 
-### Tick / Expire 基准
+### Tick / Expire 鍩哄噯
 
-当前 EntityPerStack 的 `TickRuntimeBuffs` 顺序是先 Tick，再 Expire：先推进 `elapsedFrames` 并在满足间隔时 Queue `OnTick`，随后非永久 Buff 才扣减 `remainingFrames` 并处理自然到期。后续压缩模式正式接入时必须对齐该顺序。
+褰撳墠 EntityPerStack 鐨?`TickRuntimeBuffs` 椤哄簭鏄厛 Tick锛屽啀 Expire锛氬厛鎺ㄨ繘 `elapsedFrames` 骞跺湪婊¤冻闂撮殧鏃?Queue `OnTick`锛岄殢鍚庨潪姘镐箙 Buff 鎵嶆墸鍑?`remainingFrames` 骞跺鐞嗚嚜鐒跺埌鏈熴€傚悗缁帇缂╂ā寮忔寮忔帴鍏ユ椂蹇呴』瀵归綈璇ラ『搴忋€?
 
 ## Phase 3B - Parallel Buff compressed storage skeleton
 
-### 新增
+### 鏂板
 
-- 新增 `ParallelBuffStorageMode.EntityPerStack = 0`。
-- 新增 `ParallelBuffStorageMode.CompressedExpiryFrameList = 1`。
-- `BuffConfigData` 新增并行 Buff 存储模式配置字段，默认值为 `EntityPerStack`。
-- `BuffDefinition` 新增 `ParallelStorageMode` 只读字段，并通过构造函数尾部可选参数保持旧调用兼容。
-- 新增 `CompressedParallelBuffLayer`、`CompressedParallelBuffRuntimeComponent` 和固定容量值类型 `CompressedParallelBuffLayerBuffer`。
+- 鏂板 `ParallelBuffStorageMode.EntityPerStack = 0`銆?
+- 鏂板 `ParallelBuffStorageMode.CompressedExpiryFrameList = 1`銆?
+- `BuffConfigData` 鏂板骞惰 Buff 瀛樺偍妯″紡閰嶇疆瀛楁锛岄粯璁ゅ€间负 `EntityPerStack`銆?
+- `BuffDefinition` 鏂板 `ParallelStorageMode` 鍙瀛楁锛屽苟閫氳繃鏋勯€犲嚱鏁板熬閮ㄥ彲閫夊弬鏁颁繚鎸佹棫璋冪敤鍏煎銆?
+- 鏂板 `CompressedParallelBuffLayer`銆乣CompressedParallelBuffRuntimeComponent` 鍜屽浐瀹氬閲忓€肩被鍨?`CompressedParallelBuffLayerBuffer`銆?
 
-### 保持不变
+### 淇濇寔涓嶅彉
 
-- Phase 3B 不修改 `BuffSystemCore.cs`。
-- Phase 3B 不接入 Add、Refresh、Remove、Tick、Expire、TryGetBuff 或 GetBuffs 主流程。
-- 当前所有并行 Buff 仍走 EntityPerStack。
-- 即使配置选择 `CompressedExpiryFrameList`，当前运行时也不会启用压缩逻辑。
-- Phase 2A 生命周期 EffectRequest Pipeline 和事件型 Effect 热路径不变。
-- 不使用 `Time.time`、`Time.deltaTime`、`float expiry`、GameObject runtime、MonoBehaviour runtime 或 runtime ScriptableObject Effect。
+- Phase 3B 涓嶄慨鏀?`BuffSystemCore.cs`銆?
+- Phase 3B 涓嶆帴鍏?Add銆丷efresh銆丷emove銆乀ick銆丒xpire銆乀ryGetBuff 鎴?GetBuffs 涓绘祦绋嬨€?
+- 褰撳墠鎵€鏈夊苟琛?Buff 浠嶈蛋 EntityPerStack銆?
+- 鍗充娇閰嶇疆閫夋嫨 `CompressedExpiryFrameList`锛屽綋鍓嶈繍琛屾椂涔熶笉浼氬惎鐢ㄥ帇缂╅€昏緫銆?
+- Phase 2A 鐢熷懡鍛ㄦ湡 EffectRequest Pipeline 鍜屼簨浠跺瀷 Effect 鐑矾寰勪笉鍙樸€?
+- 涓嶄娇鐢?`Time.time`銆乣Time.deltaTime`銆乣float expiry`銆丟ameObject runtime銆丮onoBehaviour runtime 鎴?runtime ScriptableObject Effect銆?
 
-### 后续
+### 鍚庣画
 
-Phase 3C 才会单独设计 `CompressedExpiryFrameList` 如何接入 Add、Refresh、Remove、Expire、Query 与生命周期 EffectRequest Pipeline。
+Phase 3C 鎵嶄細鍗曠嫭璁捐 `CompressedExpiryFrameList` 濡備綍鎺ュ叆 Add銆丷efresh銆丷emove銆丒xpire銆丵uery 涓庣敓鍛藉懆鏈?EffectRequest Pipeline銆?
 
 ## Phase 2A - Lifecycle EffectRequest Pipeline
 
-### 新增
+### 鏂板
 
-- 生命周期 Effect 请求队列，覆盖 `Apply / Refresh / StackChanged / Tick / Remove`。
-- Remove 延迟物理销毁：Runtime 立即退出有效 Buff 语义，`OnRemove` Flush 后再 `DestroyEntity`。
-- 显式生命周期 phase order：`Apply=0, Refresh=1, StackChanged=2, Tick=3, Remove=4`。
+- 鐢熷懡鍛ㄦ湡 Effect 璇锋眰闃熷垪锛岃鐩?`Apply / Refresh / StackChanged / Tick / Remove`銆?
+- Remove 寤惰繜鐗╃悊閿€姣侊細Runtime 绔嬪嵆閫€鍑烘湁鏁?Buff 璇箟锛宍OnRemove` Flush 鍚庡啀 `DestroyEntity`銆?
+- 鏄惧紡鐢熷懡鍛ㄦ湡 phase order锛歚Apply=0, Refresh=1, StackChanged=2, Tick=3, Remove=4`銆?
 
-### 行为变化
+### 琛屼负鍙樺寲
 
-生命周期 Effect 由立即执行改为本帧末尾 Flush。排序规则统一为：
+鐢熷懡鍛ㄦ湡 Effect 鐢辩珛鍗虫墽琛屾敼涓烘湰甯ф湯灏?Flush銆傛帓搴忚鍒欑粺涓€涓猴細
 
 ```text
 frameNumber -> phaseOrder -> priority -> runtimeHandle -> Entity.ID -> Entity.Version -> sequence
 ```
 
-Flush 期间新增的 `AddBuff` / `RemoveBuff` 不递归处理，会进入 `_queuedCommands`，由下一次 `BuffSystemCore.Tick -> ConsumeQueuedCommands` 消费。
+Flush 鏈熼棿鏂板鐨?`AddBuff` / `RemoveBuff` 涓嶉€掑綊澶勭悊锛屼細杩涘叆 `_queuedCommands`锛岀敱涓嬩竴娆?`BuffSystemCore.Tick -> ConsumeQueuedCommands` 娑堣垂銆?
 
-### 保持不变
+### 淇濇寔涓嶅彉
 
-- `IBuffEffectExecutor` public API 不变。
-- `BuffEffectContext` public API 不变。
-- `IBuffEventEffectExecutor<TEvent>` 泛型事件热路径不变。
-- 不引入 `GameObject`、`MonoBehaviour`、`Time.time`、`Time.deltaTime` 或 runtime `ScriptableObject Effect`。
+- `IBuffEffectExecutor` public API 涓嶅彉銆?
+- `BuffEffectContext` public API 涓嶅彉銆?
+- `IBuffEventEffectExecutor<TEvent>` 娉涘瀷浜嬩欢鐑矾寰勪笉鍙樸€?
+- 涓嶅紩鍏?`GameObject`銆乣MonoBehaviour`銆乣Time.time`銆乣Time.deltaTime` 鎴?runtime `ScriptableObject Effect`銆?
 
 ## Phase 1.1 - Documentation strictness
 
-### 变更影响示例
+### 鍙樻洿褰卞搷绀轰緥
 
-`ResetDurationOnly` 用于重复添加时只刷新持续时间，不改变当前层数。下面的示例中，目标已有 2 层 Buff，再次添加 1 层后仍保持 2 层，但持续帧与 Tick 计数会重置。
+`ResetDurationOnly` 鐢ㄤ簬閲嶅娣诲姞鏃跺彧鍒锋柊鎸佺画鏃堕棿锛屼笉鏀瑰彉褰撳墠灞傛暟銆備笅闈㈢殑绀轰緥涓紝鐩爣宸叉湁 2 灞?Buff锛屽啀娆℃坊鍔?1 灞傚悗浠嶄繚鎸?2 灞傦紝浣嗘寔缁抚涓?Tick 璁℃暟浼氶噸缃€?
 
 ```csharp
 // before: stack = 2, remainingFrames = 40, elapsedFrames = 20, ticks = 1
@@ -1415,7 +1153,7 @@ buffSystem.AddBuff(new AddBuffCommand(target, configId: 1001, source, stack: 1))
 //        elapsedFrames = 0, ticks = 0
 ```
 
-`RefreshDuration` 保留旧的加层语义。重复添加时仍会按旧规则尝试增加层数，但刷新持续时间后会同步重置 Tick 计数，避免周期效果沿用刷新前的计时状态。
+`RefreshDuration` 淇濈暀鏃х殑鍔犲眰璇箟銆傞噸澶嶆坊鍔犳椂浠嶄細鎸夋棫瑙勫垯灏濊瘯澧炲姞灞傛暟锛屼絾鍒锋柊鎸佺画鏃堕棿鍚庝細鍚屾閲嶇疆 Tick 璁℃暟锛岄伩鍏嶅懆鏈熸晥鏋滄部鐢ㄥ埛鏂板墠鐨勮鏃剁姸鎬併€?
 
 ```csharp
 // before: stack = 1, elapsedFrames = 29, ticks = 0
@@ -1427,115 +1165,115 @@ buffSystem.AddBuff(new AddBuffCommand(target, configId: 1002, source, stack: 1))
 //        elapsedFrames = 0, ticks = 0
 ```
 
-普通 Buff 的部分减层行为本阶段暂未变更。当前 `RemoveBuffCommand` 只移除部分层数时，仍会保留既有行为：减少 stack 后将 `remainingFrames` 刷新为当前 `durationFrames`。如果后续要改成“减层不刷新剩余时间”，需要单独审核。
+鏅€?Buff 鐨勯儴鍒嗗噺灞傝涓烘湰闃舵鏆傛湭鍙樻洿銆傚綋鍓?`RemoveBuffCommand` 鍙Щ闄ら儴鍒嗗眰鏁版椂锛屼粛浼氫繚鐣欐棦鏈夎涓猴細鍑忓皯 stack 鍚庡皢 `remainingFrames` 鍒锋柊涓哄綋鍓?`durationFrames`銆傚鏋滃悗缁鏀规垚鈥滃噺灞備笉鍒锋柊鍓╀綑鏃堕棿鈥濓紝闇€瑕佸崟鐙鏍搞€?
 
 ## Phase 1 - Low-risk semantic fixes
 
-### 新增
+### 鏂板
 
-- 新增 `NormalBuffStackPolicy.ResetDurationOnly = 5`。
-- 新增标准文档集合，用于记录 API、叠层策略、Effect、事件、并行 Buff、迁移说明、样例和变更历史。
+- 鏂板 `NormalBuffStackPolicy.ResetDurationOnly = 5`銆?
+- 鏂板鏍囧噯鏂囨。闆嗗悎锛岀敤浜庤褰?API銆佸彔灞傜瓥鐣ャ€丒ffect銆佷簨浠躲€佸苟琛?Buff銆佽縼绉昏鏄庛€佹牱渚嬪拰鍙樻洿鍘嗗彶銆?
 
-### 行为变化
+### 琛屼负鍙樺寲
 
-- `ResetDurationOnly` 重复添加时不改变当前层数，只重置持续时间与 Tick 计数。
-- `RefreshDuration` 刷新持续时间时，现在同步重置 `elapsedFrames` 和 `ticks`。
-- `AddStackAndRefreshDuration` 刷新持续时间时，现在同步重置 `elapsedFrames` 和 `ticks`。
-- 并行 Buff 的 `RefreshEarliest` 和 `RefreshAll` 刷新层持续时间时，现在同步重置该层 `elapsedFrames` 和 `ticks`。
+- `ResetDurationOnly` 閲嶅娣诲姞鏃朵笉鏀瑰彉褰撳墠灞傛暟锛屽彧閲嶇疆鎸佺画鏃堕棿涓?Tick 璁℃暟銆?
+- `RefreshDuration` 鍒锋柊鎸佺画鏃堕棿鏃讹紝鐜板湪鍚屾閲嶇疆 `elapsedFrames` 鍜?`ticks`銆?
+- `AddStackAndRefreshDuration` 鍒锋柊鎸佺画鏃堕棿鏃讹紝鐜板湪鍚屾閲嶇疆 `elapsedFrames` 鍜?`ticks`銆?
+- 骞惰 Buff 鐨?`RefreshEarliest` 鍜?`RefreshAll` 鍒锋柊灞傛寔缁椂闂存椂锛岀幇鍦ㄥ悓姝ラ噸缃灞?`elapsedFrames` 鍜?`ticks`銆?
 
-### 保持不变
+### 淇濇寔涓嶅彉
 
-- 旧枚举值顺序和整数值保持不变。
-- `RefreshDuration` 是否加层的旧语义保持不变。
-- `RemoveBuffCommand` 的普通 Buff 部分减层语义保持不变。
-- ViewCache dirty 行为保持默认安全路径；本阶段只为 `WriteRuntimeComponent` 预留 `markViewDirty` 参数，现有调用默认仍标记 dirty。
+- 鏃ф灇涓惧€奸『搴忓拰鏁存暟鍊间繚鎸佷笉鍙樸€?
+- `RefreshDuration` 鏄惁鍔犲眰鐨勬棫璇箟淇濇寔涓嶅彉銆?
+- `RemoveBuffCommand` 鐨勬櫘閫?Buff 閮ㄥ垎鍑忓眰璇箟淇濇寔涓嶅彉銆?
+- ViewCache dirty 琛屼负淇濇寔榛樿瀹夊叏璺緞锛涙湰闃舵鍙负 `WriteRuntimeComponent` 棰勭暀 `markViewDirty` 鍙傛暟锛岀幇鏈夎皟鐢ㄩ粯璁や粛鏍囪 dirty銆?
 
-### 禁止项自查
+### 绂佹椤硅嚜鏌?
 
-- 未引入 `GameObject` 运行时依赖。
-- 未引入 `MonoBehaviour` 运行时依赖。
-- 未引入 `Time.time` 或 `Time.deltaTime`。
-- 未引入 `ScriptableObject` runtime effect。
+- 鏈紩鍏?`GameObject` 杩愯鏃朵緷璧栥€?
+- 鏈紩鍏?`MonoBehaviour` 杩愯鏃朵緷璧栥€?
+- 鏈紩鍏?`Time.time` 鎴?`Time.deltaTime`銆?
+- 鏈紩鍏?`ScriptableObject` runtime effect銆?
 
-### 迁移说明
+### 杩佺Щ璇存槑
 
-FrameWork2 的 `ResetRuntimeBuffStackUpStrategy` 迁移为第一套 ECS BuffSystem 的 `NormalBuffStackPolicy.ResetDurationOnly`。迁移后使用固定帧字段 `elapsedFrames`、`ticks` 和 `remainingFrames` 表达刷新语义。
+FrameWork2 鐨?`ResetRuntimeBuffStackUpStrategy` 杩佺Щ涓虹涓€濂?ECS BuffSystem 鐨?`NormalBuffStackPolicy.ResetDurationOnly`銆傝縼绉诲悗浣跨敤鍥哄畾甯у瓧娈?`elapsedFrames`銆乣ticks` 鍜?`remainingFrames` 琛ㄨ揪鍒锋柊璇箟銆?
 
 ## Phase 3F-4C - Compressed Parallel Validation Runner V1
 
-### 新增
+### 鏂板
 
-- 新增 `BuffSystemCompressedParallelValidationRunner` Unity Editor 手动验证脚本。
-- Runner 使用 `BuffSystemCore.CreateForCompressedParallelValidation(definitionRegistry, effectRegistry)` 创建 gate=true 测试实例，不使用反射，不新增 public gate 入口。
+- 鏂板 `BuffSystemCompressedParallelValidationRunner` Unity Editor 鎵嬪姩楠岃瘉鑴氭湰銆?
+- Runner 浣跨敤 `BuffSystemCore.CreateForCompressedParallelValidation(definitionRegistry, effectRegistry)` 鍒涘缓 gate=true 娴嬭瘯瀹炰緥锛屼笉浣跨敤鍙嶅皠锛屼笉鏂板 public gate 鍏ュ彛銆?
 
-### 覆盖范围
+### 瑕嗙洊鑼冨洿
 
-- gate=true + `CompressedExpiryFrameList` 的基础 Append 路径。
-- Append 多层后的聚合 ViewData：`Stack`、`RemainingFrames`、`RuntimeHandle`。
-- `EventTrigger`、`Unlimited`、`MaxStack > CompressedParallelBuffLayerBuffer.Capacity` fallback 到 `EntityPerStack`。
-- gate=false 默认构造路径回归：即使配置 `CompressedExpiryFrameList`，仍走 `EntityPerStack`。
+- gate=true + `CompressedExpiryFrameList` 鐨勫熀纭€ Append 璺緞銆?
+- Append 澶氬眰鍚庣殑鑱氬悎 ViewData锛歚Stack`銆乣RemainingFrames`銆乣RuntimeHandle`銆?
+- `EventTrigger`銆乣Unlimited`銆乣MaxStack > CompressedParallelBuffLayerBuffer.Capacity` fallback 鍒?`EntityPerStack`銆?
+- gate=false 榛樿鏋勯€犺矾寰勫洖褰掞細鍗充娇閰嶇疆 `CompressedExpiryFrameList`锛屼粛璧?`EntityPerStack`銆?
 
-### 暂未覆盖
+### 鏆傛湭瑕嗙洊
 
-- `RefreshEarliest`、`RefreshAll`、`ReplaceEarliestWhenFull`。
-- `RemoveEarliest`、`RemoveLatest`、`ClearAll`。
-- Tick / Expire。
-- PendingRemove / Destroy。
-- duration / forever 混合内部状态。
+- `RefreshEarliest`銆乣RefreshAll`銆乣ReplaceEarliestWhenFull`銆?
+- `RemoveEarliest`銆乣RemoveLatest`銆乣ClearAll`銆?
+- Tick / Expire銆?
+- PendingRemove / Destroy銆?
+- duration / forever 娣峰悎鍐呴儴鐘舵€併€?
 
-### 保持不变
+### 淇濇寔涓嶅彉
 
-- 正式运行时默认 gate 仍关闭。
-- public API 和 public 构造函数不变。
-- `EntityPerStack` 默认路径不变。
-- 事件型 Effect 热路径不变。
+- 姝ｅ紡杩愯鏃堕粯璁?gate 浠嶅叧闂€?
+- public API 鍜?public 鏋勯€犲嚱鏁颁笉鍙樸€?
+- `EntityPerStack` 榛樿璺緞涓嶅彉銆?
+- 浜嬩欢鍨?Effect 鐑矾寰勪笉鍙樸€?
 
 ## Phase 3F-4D - Compressed Parallel Validation Runner V2
 
-### 新增
+### 鏂板
 
-- 在 `BuffSystemCompressedParallelValidationRunner` 中追加 Refresh / Remove policy 验证。
-- 新增 `RefreshEarliest`、`RefreshAll`、`RemoveEarliest`、`RemoveLatest`、`ClearAll` 测试组。
+- 鍦?`BuffSystemCompressedParallelValidationRunner` 涓拷鍔?Refresh / Remove policy 楠岃瘉銆?
+- 鏂板 `RefreshEarliest`銆乣RefreshAll`銆乣RemoveEarliest`銆乣RemoveLatest`銆乣ClearAll` 娴嬭瘯缁勩€?
 
-### 覆盖范围
+### 瑕嗙洊鑼冨洿
 
-- `RefreshEarliest` 只刷新最早层，并验证 `layerId / layerRuntimeHandle` 保持不变。
-- `RefreshAll` 刷新所有已有层，并验证 `ViewData.Stack` 不变。
-- `RemoveEarliest` 移除最早层后，剩余层仍可查询。
-- `RemoveLatest` 移除最新层后，剩余层仍可查询。
-- `ClearAll` 后 public 查询不再显示该 Buff。
-- gate=false 默认构造路径仍回归验证为 `EntityPerStack`。
+- `RefreshEarliest` 鍙埛鏂版渶鏃╁眰锛屽苟楠岃瘉 `layerId / layerRuntimeHandle` 淇濇寔涓嶅彉銆?
+- `RefreshAll` 鍒锋柊鎵€鏈夊凡鏈夊眰锛屽苟楠岃瘉 `ViewData.Stack` 涓嶅彉銆?
+- `RemoveEarliest` 绉婚櫎鏈€鏃╁眰鍚庯紝鍓╀綑灞備粛鍙煡璇€?
+- `RemoveLatest` 绉婚櫎鏈€鏂板眰鍚庯紝鍓╀綑灞備粛鍙煡璇€?
+- `ClearAll` 鍚?public 鏌ヨ涓嶅啀鏄剧ず璇?Buff銆?
+- gate=false 榛樿鏋勯€犺矾寰勪粛鍥炲綊楠岃瘉涓?`EntityPerStack`銆?
 
-### 暂未覆盖
+### 鏆傛湭瑕嗙洊
 
-- Tick / Expire。
-- PendingRemove / Destroy 深度验证。
-- `ReplaceEarliestWhenFull`。
-- duration / forever 混合内部状态。
+- Tick / Expire銆?
+- PendingRemove / Destroy 娣卞害楠岃瘉銆?
+- `ReplaceEarliestWhenFull`銆?
+- duration / forever 娣峰悎鍐呴儴鐘舵€併€?
 
-### 保持不变
+### 淇濇寔涓嶅彉
 
-- 未修改 `BuffSystemCore.cs`。
-- 未修改 public API 或 public 构造函数。
-- 未修改正式运行时默认 gate。
-- 未修改事件型 Effect 热路径。
+- 鏈慨鏀?`BuffSystemCore.cs`銆?
+- 鏈慨鏀?public API 鎴?public 鏋勯€犲嚱鏁般€?
+- 鏈慨鏀规寮忚繍琛屾椂榛樿 gate銆?
+- 鏈慨鏀逛簨浠跺瀷 Effect 鐑矾寰勩€?
 
 ## Phase 3F-8 - Compressed Parallel Docs Consolidation
 
-### 新增
+### 鏂板
 
-- 收敛 `CompressedExpiryFrameList` 正式启用前工程说明。
-- 在 ParallelBuff、API、EffectPipeline、Examples、Migration 和 Changelog 文档中补充 compressed parallel 当前状态、gate 限制、验证结果和风险项。
+- 鏀舵暃 `CompressedExpiryFrameList` 姝ｅ紡鍚敤鍓嶅伐绋嬭鏄庛€?
+- 鍦?ParallelBuff銆丄PI銆丒ffectPipeline銆丒xamples銆丮igration 鍜?Changelog 鏂囨。涓ˉ鍏?compressed parallel 褰撳墠鐘舵€併€乬ate 闄愬埗銆侀獙璇佺粨鏋滃拰椋庨櫓椤广€?
 
-### 当前状态
+### 褰撳墠鐘舵€?
 
-- 正式 public constructor 路径 gate 默认关闭。
-- 正式运行时仍默认 `EntityPerStack`。
-- `CreateForCompressedParallelValidation(...)` 是 internal test-only factory，只供 validation runner 使用。
-- Phase 3G 前不建议业务代码直接使用 validation factory。
-- Phase 3G 前不建议全项目直接打开 compressed gate。
+- 姝ｅ紡 public constructor 璺緞 gate 榛樿鍏抽棴銆?
+- 姝ｅ紡杩愯鏃朵粛榛樿 `EntityPerStack`銆?
+- `CreateForCompressedParallelValidation(...)` 鏄?internal test-only factory锛屽彧渚?validation runner 浣跨敤銆?
+- Phase 3G 鍓嶄笉寤鸿涓氬姟浠ｇ爜鐩存帴浣跨敤 validation factory銆?
+- Phase 3G 鍓嶄笉寤鸿鍏ㄩ」鐩洿鎺ユ墦寮€ compressed gate銆?
 
-### eligibility 条件
+### eligibility 鏉′欢
 
 ```text
 BuffType == parallel
@@ -1546,21 +1284,21 @@ MaxStack <= CompressedParallelBuffLayerBuffer.Capacity
 compressed gate == enabled
 ```
 
-### fallback 条件
+### fallback 鏉′欢
 
 ```text
 gate=false
 EventTrigger parallel buff
 Unlimited == true
 MaxStack > CompressedParallelBuffLayerBuffer.Capacity
-任何不满足 eligibility 的配置
+浠讳綍涓嶆弧瓒?eligibility 鐨勯厤缃?
 ```
 
-fallback 后仍走 `EntityPerStack`。
+fallback 鍚庝粛璧?`EntityPerStack`銆?
 
-### 口径说明
+### 鍙ｅ緞璇存槑
 
-ViewData 口径：
+ViewData 鍙ｅ緞锛?
 
 ```text
 Stack = active layerCount
@@ -1569,7 +1307,7 @@ forever RemainingFrames = -1
 RuntimeHandle = min(active layerRuntimeHandle)
 ```
 
-Tick / Effect snapshot 口径：
+Tick / Effect snapshot 鍙ｅ緞锛?
 
 ```text
 Tick snapshot RemainingFrames = expireFrame - currentFrame + 1
@@ -1577,55 +1315,55 @@ Remove snapshot RemainingFrames = 0
 forever snapshot remainingFrames = 0
 ```
 
-ViewData 口径和 Tick snapshot 口径不能混用。
+ViewData 鍙ｅ緞鍜?Tick snapshot 鍙ｅ緞涓嶈兘娣风敤銆?
 
-### PendingRemove / Replace 说明
+### PendingRemove / Replace 璇存槑
 
-- 最后一层 Remove / Expire / ClearAll 后，compressed runtime container 进入 pending remove。
-- pending remove 使用 `compressedRuntimeHandle`。
-- container pending remove 不额外触发聚合 Remove Effect。
-- layer Remove 使用 `layerRuntimeHandle`。
-- pending remove 后 `TryGetBuff / GetBuffs` 不显示。
-- Destroy 前 defensive 清理 `_compressedRuntimeEntityByKey`。
-- `ReplaceEarliestWhenFull` 未满层时 Append，满层时移除最早层并追加新层。
-- Replace 新层生成新的 `layerId / layerRuntimeHandle`，未替换层 identity 保持。
-- 不假设 Remove callback 一定早于 Apply callback；Effect Flush 顺序仍由 Phase 2A phaseOrder 决定。
+- 鏈€鍚庝竴灞?Remove / Expire / ClearAll 鍚庯紝compressed runtime container 杩涘叆 pending remove銆?
+- pending remove 浣跨敤 `compressedRuntimeHandle`銆?
+- container pending remove 涓嶉澶栬Е鍙戣仛鍚?Remove Effect銆?
+- layer Remove 浣跨敤 `layerRuntimeHandle`銆?
+- pending remove 鍚?`TryGetBuff / GetBuffs` 涓嶆樉绀恒€?
+- Destroy 鍓?defensive 娓呯悊 `_compressedRuntimeEntityByKey`銆?
+- `ReplaceEarliestWhenFull` 鏈弧灞傛椂 Append锛屾弧灞傛椂绉婚櫎鏈€鏃╁眰骞惰拷鍔犳柊灞傘€?
+- Replace 鏂板眰鐢熸垚鏂扮殑 `layerId / layerRuntimeHandle`锛屾湭鏇挎崲灞?identity 淇濇寔銆?
+- 涓嶅亣璁?Remove callback 涓€瀹氭棭浜?Apply callback锛汦ffect Flush 椤哄簭浠嶇敱 Phase 2A phaseOrder 鍐冲畾銆?
 
-### 已验证清单
+### 宸查獙璇佹竻鍗?
 
-- Append / ViewData / fallback / gate=false。
-- RefreshEarliest / RefreshAll。
-- RemoveEarliest / RemoveLatest / ClearAll。
-- duration=1 / duration=2 Tick + Expire。
-- forever layer。
-- PendingRemove / Destroy。
-- compressed lookup cleanup。
-- Query 只读语义。
-- ReplaceEarliestWhenFull。
-- `MaxStack == CompressedParallelBuffLayerBuffer.Capacity`。
-- Phase 2A Runner 回归 PASS。
-- Compressed Parallel Validation V1/V2/V3/V4 PASS。
+- Append / ViewData / fallback / gate=false銆?
+- RefreshEarliest / RefreshAll銆?
+- RemoveEarliest / RemoveLatest / ClearAll銆?
+- duration=1 / duration=2 Tick + Expire銆?
+- forever layer銆?
+- PendingRemove / Destroy銆?
+- compressed lookup cleanup銆?
+- Query 鍙璇箟銆?
+- ReplaceEarliestWhenFull銆?
+- `MaxStack == CompressedParallelBuffLayerBuffer.Capacity`銆?
+- Phase 2A Runner 鍥炲綊 PASS銆?
+- Compressed Parallel Validation V1/V2/V3/V4 PASS銆?
 
-### 未覆盖 / 风险项
+### 鏈鐩?/ 椋庨櫓椤?
 
-- mixed duration / forever internal-state 尚未专项验证。
-- 性能测试尚未完成。
-- 回滚快照验证尚未完成。
-- 正式启用前仍需 Phase 3G 小范围开启策略。
-- 不建议直接全项目打开 compressed gate。
+- mixed duration / forever internal-state 灏氭湭涓撻」楠岃瘉銆?
+- 鎬ц兘娴嬭瘯灏氭湭瀹屾垚銆?
+- 鍥炴粴蹇収楠岃瘉灏氭湭瀹屾垚銆?
+- 姝ｅ紡鍚敤鍓嶄粛闇€ Phase 3G 灏忚寖鍥村紑鍚瓥鐣ャ€?
+- 涓嶅缓璁洿鎺ュ叏椤圭洰鎵撳紑 compressed gate銆?
 
-### 后续
+### 鍚庣画
 
-- Phase 3G：小范围正式启用 eligible Tick 型 parallel buff。
-- Phase 3H：性能对比、回滚快照验证、行为一致性验证。
-- Phase 3I：评估是否扩大到更多 parallel buff 类型。
+- Phase 3G锛氬皬鑼冨洿姝ｅ紡鍚敤 eligible Tick 鍨?parallel buff銆?
+- Phase 3H锛氭€ц兘瀵规瘮銆佸洖婊氬揩鐓ч獙璇併€佽涓轰竴鑷存€ч獙璇併€?
+- Phase 3I锛氳瘎浼版槸鍚︽墿澶у埌鏇村 parallel buff 绫诲瀷銆?
 
 ## Phase 3G-1 - Compressed whitelist gate skeleton
 
-### 新增
+### 鏂板
 
-- 在 compressed global gate 和 eligibility 之间新增 configId whitelist 门禁。
-- `ShouldUseCompressedParallel` 现在必须同时满足：
+- 鍦?compressed global gate 鍜?eligibility 涔嬮棿鏂板 configId whitelist 闂ㄧ銆?
+- `ShouldUseCompressedParallel` 鐜板湪蹇呴』鍚屾椂婊¤冻锛?
 
 ```text
 _enableCompressedParallelRuntime
@@ -1633,85 +1371,85 @@ _enableCompressedParallelRuntime
 && IsCompressedParallelEligible(definition)
 ```
 
-### 生产默认行为
+### 鐢熶骇榛樿琛屼负
 
-- public constructor 仍为 gate=false。
-- public constructor 的 whitelist 为空。
-- 不启用任何生产 Buff。
-- 所有生产 Buff 默认仍走 `EntityPerStack`。
-- 非白名单 Buff 即使 eligible，也 fallback 到 `EntityPerStack`。
+- public constructor 浠嶄负 gate=false銆?
+- public constructor 鐨?whitelist 涓虹┖銆?
+- 涓嶅惎鐢ㄤ换浣曠敓浜?Buff銆?
+- 鎵€鏈夌敓浜?Buff 榛樿浠嶈蛋 `EntityPerStack`銆?
+- 闈炵櫧鍚嶅崟 Buff 鍗充娇 eligible锛屼篃 fallback 鍒?`EntityPerStack`銆?
 
 ### validation runner
 
-- `CreateForCompressedParallelValidation(...)` 保持 internal test-only。
-- validation factory 使用测试白名单，仅覆盖 `BuffSystemCompressedParallelValidationRunner` 当前测试 configId。
-- Runner 仍可验证 compressed path。
+- `CreateForCompressedParallelValidation(...)` 淇濇寔 internal test-only銆?
+- validation factory 浣跨敤娴嬭瘯鐧藉悕鍗曪紝浠呰鐩?`BuffSystemCompressedParallelValidationRunner` 褰撳墠娴嬭瘯 configId銆?
+- Runner 浠嶅彲楠岃瘉 compressed path銆?
 
-### 保持不变
+### 淇濇寔涓嶅彉
 
-- 未修改 public API。
-- 未修改 public constructor 签名。
-- 未修改 `BuffConfigData`。
-- 未修改 `BuffDefinition` public 字段。
-- 未修改事件型 Effect 热路径。
-- Phase 3G-2 才会单独选择第一个生产试点 configId。
+- 鏈慨鏀?public API銆?
+- 鏈慨鏀?public constructor 绛惧悕銆?
+- 鏈慨鏀?`BuffConfigData`銆?
+- 鏈慨鏀?`BuffDefinition` public 瀛楁銆?
+- 鏈慨鏀逛簨浠跺瀷 Effect 鐑矾寰勩€?
+- Phase 3G-2 鎵嶄細鍗曠嫭閫夋嫨绗竴涓敓浜ц瘯鐐?configId銆?
 
 ## Phase 3F-4F - Compressed Parallel Validation Runner V4
 
-### 新增
+### 鏂板
 
-- 在 `BuffSystemCompressedParallelValidationRunner` 中追加 `ReplaceEarliestWhenFull` 与 capacity 边界验证。
+- 鍦?`BuffSystemCompressedParallelValidationRunner` 涓拷鍔?`ReplaceEarliestWhenFull` 涓?capacity 杈圭晫楠岃瘉銆?
 
-### 覆盖范围
+### 瑕嗙洊鑼冨洿
 
-- `ReplaceEarliestWhenFull` 未满层时追加新层，不替换旧层。
-- `ReplaceEarliestWhenFull` 满层时移除最早层并追加新层，最终 `layerCount` 保持 `MaxStack`。
-- Replace 后记录并验证 layer identity：被替换层消失，未替换层保持，新层生成新的 `layerId / layerRuntimeHandle`。
-- Replace 后 public 查询仍只有一个 aggregate ViewData。
-- Replace Effect 只验证必要 `Apply / Remove` 存在，不假设 Remove 一定早于 Apply。
-- `MaxStack == CompressedParallelBuffLayerBuffer.Capacity` 仍走 compressed runtime。
+- `ReplaceEarliestWhenFull` 鏈弧灞傛椂杩藉姞鏂板眰锛屼笉鏇挎崲鏃у眰銆?
+- `ReplaceEarliestWhenFull` 婊″眰鏃剁Щ闄ゆ渶鏃╁眰骞惰拷鍔犳柊灞傦紝鏈€缁?`layerCount` 淇濇寔 `MaxStack`銆?
+- Replace 鍚庤褰曞苟楠岃瘉 layer identity锛氳鏇挎崲灞傛秷澶憋紝鏈浛鎹㈠眰淇濇寔锛屾柊灞傜敓鎴愭柊鐨?`layerId / layerRuntimeHandle`銆?
+- Replace 鍚?public 鏌ヨ浠嶅彧鏈変竴涓?aggregate ViewData銆?
+- Replace Effect 鍙獙璇佸繀瑕?`Apply / Remove` 瀛樺湪锛屼笉鍋囪 Remove 涓€瀹氭棭浜?Apply銆?
+- `MaxStack == CompressedParallelBuffLayerBuffer.Capacity` 浠嶈蛋 compressed runtime銆?
 
-### 暂未覆盖
+### 鏆傛湭瑕嗙洊
 
-- duration / forever 混合内部状态。
-- 性能测试。
-- 回滚快照测试。
+- duration / forever 娣峰悎鍐呴儴鐘舵€併€?
+- 鎬ц兘娴嬭瘯銆?
+- 鍥炴粴蹇収娴嬭瘯銆?
 
-### 保持不变
+### 淇濇寔涓嶅彉
 
-- 未修改 `BuffSystemCore.cs`。
-- 未修改 public API 或 public 构造函数。
-- 未修改正式运行时默认 gate。
-- 未修改事件型 Effect 热路径。
+- 鏈慨鏀?`BuffSystemCore.cs`銆?
+- 鏈慨鏀?public API 鎴?public 鏋勯€犲嚱鏁般€?
+- 鏈慨鏀规寮忚繍琛屾椂榛樿 gate銆?
+- 鏈慨鏀逛簨浠跺瀷 Effect 鐑矾寰勩€?
 
 ## Phase 3F-4E - Compressed Parallel Validation Runner V3
 
-### 新增
+### 鏂板
 
-- 在 `BuffSystemCompressedParallelValidationRunner` 中追加 Tick / Expire / PendingRemove / Destroy 深度验证。
-- 新增 `durationFrames = 1`、`durationFrames = 2`、forever compressed layer 测试组。
+- 鍦?`BuffSystemCompressedParallelValidationRunner` 涓拷鍔?Tick / Expire / PendingRemove / Destroy 娣卞害楠岃瘉銆?
+- 鏂板 `durationFrames = 1`銆乣durationFrames = 2`銆乫orever compressed layer 娴嬭瘯缁勩€?
 
-### 覆盖范围
+### 瑕嗙洊鑼冨洿
 
-- `durationFrames = 1`：F1 Apply，F2 Tick，同帧 Remove。
-- `durationFrames = 2`：F2 Tick 不 Remove，F3 Tick 后同帧 Remove。
-- Tick snapshot `RemainingFrames` 使用 `expireFrame - currentFrame + 1`。
-- Remove snapshot `RemainingFrames = 0`。
-- forever layer 可 Tick，不自然 Expire；ViewData `RemainingFrames = -1`。
-- 最后一层 Expire 后，`OnRemove` 中 public 查询不可见。
-- Destroy 后 compressed runtime 不再存在，并且同配置可重新 Add，验证 lookup 清理。
-- 不额外触发 compressed runtime container 聚合 Remove Effect。
+- `durationFrames = 1`锛欶1 Apply锛孎2 Tick锛屽悓甯?Remove銆?
+- `durationFrames = 2`锛欶2 Tick 涓?Remove锛孎3 Tick 鍚庡悓甯?Remove銆?
+- Tick snapshot `RemainingFrames` 浣跨敤 `expireFrame - currentFrame + 1`銆?
+- Remove snapshot `RemainingFrames = 0`銆?
+- forever layer 鍙?Tick锛屼笉鑷劧 Expire锛沄iewData `RemainingFrames = -1`銆?
+- 鏈€鍚庝竴灞?Expire 鍚庯紝`OnRemove` 涓?public 鏌ヨ涓嶅彲瑙併€?
+- Destroy 鍚?compressed runtime 涓嶅啀瀛樺湪锛屽苟涓斿悓閰嶇疆鍙噸鏂?Add锛岄獙璇?lookup 娓呯悊銆?
+- 涓嶉澶栬Е鍙?compressed runtime container 鑱氬悎 Remove Effect銆?
 
-### 暂未覆盖
+### 鏆傛湭瑕嗙洊
 
-- `ReplaceEarliestWhenFull`。
-- duration / forever 混合内部状态。
-- 性能测试。
-- 回滚快照测试。
+- `ReplaceEarliestWhenFull`銆?
+- duration / forever 娣峰悎鍐呴儴鐘舵€併€?
+- 鎬ц兘娴嬭瘯銆?
+- 鍥炴粴蹇収娴嬭瘯銆?
 
-### 保持不变
+### 淇濇寔涓嶅彉
 
-- 未修改 `BuffSystemCore.cs`。
-- 未修改 public API 或 public 构造函数。
-- 未修改正式运行时默认 gate。
-- 未修改事件型 Effect 热路径。
+- 鏈慨鏀?`BuffSystemCore.cs`銆?
+- 鏈慨鏀?public API 鎴?public 鏋勯€犲嚱鏁般€?
+- 鏈慨鏀规寮忚繍琛屾椂榛樿 gate銆?
+- 鏈慨鏀逛簨浠跺瀷 Effect 鐑矾寰勩€?

@@ -1,0 +1,18 @@
+﻿{
+    "version": 1,
+    "nextBuffConfigId": 100001,
+    "nextEffectId": 200002,
+    "buffs": [],
+    "effects": [
+        {
+            "effectId": 200001,
+            "effectName": "NewBuffCandidateGraph_1Effect",
+            "className": "NewBuffCandidateGraph_1Effect",
+            "scriptPath": "Assets/_Scripts/FrameWork/BuffSystem/Effects/Generated/NewBuffCandidateGraph_1Effect.cs",
+            "graphGuid": "2669906cb8c22fe408bd3cddbd205275",
+            "status": "Generated",
+            "createdAt": "2026-06-28T15:33:53.4983131Z",
+            "updatedAt": "2026-06-28T15:33:53.4983131Z"
+        }
+    ]
+}

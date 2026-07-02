@@ -97,6 +97,135 @@ namespace BuffSystem.Editor.AuthoringGraphs
         }
     }
 
+    [NodeEditor.CustomNodeEditor(typeof(BuffRootNode))]
+    internal sealed class BuffRootNodeEditor : BuffCandidateNodeEditorBase
+    {
+        protected override string HeaderTitle => "旧 Buff 根 / Legacy Root";
+        protected override int NodeWidth => 280;
+
+        public override void OnBodyGUI()
+        {
+            EditorGUILayout.HelpBox("兼容旧图使用。新图请优先使用 Candidate Start + Effect Composition Root；Effects 连接只表示成员关系，不表示顺序。", MessageType.Warning);
+            DrawCandidateBody(
+                Field("ConfigId", "配置 ID"),
+                Field("BuffName", "Buff 名称"),
+                Field("Description", "描述"),
+                Field("Owner", "负责人"),
+                Field("Notes", "备注"),
+                Field("Effects", "Effects"));
+        }
+    }
+
+    [NodeEditor.CustomNodeEditor(typeof(EffectCompositionRootNode))]
+    internal sealed class EffectCompositionRootNodeEditor : BuffCandidateNodeEditorBase
+    {
+        protected override string HeaderTitle => "Effect 组合根 / Composition";
+        protected override int NodeWidth => 320;
+
+        public override void OnBodyGUI()
+        {
+            EditorGUILayout.HelpBox("推荐的新 Effect 组合入口。Effects 连接表示成员关系；显式顺序使用 EffectNode.Next，否则使用 ExecutionOrder。", MessageType.Info);
+            DrawCandidateBody(
+                Field("Candidate", "候选入口"),
+                Section("最终 Effect"),
+                Field("FinalEffectId", "最终 Effect ID"),
+                Field("FinalEffectName", "最终 Effect 名称"),
+                Field("FinalEffectClassName", "最终 Effect 类名"),
+                Field("CompositionMode", "组合模式"),
+                Field("Owner", "负责人"),
+                Field("Description", "描述"),
+                Field("Notes", "备注"),
+                Field("Effects", "Effects"));
+        }
+    }
+
+    [NodeEditor.CustomNodeEditor(typeof(EffectNode))]
+    internal sealed class EffectNodeEditor : BuffCandidateNodeEditorBase
+    {
+        protected override string HeaderTitle => "Effect 节点";
+        protected override int NodeWidth => 320;
+
+        public override void OnBodyGUI()
+        {
+            DrawCandidateBody(
+                Field("Previous", "Buff / 上一步"),
+                Section("Effect 信息"),
+                Field("EffectId", "Effect ID"),
+                Field("EffectName", "Effect 名称"),
+                Field("EffectClassName", "Effect 类名"),
+                Field("ExecutionOrder", "执行顺序"),
+                Field("Description", "描述"),
+                Field("Notes", "备注"),
+                Section("生命周期"),
+                Field("OnApply", "OnApply"),
+                Field("OnTick", "OnTick"),
+                Field("OnRemove", "OnRemove"),
+                Field("OnRefresh", "OnRefresh"),
+                Field("OnStackChanged", "OnStackChanged"),
+                Field("Next", "Next"));
+        }
+    }
+
+    [NodeEditor.CustomNodeEditor(typeof(EmptyActionPlaceholderNode))]
+    internal sealed class EmptyActionPlaceholderNodeEditor : BuffCandidateNodeEditorBase
+    {
+        protected override string HeaderTitle => "已废弃占位 / Deprecated";
+        protected override int NodeWidth => 260;
+
+        public override void OnBodyGUI()
+        {
+            EditorGUILayout.HelpBox("该占位节点已废弃，只保留兼容旧图；不会生成可运行调用。请改用 ScriptActionNode。", MessageType.Warning);
+            DrawCandidateBody(
+                Field("Previous", "上一步"),
+                Field("ActionName", "Action 名称"),
+                Field("Description", "描述"),
+                Field("Todo", "TODO"),
+                Field("Next", "下一步"));
+        }
+    }
+
+    [NodeEditor.CustomNodeEditor(typeof(ScriptActionNode))]
+    internal sealed class ScriptActionNodeEditor : BuffCandidateNodeEditorBase
+    {
+        protected override string HeaderTitle => "功能节点 / Script Action";
+        protected override int NodeWidth => 320;
+
+        public override void OnBodyGUI()
+        {
+            serializedObject.Update();
+
+            float previousLabelWidth = EditorGUIUtility.labelWidth;
+            EditorGUIUtility.labelWidth = 108f;
+
+            NodeEditorGUILayout.PropertyField(serializedObject.FindProperty("Previous"), new GUIContent("上一步"), true);
+            EditorGUILayout.Space(2f);
+            EditorGUILayout.LabelField("脚本", EditorStyles.boldLabel);
+            NodeEditorGUILayout.PropertyField(serializedObject.FindProperty("ActionName"), new GUIContent("Action 名称"), true);
+            NodeEditorGUILayout.PropertyField(serializedObject.FindProperty("ActionScript"), new GUIContent("Action 脚本"), true);
+            NodeEditorGUILayout.PropertyField(serializedObject.FindProperty("ActionTypeName"), new GUIContent("类型名"), true);
+            NodeEditorGUILayout.PropertyField(serializedObject.FindProperty("ActionDisplayName"), new GUIContent("显示名"), true);
+            NodeEditorGUILayout.PropertyField(serializedObject.FindProperty("ExecutionOrder"), new GUIContent("执行顺序"), true);
+            NodeEditorGUILayout.PropertyField(serializedObject.FindProperty("IsValidAction"), new GUIContent("校验有效"), true);
+            NodeEditorGUILayout.PropertyField(serializedObject.FindProperty("Description"), new GUIContent("描述"), true);
+            GUILayout.Space(4f);
+            NodeEditorGUILayout.PropertyField(serializedObject.FindProperty("Next"), new GUIContent("下一步"), true);
+
+            EditorGUIUtility.labelWidth = previousLabelWidth;
+            serializedObject.ApplyModifiedProperties();
+
+            ScriptActionNode node = serializedObject.targetObject as ScriptActionNode;
+            BuffScriptActionValidationResult validation = BuffScriptActionNodeValidator.RefreshFromScript(node);
+            string message = node != null ? node.ValidationMessage : string.Empty;
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                MessageType type = validation.Errors.Count > 0
+                    ? MessageType.Error
+                    : (validation.Warnings.Count > 0 ? MessageType.Warning : MessageType.Info);
+                EditorGUILayout.HelpBox(message, type);
+            }
+        }
+    }
+
     [NodeEditor.CustomNodeEditor(typeof(BuffShapeNode))]
     internal sealed class BuffShapeNodeEditor : BuffCandidateNodeEditorBase
     {
@@ -124,11 +253,12 @@ namespace BuffSystem.Editor.AuthoringGraphs
     [NodeEditor.CustomNodeEditor(typeof(EffectBindingNode))]
     internal sealed class EffectBindingNodeEditor : BuffCandidateNodeEditorBase
     {
-        protected override string HeaderTitle => "Effect 绑定";
+        protected override string HeaderTitle => "旧 Effect 绑定 / Legacy";
         protected override int NodeWidth => 280;
 
         public override void OnBodyGUI()
         {
+            EditorGUILayout.HelpBox("旧节点仅为旧图兼容保留。新图请使用 EffectCompositionRootNode + EffectNode；存在新组合结构时，CompositeEffect 会忽略该节点。", MessageType.Warning);
             DrawCandidateBody(
                 Field("Previous", "上一步"),
                 Field("EffectId", "Effect ID"),

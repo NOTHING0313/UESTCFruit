@@ -58,6 +58,10 @@ namespace BuffSystem
         private string _registryStatus = "Not checked";
         private string _targetFilePath = string.Empty;
         private BuffCandidateGraphSummary _candidateSummary;
+        private BuffGraphEffectCodegenPlan _graphCodegenPlan;
+        private bool _useGraphEffectCodegen;
+        private bool _autoIdInitialized;
+        private string _pendingAutoIdWarning = string.Empty;
 
         internal void OnGUI()
         {
@@ -67,6 +71,7 @@ namespace BuffSystem
         internal void OnGUI(BuffCandidateGraphSummary candidateSummary)
         {
             _candidateSummary = candidateSummary;
+            EnsureAutoEffectId();
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
 
             EditorGUILayout.LabelField(BuffAuthoringText.EffectTemplateTitle, EditorStyles.boldLabel);
@@ -86,7 +91,17 @@ namespace BuffSystem
         {
             EditorGUILayout.Space(8f);
             EditorGUILayout.LabelField(BuffAuthoringText.BasicInfo, EditorStyles.boldLabel);
+            EditorGUI.BeginChangeCheck();
             _effectId = EditorGUILayout.IntField(BuffAuthoringText.EffectId, _effectId);
+            if (EditorGUI.EndChangeCheck())
+            {
+                _pendingAutoIdWarning = string.Empty;
+                Validate();
+            }
+
+            if (GUILayout.Button(BuffAuthoringText.ReallocateEffectId, GUILayout.Height(24f)))
+                ReallocateEffectId();
+
             _className = EditorGUILayout.TextField(BuffAuthoringText.EffectClassName, _className);
             EditorGUILayout.LabelField(BuffAuthoringText.EffectDisplayNameNote);
             _displayNote = EditorGUILayout.TextArea(_displayNote, GUILayout.MinHeight(42f));
@@ -123,6 +138,7 @@ namespace BuffSystem
             DrawMessageList(BuffAuthoringText.Warnings, _warnings, MessageType.Warning);
             DrawMessageList(BuffAuthoringText.Recommendations, _recommendations, MessageType.Info);
             DrawSourceHits();
+            DrawGraphCodegenPreview();
         }
 
         private static void DrawMessageList(string title, List<string> messages, MessageType type)
@@ -150,18 +166,19 @@ namespace BuffSystem
             EditorGUILayout.TextArea(string.Join("\n", _effectIdSourceHits), GUILayout.MinHeight(48f));
         }
 
+        private void DrawGraphCodegenPreview()
+        {
+            if (!_useGraphEffectCodegen || _graphCodegenPlan == null)
+                return;
+
+            EditorGUILayout.LabelField(BuffAuthoringText.GraphEffectCallChainPreview, EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(BuffAuthoringText.GraphEffectSource, string.IsNullOrWhiteSpace(_graphCodegenPlan.SelectedEffectNodeSummary) ? "Legacy / Field Only" : _graphCodegenPlan.SelectedEffectNodeSummary);
+            EditorGUILayout.TextArea(_graphCodegenPlan.BuildActionPreview(), GUILayout.MinHeight(96f));
+        }
+
         private void DrawActions()
         {
             EditorGUILayout.Space(8f);
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                using (new EditorGUI.DisabledScope(_candidateSummary == null || _candidateSummary.Graph == null))
-                {
-                    if (GUILayout.Button(BuffAuthoringText.ImportEffectFromGraph, GUILayout.Height(28f)))
-                        ImportFromCandidateGraph();
-                }
-            }
-
             using (new EditorGUILayout.HorizontalScope())
             {
                 if (GUILayout.Button(BuffAuthoringText.Validate, GUILayout.Height(28f)))
@@ -200,10 +217,42 @@ namespace BuffSystem
                 _className = draft.EffectClassName;
 
             _displayNote = draft.Note ?? string.Empty;
+            ApplyAutoEffectIdAfterImport();
             Validate();
 
             if (!string.IsNullOrWhiteSpace(warning))
                 EditorUtility.DisplayDialog(BuffAuthoringText.EffectTemplateTitle, warning, "OK");
+        }
+
+        private void ImportCallChainFromCandidateGraph()
+        {
+            if (_candidateSummary == null || _candidateSummary.Graph == null)
+            {
+                EditorUtility.DisplayDialog(BuffAuthoringText.EffectTemplateTitle, "请先在 Authoring Hub 顶部选择候选图。", "OK");
+                return;
+            }
+
+            _targetFilePath = BuildTargetFilePath();
+            BuffGraphEffectCodegenPlan plan = BuildGraphCodegenPlan();
+            _graphCodegenPlan = plan;
+            _useGraphEffectCodegen = true;
+
+            if (plan.EffectId > 0)
+                _effectId = plan.EffectId;
+
+            if (!string.IsNullOrWhiteSpace(plan.EffectClassName))
+                _className = plan.EffectClassName;
+
+            ApplyLifecycleSelectionFromPlan(plan);
+            Validate();
+            AppendGraphCodegenIssues(plan);
+            _canGenerate = _errors.Count == 0;
+            _hasValidated = true;
+
+            string message = plan.HasErrors
+                ? "调用链存在错误，已导入预览但会阻止生成。\n\n" + string.Join("\n", plan.Errors)
+                : "已从候选图导入 Effect 调用链。\n\n" + plan.BuildActionPreview();
+            EditorUtility.DisplayDialog(BuffAuthoringText.EffectTemplateTitle, message, "OK");
         }
 
         private void Validate()
@@ -232,8 +281,9 @@ namespace BuffSystem
             for (int i = 0; i < constHits.Count; i++)
                 _effectIdSourceHits.Add($"Effect const: {constHits[i].EffectId} ({constHits[i].FilePath})");
 
-            if (_effectId <= 0)
-                _errors.Add("EffectId 必须大于 0。");
+            BuffAuthoringIdValidationResult idValidation = BuffAuthoringIdService.ValidateEffectId(_effectId, BuffAuthoringHubSettings.Load());
+            _errors.AddRange(idValidation.Errors);
+            _warnings.AddRange(idValidation.Warnings);
 
             if (string.IsNullOrWhiteSpace(_className))
                 _errors.Add("Effect Class Name 不能为空。");
@@ -271,9 +321,6 @@ namespace BuffSystem
             if (_effectIdConstFound)
                 _warnings.Add("EffectId 已在 Effects 目录的 .cs 常量中出现；请确认不会冲突。");
 
-            if (LooksLikeDebugEffectId(_effectId))
-                _warnings.Add("EffectId 看起来属于 Debug / Smoke 区间，请确认不是正式 gameplay Effect。");
-
             if (BuffAuthoringValidationUtility.IsDebugOrSmoke(0, _className))
                 _warnings.Add("类名包含 Debug / Smoke，建议只作为调试或临时模板。");
 
@@ -282,53 +329,62 @@ namespace BuffSystem
 
             if (!HasAnyCallback())
                 _warnings.Add("未选择任何 callback，将生成空 Effect 类。");
+
+            if (!string.IsNullOrWhiteSpace(_pendingAutoIdWarning))
+                _warnings.Add(_pendingAutoIdWarning);
         }
 
         private void AddRecommendations()
         {
-            _recommendations.Add("生成后需要手动实现 Effect 逻辑。");
+            if (_useGraphEffectCodegen)
+                _recommendations.Add("生成的 Effect 会调用图中有效 ScriptActionNode；具体玩法逻辑仍需要在 Action 脚本的 Execute(in context) 中实现。");
+            else
+                _recommendations.Add("普通 Effect 模板需要用户手写生命周期逻辑；如果希望由图生成调用链，请先从候选图导入 Effect 调用链。");
             _recommendations.Add("生成后需要手动注册到 BuffEffectRegistryBootstrap。");
             _recommendations.Add("注册后建议运行 BuffAuthoringValidator。");
             _recommendations.Add("真实 Buff 进入 whitelist 前仍需候选审查。");
             _recommendations.Add("EventTrigger 当前不进入 compressed whitelist。");
+            if (_useGraphEffectCodegen)
+                _recommendations.Add("Graph 调用链只生成 Effect 草稿代码，不会自动注册 Effect 或加入 whitelist。");
         }
 
         private void GenerateTemplate()
         {
-            Validate();
+            BuffAuthoringPreflightResult preflightResult = RunPreflightBeforeGenerate();
 
-            if (_errors.Count > 0)
+            if (preflightResult.HasError || _errors.Count > 0)
             {
-                EditorUtility.DisplayDialog(BuffAuthoringText.EffectTemplateTitle, "存在错误，已阻止生成模板。", "OK");
+                EditorUtility.DisplayDialog(BuffAuthoringText.EffectTemplateTitle, "Preflight 存在错误，已阻止生成模板。\n\n" + BuildGenerationBlockMessage(preflightResult), "OK");
                 return;
-            }
-
-            if (_warnings.Count > 0)
-            {
-                bool confirm = EditorUtility.DisplayDialog(
-                    BuffAuthoringText.EffectTemplateTitle,
-                    "当前模板存在 Warning。是否仍要生成 .cs 草稿？\n\n" + string.Join("\n", _warnings),
-                    BuffAuthoringText.GenerateTemplate,
-                    "取消");
-
-                if (!confirm)
-                    return;
             }
 
             try
             {
                 Directory.CreateDirectory(_targetFolder);
-                File.WriteAllText(ToAbsolutePath(_targetFilePath), BuildTemplate(), Encoding.UTF8);
+                string source = BuildTemplate();
+                if (_useGraphEffectCodegen && _graphCodegenPlan != null)
+                {
+                    AppendGraphCodegenIssues(_graphCodegenPlan);
+                    if (_errors.Count > 0)
+                    {
+                        EditorUtility.DisplayDialog(BuffAuthoringText.EffectTemplateTitle, "Graph codegen 自检失败，已阻止生成模板。\n\n" + BuildGenerationBlockMessage(preflightResult), "OK");
+                        return;
+                    }
+                }
+
+                File.WriteAllText(ToAbsolutePath(_targetFilePath), source, Encoding.UTF8);
                 AssetDatabase.Refresh();
                 UnityEngine.Object generatedAsset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(_targetFilePath);
                 Selection.activeObject = generatedAsset;
                 if (generatedAsset != null)
                     EditorGUIUtility.PingObject(generatedAsset);
 
+                string registryMessage = WriteGeneratedEffectRegistryEntry();
+                string bootstrapMessage = TryAutoRegisterEffectToBootstrap(!registryMessage.StartsWith("Warning"));
                 Debug.Log($"[EffectTemplateGenerator] Generated effect template: {_targetFilePath}");
                 EditorUtility.DisplayDialog(
                     BuffAuthoringText.EffectTemplateTitle,
-                    $"模板已生成：{_targetFilePath}\n\n请手动实现逻辑，并按需注册到 BuffEffectRegistryBootstrap。",
+                    $"模板已生成：{_targetFilePath}\n\n{registryMessage}\n\n{bootstrapMessage}\n\nEffect 生命周期调用链已由工具生成；请在 Action 脚本 Execute(in context) 中实现玩法逻辑，并等待 Unity 编译完成。",
                     "OK");
             }
             catch (Exception exception)
@@ -338,15 +394,155 @@ namespace BuffSystem
             }
         }
 
+        private BuffAuthoringPreflightResult RunPreflightBeforeGenerate()
+        {
+            BuffAuthoringEffectPreflightDraft draft = new BuffAuthoringEffectPreflightDraft
+            {
+                EffectId = _effectId,
+                EffectClassName = _className,
+                TargetFolder = _targetFolder,
+                Namespace = _namespace,
+                OnApply = _onApply,
+                OnTick = _onTick,
+                OnRemove = _onRemove,
+                OnRefresh = _onRefresh,
+                OnStackChanged = _onStackChanged
+            };
+
+            BuffAuthoringPreflightResult result = BuffAuthoringPreflightValidator.RunEffectPreflight(draft, BuffAuthoringHubSettings.Load());
+            ApplyPreflightDraft(draft);
+            Validate();
+            AppendPreflightIssues(result);
+            if (_useGraphEffectCodegen)
+            {
+                _graphCodegenPlan = BuildGraphCodegenPlan();
+                ApplyLifecycleSelectionFromPlan(_graphCodegenPlan);
+                AppendGraphCodegenIssues(_graphCodegenPlan);
+            }
+
+            _canGenerate = !result.HasError && _errors.Count == 0;
+            _hasValidated = true;
+            return result;
+        }
+
+        private void ApplyPreflightDraft(BuffAuthoringEffectPreflightDraft draft)
+        {
+            _effectId = draft.EffectId;
+            _className = draft.EffectClassName;
+            _targetFolder = draft.TargetFolder;
+            _namespace = draft.Namespace;
+            _targetFilePath = draft.TargetFilePath;
+        }
+
+        private void AppendPreflightIssues(BuffAuthoringPreflightResult result)
+        {
+            for (int i = 0; i < result.Issues.Count; i++)
+            {
+                BuffAuthoringPreflightIssue issue = result.Issues[i];
+                string message = string.IsNullOrWhiteSpace(issue.Code)
+                    ? issue.Message
+                    : $"{issue.Code}: {issue.Message}";
+
+                if (issue.Severity == BuffAuthoringPreflightSeverity.Error)
+                    _errors.Add(message);
+                else if (issue.Severity == BuffAuthoringPreflightSeverity.Warning)
+                    _warnings.Add(message);
+                else
+                    _recommendations.Add(message);
+            }
+        }
+
+        private void AppendGraphCodegenIssues(BuffGraphEffectCodegenPlan plan)
+        {
+            if (plan == null)
+                return;
+
+            for (int i = 0; i < plan.Errors.Count; i++)
+                _errors.Add("GRAPH_CODEGEN: " + plan.Errors[i]);
+
+            for (int i = 0; i < plan.Warnings.Count; i++)
+                _warnings.Add("GRAPH_CODEGEN: " + plan.Warnings[i]);
+
+            if (!plan.HasErrors)
+                _recommendations.Add("GRAPH_CODEGEN: 调用链 Preflight 通过，将按候选图生成 action 字段与 Execute(in context) 调用。");
+        }
+
+        private string BuildGenerationBlockMessage(BuffAuthoringPreflightResult preflightResult)
+        {
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine(preflightResult.ToDisplayText());
+
+            if (_errors.Count > 0)
+            {
+                builder.AppendLine();
+                builder.AppendLine("当前错误：");
+                for (int i = 0; i < _errors.Count; i++)
+                    builder.AppendLine("- " + _errors[i]);
+            }
+
+            return builder.ToString();
+        }
+
+        private string WriteGeneratedEffectRegistryEntry()
+        {
+            BuffAuthoringHubSettingsData settings = BuffAuthoringHubSettings.Load();
+            string effectName = string.IsNullOrWhiteSpace(_displayNote) ? _className : _displayNote.Trim();
+            bool success = BuffAuthoringIdRegistryAllocator.UpsertGeneratedEffectEntry(
+                settings.IdRegistryJsonPath,
+                _effectId,
+                effectName,
+                _className,
+                _candidateSummary != null ? _candidateSummary.Graph : null,
+                _targetFilePath,
+                out string error);
+
+            if (success)
+                return $"ID Registry 已更新：{settings.IdRegistryJsonPath}";
+
+            Debug.LogWarning($"[EffectTemplateGenerator] Effect 模板已生成，但 ID Registry 写入失败：{error}");
+            return $"Warning：Effect 模板已生成，但 ID Registry 写入失败，请检查路径。\n{error}";
+        }
+
+        private string TryAutoRegisterEffectToBootstrap(bool idRegistrySucceeded)
+        {
+            BuffAuthoringHubSettingsData settings = BuffAuthoringHubSettings.Load();
+            string snippet = BuildRegistrySnippet();
+            if (!settings.AutoRegisterEffectsToBootstrap)
+                return "Bootstrap 自动注册已关闭，请按需手动注册：\n" + snippet;
+
+            if (!idRegistrySucceeded)
+                return "ID Registry 写入未成功，已跳过 Bootstrap 自动注册。\n可手动注册片段：\n" + snippet;
+
+            bool success = BuffEffectBootstrapAutoRegistryPatcher.TryUpsertAutoRegistration(
+                _effectId,
+                _className,
+                out BuffEffectBootstrapAutoRegistryReport report);
+
+            string message = report.ToDisplayText();
+            if (success)
+            {
+                Debug.Log("[EffectTemplateGenerator] " + message);
+                return message;
+            }
+
+            Debug.LogWarning("[EffectTemplateGenerator] Bootstrap 自动注册失败：\n" + message);
+            return message + "\n可手动注册片段：\n" + snippet;
+        }
+
         private void CopyRegistrySnippet()
         {
-            string snippet = $"registry.Register({_effectId}, new {_className}());";
+            string snippet = BuildRegistrySnippet();
             EditorGUIUtility.systemCopyBuffer = snippet;
             Debug.Log($"[EffectTemplateGenerator] Registry snippet copied: {snippet}");
             EditorUtility.DisplayDialog(
                 BuffAuthoringText.EffectTemplateTitle,
                 $"已复制注册片段：\n\n{snippet}\n\n请手动加入 BuffEffectRegistryBootstrap.RegisterProductionEffects(...)。",
                 "OK");
+        }
+
+        private string BuildRegistrySnippet()
+        {
+            return $"registry.Register({_effectId}, new {_className}());";
         }
 
         private void OpenEffectFolder()
@@ -377,6 +573,11 @@ namespace BuffSystem
             _fileExists = false;
             _registryStatus = "Not checked";
             _targetFilePath = string.Empty;
+            _graphCodegenPlan = null;
+            _useGraphEffectCodegen = false;
+            _pendingAutoIdWarning = string.Empty;
+            _autoIdInitialized = false;
+            EnsureAutoEffectId();
             _errors.Clear();
             _warnings.Clear();
             _recommendations.Clear();
@@ -388,6 +589,16 @@ namespace BuffSystem
             string classSummary = string.IsNullOrWhiteSpace(_displayNote)
                 ? "TODO: Fill effect description."
                 : _displayNote.Trim();
+            if (_useGraphEffectCodegen && _graphCodegenPlan != null)
+            {
+                _graphCodegenPlan.EffectId = _effectId;
+                _graphCodegenPlan.EffectClassName = _className;
+                _graphCodegenPlan.Namespace = _namespace;
+                _graphCodegenPlan.TargetFolder = _targetFolder;
+                _graphCodegenPlan.TargetFilePath = _targetFilePath;
+                return BuffGraphEffectCodegenEmitter.Emit(_graphCodegenPlan, classSummary);
+            }
+
             StringBuilder builder = new StringBuilder();
 
             builder.AppendLine($"namespace {_namespace}");
@@ -528,11 +739,6 @@ namespace BuffSystem
             return string.Equals(NormalizeAssetPath(left).TrimEnd('/'), NormalizeAssetPath(right).TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
         }
 
-        private static bool LooksLikeDebugEffectId(int effectId)
-        {
-            return effectId >= 990000;
-        }
-
         private static string ToAbsolutePath(string assetPath)
         {
             return Path.GetFullPath(NormalizeAssetPath(assetPath));
@@ -541,6 +747,88 @@ namespace BuffSystem
         private static string NormalizeAssetPath(string path)
         {
             return BuffAuthoringValidationUtility.NormalizeAssetPath(path);
+        }
+
+        private void EnsureAutoEffectId()
+        {
+            if (_autoIdInitialized)
+                return;
+
+            _autoIdInitialized = true;
+            BuffAuthoringHubSettingsData settings = BuffAuthoringHubSettings.Load();
+            if (!settings.AutoAllocateIds)
+                return;
+
+            if (_effectId <= 0)
+                _effectId = BuffAuthoringIdService.GetNextAvailableEffectId(settings);
+        }
+
+        private void ApplyAutoEffectIdAfterImport()
+        {
+            BuffAuthoringHubSettingsData settings = BuffAuthoringHubSettings.Load();
+            if (!settings.AutoAllocateIds)
+                return;
+
+            if (!BuffAuthoringIdService.ShouldReplaceEffectId(_effectId, settings))
+                return;
+
+            int oldId = _effectId;
+            _effectId = BuffAuthoringIdService.GetNextAvailableEffectId(settings);
+            _pendingAutoIdWarning = $"候选图 EffectId={oldId} 缺失或冲突，已自动替换为 {_effectId}。";
+        }
+
+        private void ReallocateEffectId()
+        {
+            _effectId = BuffAuthoringIdService.GetNextAvailableEffectId(BuffAuthoringHubSettings.Load());
+            _pendingAutoIdWarning = string.Empty;
+            Validate();
+        }
+
+        private BuffGraphEffectCodegenPlan BuildGraphCodegenPlan()
+        {
+            BuffGraphEffectCodegenRequest request = new BuffGraphEffectCodegenRequest
+            {
+                EffectId = _effectId,
+                EffectClassName = _className,
+                Namespace = _namespace,
+                TargetFolder = _targetFolder,
+                TargetFilePath = string.IsNullOrWhiteSpace(_targetFilePath) ? BuildTargetFilePath() : _targetFilePath,
+                OnApply = _onApply,
+                OnTick = _onTick,
+                OnRemove = _onRemove,
+                OnRefresh = _onRefresh,
+                OnStackChanged = _onStackChanged
+            };
+
+            BuffGraphEffectCodegenBuilder.TryBuild(
+                _candidateSummary != null ? _candidateSummary.Graph : null,
+                request,
+                out BuffGraphEffectCodegenPlan plan);
+            return plan;
+        }
+
+        private void ApplyLifecycleSelectionFromPlan(BuffGraphEffectCodegenPlan plan)
+        {
+            if (plan == null)
+                return;
+
+            for (int i = 0; i < plan.LifecyclePlans.Count; i++)
+            {
+                BuffGraphEffectLifecyclePlan lifecycle = plan.LifecyclePlans[i];
+                if (!lifecycle.IncludeOverride)
+                    continue;
+
+                if (lifecycle.LifecycleName == "OnApply")
+                    _onApply = true;
+                else if (lifecycle.LifecycleName == "OnTick")
+                    _onTick = true;
+                else if (lifecycle.LifecycleName == "OnRemove")
+                    _onRemove = true;
+                else if (lifecycle.LifecycleName == "OnRefresh")
+                    _onRefresh = true;
+                else if (lifecycle.LifecycleName == "OnStackChanged")
+                    _onStackChanged = true;
+            }
         }
     }
 }

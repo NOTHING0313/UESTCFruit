@@ -53,7 +53,7 @@ namespace BuffSystem.Editor.AuthoringGraphs
     /// 描述候选 Buff 的 Effect 绑定状态。
     /// EffectRegistered 第一版由人工填写，不自动反射 registry。
     /// </summary>
-    [Node.CreateNodeMenu("BuffSystem/Effect Binding")]
+    [Node.CreateNodeMenu("BuffSystem/Deprecated/Effect Binding")]
     public sealed class EffectBindingNode : Node
     {
         [Input]

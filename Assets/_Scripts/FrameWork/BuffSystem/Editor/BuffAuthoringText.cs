@@ -1,7 +1,7 @@
 namespace BuffSystem
 {
     /// <summary>
-    /// Buff 制作工具的 Editor-only 文案集中管理；不进入 runtime，不承载任何业务逻辑。
+    /// Buff 制作工具的 Editor-only 文案集中管理；不进入 runtime，不承载业务逻辑。
     /// </summary>
     internal static class BuffAuthoringText
     {
@@ -9,14 +9,18 @@ namespace BuffSystem
         internal const string ValidatorTab = "配置检查器";
         internal const string CreateBuffTab = "创建 Buff";
         internal const string EffectTemplateTab = "Effect 模板";
-        internal const string HubHelp = "统一入口仅整合 Buff 制作 Editor 工具；不会自动创建 asset、注册 Effect、修改 whitelist 或修改 runtime。";
+        internal const string HubHelp = "统一入口整合 Buff 制作 Editor 工具；不会自动加入 whitelist，不会修改 runtime。Effect 自动注册仅维护 Bootstrap auto 区块，不代表验证通过。";
+        internal const string NumericMode = "数值编辑";
+        internal const string GraphMode = "图形化编辑";
+        internal const string SettingsMode = "Settings";
         internal const string CandidateGraphLinkTitle = "候选图联动 / Candidate Graph Link";
-        internal const string CandidateGraphLinkHelp = "候选图只用于可视化设计、候选审查和表单导入；不会自动创建 BuffConfigData、生成 Effect、注册 Effect、修改 whitelist 或修改 runtime。";
+        internal const string CandidateGraphLinkHelp = "候选图用于可视化设计、候选审查和表单导入；不会自动创建 BuffConfigData、生成 Effect、加入 whitelist 或修改 runtime。";
         internal const string CurrentCandidateGraph = "当前候选图";
+        internal const string CreateGraph = "创建图";
         internal const string OpenGraph = "打开图";
         internal const string PingGraph = "Ping 图";
         internal const string RefreshCandidateSummary = "刷新候选摘要";
-        internal const string NoCandidateGraphSelected = "未选择候选图。可以先通过 Assets / Create / BuffSystem / Buff Candidate Graph 创建审查图。";
+        internal const string NoCandidateGraphSelected = "尚未选择候选图。可点击“创建图”新建，或拖入已有 BuffCandidateGraph。";
         internal const string CandidateSummaryUnavailable = "无法读取候选图摘要。";
         internal const string GraphVersion = "GraphVersion";
         internal const string GraphComplete = "图完整";
@@ -27,12 +31,92 @@ namespace BuffSystem
         internal const string CandidateGraphCompare = "候选图对照";
         internal const string CandidateGraphConfigId = "候选图 ConfigId";
         internal const string RealBuffConfigExists = "真实 BuffConfigData 存在";
+        internal const string EffectNodeCount = "EffectNode 数量";
+        internal const string EffectCompositionRootExists = "Effect 组合根";
+        internal const string EffectOrderMode = "Effect 顺序模式";
+        internal const string EffectOrderSummary = "Effect 执行顺序";
+        internal const string LifecycleSummary = "生命周期连接";
+        internal const string UsesLegacyEffectBindingNode = "使用旧 EffectBinding";
+        internal const string UsesLegacyBuffRoot = "使用旧 BuffRoot";
+        internal const string HasMultipleEffectNodes = "多个 EffectNode";
+        internal const string DeprecatedPlaceholderCount = "废弃占位节点";
+        internal const string ScriptActionNodeCount = "ScriptAction 数量";
+        internal const string ValidScriptActionNodeCount = "有效 Action";
+        internal const string InvalidScriptActionNodeCount = "无效 Action";
+        internal const string ScriptActionWarningCount = "Action Warning";
+        internal const string ScriptActionSummary = "Action 摘要";
+        internal const string ScriptActionWarnings = "Action 警告";
+        internal const string GraphGenerateTitle = "图形化生成 / Graph Generate";
+        internal const string GraphGenerateHelp = "从当前候选图创建主 Effect 草稿或 BuffConfigData 草稿；会先执行 Preflight，Error 会阻止写入。生成 Effect 成功后可按 Settings 维护 Bootstrap auto 区块，但不会加入 whitelist 或修改 runtime。";
+        internal const string CreatePrimaryEffectFromGraph = "从图创建主 Effect 草稿";
+        internal const string CreateBuffDraftFromGraph = "从图创建 Buff 草稿";
+        internal const string CreateBuffAndEffectFromGraph = "从图一键创建 Buff + 主 Effect 草稿";
+        internal const string GraphGeneratePlan = "生成计划";
+        internal const string GraphGenerateLastResult = "上次生成结果";
+        internal const string CompositePreviewTitle = "CompositeEffect 预览 / Composite Preview";
+        internal const string CompositePreviewHelp = "只基于当前候选图生成 CompositeEffect 代码文本预览；不会写 .cs 文件，不会写 ID Registry，不会注册 Effect。";
+        internal const string CompositeEffectId = "CompositeEffectId";
+        internal const string CompositeEffectClassName = "CompositeEffectClassName";
+        internal const string ActionTotalCount = "Action 总数";
+        internal const string OrderMode = "顺序模式";
+        internal const string PreviewState = "预览状态";
+        internal const string CompositeLifecycleSummary = "生命周期摘要";
+        internal const string PreviewCompositeEffectCode = "预览 CompositeEffect 代码";
+        internal const string CreateCompositeEffectDraftFromGraph = "从图创建 CompositeEffect 草稿";
+        internal const string CreateBuffAndCompositeEffectDraftFromGraph = "从图一键创建 Buff + CompositeEffect 草稿";
+        internal const string CopyCompositeEffectCode = "复制 CompositeEffect 代码";
+        internal const string ClearCompositeEffectPreview = "清空 CompositeEffect 预览";
+        internal const string CompositeEffectCodePreview = "CompositeEffect 代码预览";
+        internal const string CompositePreviewNotRun = "尚未预览";
+        internal const string CompositePreviewSucceeded = "预览成功";
+        internal const string CompositePreviewFailed = "预览失败";
+        internal const string CompositePreviewCopied = "CompositeEffect 代码已复制到剪贴板。";
+        internal const string CompositePreviewDisplayLimited = "当前只显示前 200 行；复制按钮会复制完整代码。";
+        internal const string GraphModeHelp = "图形化编辑模式用于创建、选择、打开和审查 BuffCandidateGraph；不会自动创建 BuffConfigData、生成 Effect 或修改 runtime。";
+        internal const string NumericModeHelp = "数值编辑模式只保留手动创建 Buff 与 Effect 模板能力；候选图相关生成入口已统一迁移到“图形化编辑 -> Graph Generate”。";
+        internal const string SettingsTitle = "Authoring Hub 设置";
+        internal const string SettingsHelp = "Settings 只保存 Editor 工具路径和开关偏好，不创建 production 资源，不进入 runtime。";
+        internal const string GraphDefaultFolder = "图默认目录";
+        internal const string BuffConfigDataDefaultFolder = "Buff 配置默认目录";
+        internal const string EffectScriptDefaultFolder = "Effect 脚本默认目录";
+        internal const string IdRegistryJsonPath = "ID Registry 路径";
+        internal const string SaveSettings = "保存 Settings";
+        internal const string ResetDefaults = "恢复默认";
+        internal const string OpenGraphFolder = "打开图目录";
+        internal const string OpenBuffFolder = "打开 Buff 目录";
+        internal const string OpenEffectFolderInSettings = "打开 Effect 目录";
+        internal const string PathExists = "路径存在";
+        internal const string PathMissing = "路径不存在";
+        internal const string GraphFolderAutoCreateHint = "点击创建图时将自动创建图目录。";
+        internal const string SettingsSaved = "Settings 已保存。";
+        internal const string SettingsReset = "Settings 已恢复默认值。";
+        internal const string AutoAllocateIds = "自动分配 Buff / Effect ID";
+        internal const string AutoAllocateIdsHelp = "开启后，创建 Buff 或生成 Effect 模板时，Hub 会自动选择下一个未占用 ID。用户仍可手动修改 ID，但必须通过唯一性校验。";
+        internal const string AutoRegisterEffectsToBootstrap = "自动注册 Effect 到 Bootstrap";
+        internal const string AutoRegisterEffectsToBootstrapHelp = "开启后，生成 Effect 草稿成功时，Authoring Hub 会维护 BuffEffectRegistryBootstrap.cs 中的 auto 区块。该操作不会加入 whitelist，不会修改 runtime core，不代表验证通过。";
+        internal const string IdRegistryReadOnlyCheck = "ID Registry 只读校验";
+        internal const string IdRegistryReadOnlyHelp = "本区域只读扫描当前 Buff / Effect ID 占用，只显示推荐 ID 与冲突诊断；不会创建或写入 Registry JSON。";
+        internal const string ScanIdUsage = "扫描 ID 占用";
+        internal const string CopyIdRegistryReport = "复制扫描报告";
+        internal const string IdRegistryNotScanned = "尚未扫描。点击“扫描 ID 占用”后显示报告。";
+        internal const string RegistryPath = "Registry 路径";
+        internal const string RegistryExists = "Registry 是否存在";
+        internal const string RegistryParseSucceeded = "Registry 解析成功";
+        internal const string RecommendedNextBuffConfigId = "推荐下一个 Buff ConfigId";
+        internal const string RecommendedNextEffectId = "推荐下一个 EffectId";
+        internal const string ScannedBuffIdCount = "扫描到 Buff ID";
+        internal const string ScannedEffectIdCount = "扫描到 Effect ID";
+        internal const string ErrorCount = "Error 数量";
+        internal const string WarningCount = "Warning 数量";
+        internal const string BuffIdUsage = "Buff ID 占用";
+        internal const string EffectIdUsage = "Effect ID 占用";
+        internal const string IdRegistryReportCopied = "ID Registry 扫描报告已复制到剪贴板。";
 
         internal const string ValidatorTitle = "Buff 配置检查器 / Validator";
         internal const string ScanPath = "扫描路径";
         internal const string ValidatorHelp = "该工具只读扫描 BuffConfigData asset，不会修改 asset、whitelist、runtime、scene、prefab 或 .meta。";
         internal const string ScanRefresh = "扫描 / 刷新";
-        internal const string ScanResultEmpty = "点击 扫描 / 刷新 后显示扫描结果。";
+        internal const string ScanResultEmpty = "点击“扫描 / 刷新”后显示扫描结果。";
         internal const string Total = "总数";
         internal const string Eligible = "候选";
         internal const string NearMiss = "接近候选";
@@ -44,7 +128,7 @@ namespace BuffSystem
         internal const string Issues = "问题列表";
 
         internal const string CreateBuffTitle = "Buff 创建向导 / Create Buff";
-        internal const string CreateBuffHelp = "该工具只创建 BuffConfigData 草稿 asset，不会修改 runtime、production whitelist、Effect 注册、Scene、Prefab 或 .meta。";
+        internal const string CreateBuffHelp = "该工具只创建 BuffConfigData 草稿 asset，不会修改 runtime、production whitelist、Effect 注册、scene、prefab 或 .meta。";
         internal const string BasicInfo = "基础信息";
         internal const string Behavior = "行为配置";
         internal const string Effect = "Effect 配置";
@@ -68,6 +152,7 @@ namespace BuffSystem
         internal const string EffectNote = "Effect 备注";
         internal const string CanCreate = "可创建";
         internal const string ConfigIdDuplicate = "ConfigId 重复";
+        internal const string ReallocateBuffId = "重新分配 Buff ID";
         internal const string CompressedEligibility = "压缩并行资格";
         internal const string Category = "分类";
         internal const string Validate = "校验";
@@ -77,7 +162,7 @@ namespace BuffSystem
         internal const string CancelClose = "取消 / 关闭";
 
         internal const string EffectTemplateTitle = "Effect 模板生成器";
-        internal const string EffectTemplateHelp = "该面板只生成 Effect .cs 草稿模板，不会自动修改 BuffEffectRegistryBootstrap、runtime、whitelist 或 Buff asset。";
+        internal const string EffectTemplateHelp = "该面板只生成 Effect .cs 草稿模板；若 Settings 开启自动注册，会维护 BuffEffectRegistryBootstrap.cs auto 区块。不会修改 runtime、whitelist 或 Buff asset。";
         internal const string EffectClassName = "Effect 类名";
         internal const string EffectDisplayNameNote = "Effect 显示名 / 备注";
         internal const string TargetFolder = "目标文件夹";
@@ -93,7 +178,11 @@ namespace BuffSystem
         internal const string FileExists = "文件已存在";
         internal const string EffectIdSourceHits = "EffectId 来源命中";
         internal const string GenerateTemplate = "生成 Effect 模板";
+        internal const string ReallocateEffectId = "重新分配 Effect ID";
         internal const string ImportEffectFromGraph = "从候选图导入 Effect 字段";
+        internal const string ImportEffectCallChainFromGraph = "从候选图导入 Effect 调用链";
+        internal const string GraphEffectCallChainPreview = "候选图调用链预览";
+        internal const string GraphEffectSource = "调用链来源 EffectNode";
         internal const string CopyRegistrySnippet = "复制注册代码片段";
         internal const string OpenEffectFolder = "打开 Effect 文件夹";
         internal const string Clear = "清空";
