@@ -1,7 +1,7 @@
 ﻿$ErrorActionPreference = 'Stop'
 Write-Host 'AI Image Pipeline MCP Server Install' -ForegroundColor Cyan
-Write-Host 'Server Path: H:/GitHub/UESTCFruit/Tools/image-mcp-server' -ForegroundColor Gray
-Set-Location 'H:/GitHub/UESTCFruit/Tools/image-mcp-server'
+Write-Host 'Server Path: E:/Github/UESTCFruit/Tools/image-mcp-server' -ForegroundColor Gray
+Set-Location 'E:/Github/UESTCFruit/Tools/image-mcp-server'
 
 Write-Host 'Node version:' -ForegroundColor Cyan
 node -v

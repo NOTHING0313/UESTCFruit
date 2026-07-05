@@ -17,6 +17,11 @@ namespace BuffSystem.EditorTesting
             RunAndLog("Advanced Quick", runner => runner.RunAll(BuffSystemAdvancedTestProfile.Quick));
         }
 
+        public static void RunAllAdvancedBuffSystemStandardTests()
+        {
+            RunAndLog("Advanced Standard", runner => runner.RunAll(BuffSystemAdvancedTestProfile.Standard));
+        }
+
         public static void RunStressTests()
         {
             RunAndLog("Stress Quick", runner => runner.RunStress(BuffSystemAdvancedTestProfile.Quick));
@@ -53,6 +58,12 @@ namespace BuffSystem.EditorTesting
         private static void RunAllAdvancedBuffSystemTestsMenu()
         {
             RunAllAdvancedBuffSystemTests();
+        }
+
+        [MenuItem(MenuRoot + "Run BuffSystem Advanced Standard Tests")]
+        private static void RunAllAdvancedBuffSystemStandardTestsMenu()
+        {
+            RunAllAdvancedBuffSystemStandardTests();
         }
 
         [MenuItem(MenuRoot + "Run BuffSystem Stress Tests")]

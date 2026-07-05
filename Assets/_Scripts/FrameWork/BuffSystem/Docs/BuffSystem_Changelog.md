@@ -1,4 +1,108 @@
 ﻿# BuffSystem Changelog
+## CodexUnityBridge - BuffSystem Suite Result Parser Fix
+
+- 修正 `CodexUnityBuffSystemBridge` 的 `testResult` 解析逻辑，避免非 `tag` suite 仅因报告正文提到 `TAG_RUNTIME_API_NOT_FOUND` 被整体误判。
+- `tag` suite 使用 `FAIL > TAG_RUNTIME_API_NOT_FOUND > PASS > Unknown` 优先级。
+- `full_report` suite 只按报告文件是否存在返回 `REPORT_EXISTS` / `REPORT_NOT_FOUND`，不把 Tag 边界说明当作总报告结果。
+- 其他 suite 使用 `FAIL > PASS > Unknown` 优先级，并忽略正文中的已知 Tag 边界说明。
+- `buffsystem_status.json` / `buffsystem_messages.log` 增加解析规则与被忽略边界文本信息，便于后续排查。
+- 本阶段不修改 BuffSystem runtime、ECS、RollBackSystem、View、Scene、Prefab、registry、Bootstrap、whitelist、测试用例、ProjectSettings 或 Packages。
+
+## CodexUnityBridge - BuffSystem Suite Bridge
+
+- 新增 UESTCFruit 专用 `CodexUnityBuffSystemBridge` Editor-only 文件请求监听器。
+- 支持 `Temp/CodexUnityBridge/request_buffsystem.json` 请求文件。
+- 通过固定 suite 白名单执行 BuffSystem Editor-only 测试入口：`functional`、`lifecycle`、`tag`、`storage`、`trigger`、`effect`、`advanced_standard`、`full_report`。
+- 输出 `Temp/CodexUnityBridge/buffsystem_status.json` 和 `Temp/CodexUnityBridge/buffsystem_messages.log`。
+- `full_report` 只检查既有总报告文件，不运行测试。
+- 不支持任意 method 反射执行；JSON 只能选择固定 suite。
+- 本阶段不修改 BuffSystem runtime、ECS、RollBackSystem、View、Scene、Prefab、registry、Bootstrap、whitelist、ProjectSettings 或 Packages。
+
+## Phase 3I-12K - BuffSystem Full Coverage 总报告
+
+- 汇总 Functional Coverage、Lifecycle、Tag、Storage / CompressedParallel、Trigger / EventTrigger、Effect / CompositeEffect 与 Advanced Standard Profile 的测试结果。
+- 生成 BuffSystem Editor-only 单体测试总报告：`Assets/_Scripts/FrameWork/BuffSystem/Test/BuffSystem_测试总报告.md`。
+- 明确 Tag runtime query 当前为 `TAG_RUNTIME_API_NOT_FOUND`，不在本阶段补 runtime API。
+- 明确 Rollback、View、PlayMode、Scene / Prefab、Network Sync 与 production whitelist 不属于当前测试通过结论。
+- 本阶段不修改 BuffSystem runtime、ECS、RollBackSystem、View、Scene、Prefab、registry、Bootstrap 或 whitelist。
+
+## Phase 3I-12E - Advanced Standard Profile 实跑与归档
+
+- 新增 `Tools / BuffSystem / Testing / Run BuffSystem Advanced Standard Tests` Editor 菜单入口，并保留 `BuffSystem.EditorTesting.BuffSystemAdvancedTestEntry.RunAllAdvancedBuffSystemStandardTests()` 作为 MCP / executeMethod 可调用入口。
+- Standard Profile 复用现有 `BuffSystemAdvancedTestRunner.RunAll(BuffSystemAdvancedTestProfile.Standard)`，覆盖 Stress / Performance / Fuzz / Soak / Query / Churn / public query consistency / fuzz oracle consistency。
+- Standard Profile 参数保持为：`EntityCount=2000`、`BuffPerEntity=10`、`TotalBuffCount=20000`、`TickFrames=5000`、`FuzzIterations=50000`、`SoakFrames=20000`、`QueryIterations=100000`、`ChurnIterations=50000`。
+- Heavy Profile 仍保持 `AllowHeavyProfile=false` 默认关闭，不自动运行。
+- 报告路径沿用现有 Advanced Runner 输出：`Assets/_Scripts/FrameWork/BuffSystem/Test/测试结果.md`。
+- 本轮通过 MCP 调用 Standard 菜单时发生 timeout，`测试结果.md` 当前仍是旧 Quick Profile 报告；Standard Profile 实跑结果需要 Unity Editor 手动确认后再归档为 PASS / FAIL。
+- 本阶段不修改 BuffSystem runtime、ECS、RollBackSystem、View、Scene、Prefab、registry、Bootstrap、whitelist、eligibility、Packages 或 ProjectSettings。
+
+## Phase 3I-12J-A - GraphStyle Effect 测试修复
+
+- 修复 Effect / CompositeEffect 专项测试中 Graph-generated style `OnApply` / `OnRemove` 用例的测试侧问题。
+- 将 GraphStyle 用例切换为独立 `EffectId=991304`，避免复用 `991301` CountingEffect、`991302` CompositeTestEffect 或 `991303` EventEffect。
+- 修正 `OnApply` / `OnRemove` 断言口径：通过 `BuffSystemCore` 调用时，Add / Remove 所在 Tick 可能伴随 `StackChanged` / `Tick` 等同帧生命周期，因此用例改为验证对应 action 是否被执行、executor 是否解析正确，并记录完整 trace。
+- 增加 GraphStyle fixed case 的诊断信息：`Classification`、`KeyEvidence`、`ResolvedExecutorType`、`TraceBeforeAction`、`TraceAfterAction`、`TriggeredViaCore` 和 `LifecycleWarmupFrames`。
+- 本阶段仅修改 Editor-only 测试与 Changelog；未修改 BuffSystem runtime、Graph codegen / emitter、registry、Bootstrap、whitelist、eligibility、ECS、RollBackSystem、View、Scene、Prefab、Packages 或 ProjectSettings。
+
+## Phase 3I-12J - BuffSystem Effect / CompositeEffect 行为测试
+
+- 新增 BuffSystem Effect / CompositeEffect 专项测试入口：
+  - `Tools / BuffSystem / Testing / Run BuffSystem Effect Tests`
+  - `Tools / BuffSystem / Testing / Open BuffSystem Effect Test Result`
+- 新增 MCP / executeMethod 静态入口：
+  - `BuffSystem.EditorTesting.BuffSystemEffectTestEntry.RunEffectTests()`
+  - `BuffSystem.EditorTesting.BuffSystemEffectTestEntry.OpenLatestResult()`
+- 新增 `BuffSystemEffectTestRunner`、`BuffSystemEffectTestReport`、`BuffSystemEffectTestCaseResult`，测试结果输出到 `Assets/_Scripts/FrameWork/BuffSystem/Test/效果测试结果.md`。
+- 覆盖 Effect discovery、`BuffEffectRegistry`、单 Effect lifecycle、missing / invalid Effect、CompositeEffect order、CompositeEffect lifecycle dispatch、Event Effect 和 graph-generated style 调用链。
+- CompositeEffect 行为测试使用测试内 double 验证顺序与分发，不新增 runtime CompositeEffect base，不修改 Graph 功能代码。
+- Event Effect 测试使用现有 `IBuffSystem.Raise<TEvent>` 与 `IBuffEventEffectExecutor<TEvent>`，不新增 runtime trigger API。
+- 报告 Summary 支持 `PASS` / `FAIL` / `PARTIAL_NOT_SUPPORTED`，并记录 Total、Passed、Failed、Skipped、NotSupported。
+- 本阶段仅新增 Editor-only 测试与测试文档；未修改 BuffSystem runtime、`BuffSystemCore.cs`、`IBuffSystem`、registry、Bootstrap、whitelist、eligibility、ECS、RollBackSystem、View、Scene、Prefab、Packages 或 ProjectSettings。
+
+## Phase 3I-12L - BuffSystem Trigger / EventTrigger 专项测试
+
+- 新增 BuffSystem Trigger / EventTrigger 专项测试入口：
+  - `Tools / BuffSystem / Testing / Run BuffSystem Trigger Tests`
+  - `Tools / BuffSystem / Testing / Open BuffSystem Trigger Test Result`
+- 新增 MCP / executeMethod 静态入口：
+  - `BuffSystem.EditorTesting.BuffSystemTriggerTestEntry.RunTriggerTests()`
+  - `BuffSystem.EditorTesting.BuffSystemTriggerTestEntry.OpenLatestResult()`
+- 新增 `BuffSystemTriggerTestRunner`、`BuffSystemTriggerTestReport`、`BuffSystemTriggerTestCaseResult`，测试结果输出到 `Assets/_Scripts/FrameWork/BuffSystem/Test/触发器测试结果.md`。
+- 覆盖 Trigger Discovery、Trigger Config、Tick trigger isolation、EventTrigger execution、Trigger context、Lifecycle interleaving、Storage / eligibility 和 Boundary。
+- EventTrigger 测试使用现有 `IBuffSystem.Raise<TEvent>` 与 `IBuffEventEffectExecutor<TEvent>`，不会新增 runtime trigger API。
+- EventTrigger storage 测试只验证当前 eligibility false / fallback 行为，不扩大 compressed whitelist，不修改 compressed eligibility。
+- 如果当前 runtime trigger API 缺失，报告会标记为 `NOT_SUPPORTED` / `TRIGGER_RUNTIME_API_NOT_FOUND`，而不是修改 runtime。
+- 本阶段仅新增 Editor-only 测试与测试文档；未修改 BuffSystem runtime、`BuffSystemCore.cs`、`IBuffSystem`、registry、Bootstrap、whitelist、eligibility、ECS、RollBackSystem、View、Scene、Prefab、Packages 或 ProjectSettings。
+
+## Phase 3I-12I - BuffSystem Storage / CompressedParallel 自动化测试
+
+- 新增 BuffSystem Storage / CompressedParallel 专项测试入口：
+  - `Tools / BuffSystem / Testing / Run BuffSystem Storage Tests`
+  - `Tools / BuffSystem / Testing / Open BuffSystem Storage Test Result`
+- 新增 MCP / executeMethod 静态入口：
+  - `BuffSystem.EditorTesting.BuffSystemStorageTestEntry.RunStorageTests()`
+  - `BuffSystem.EditorTesting.BuffSystemStorageTestEntry.OpenLatestResult()`
+- 新增 `BuffSystemStorageTestRunner`、`BuffSystemStorageTestReport`、`BuffSystemStorageTestCaseResult`，测试结果输出到 `Assets/_Scripts/FrameWork/BuffSystem/Test/存储模式测试结果.md`。
+- 覆盖 Discovery、EntityPerStack baseline、compressed eligibility、EntityPerStack vs Compressed public API 行为一致性、restore hook / cache 和轻量 performance snapshot。
+- Compressed 自动化通过反射调用现有 internal validation factory；如果 factory 不可用，相关 case 标记为 `MANUAL_REQUIRED`，不修改 runtime 来让测试变绿。
+- 报告 Summary 支持 `PASS` / `FAIL` / `PARTIAL_MANUAL_REQUIRED`，并记录 Total、Passed、Failed、Skipped、ManualRequired。
+- Performance snapshot 只记录指标，不按耗时阈值判失败。
+- 本阶段仅新增 Editor-only 测试与测试文档；未修改 BuffSystem runtime、`BuffSystemCore.cs`、`IBuffSystem`、registry、Bootstrap、whitelist、eligibility、ECS、RollBackSystem、View、Scene、Prefab、Packages 或 ProjectSettings。
+
+## Phase 3I-12G - BuffSystem Tag 专项测试
+
+- 新增 BuffSystem Tag 专项测试入口：
+  - `Tools / BuffSystem / Testing / Run BuffSystem Tag Tests`
+  - `Tools / BuffSystem / Testing / Open BuffSystem Tag Test Result`
+- 新增 MCP / executeMethod 静态入口：
+  - `BuffSystem.EditorTesting.BuffSystemTagTestEntry.RunTagTests()`
+  - `BuffSystem.EditorTesting.BuffSystemTagTestEntry.OpenLatestResult()`
+- 新增 `BuffSystemTagTestRunner`、`BuffSystemTagTestReport`、`BuffSystemTagTestCaseResult`，测试结果输出到 `Assets/_Scripts/FrameWork/BuffSystem/Test/标签测试结果.md`。
+- 增加 Tag 能力发现、Tag 配置、Tag 查询、Target/Source 隔离、Stack/Refresh/Replace、Remove/Expire 清理与边界测试矩阵。
+- 当前发现 `BuffConfigData.Tags` 与 `BuffConfigDataLoader` config-level tag lookup 存在，但 `BuffDefinition` 不保存 Tag，`IBuffSystem` 当前没有 live runtime Tag query public API。
+- 如果当前 runtime 不支持 Tag query API，报告会标记为 `NOT_SUPPORTED` / `TAG_RUNTIME_API_NOT_FOUND`，而不是修改 runtime。
+- 本阶段不修改 BuffSystem runtime、`BuffSystemCore.cs`、`IBuffSystem`、ECS、RollBackSystem、View、Scene、Prefab、registry、Bootstrap、whitelist、eligibility、Packages 或 ProjectSettings。
+
 ## Phase 3I-12H - BuffSystem Lifecycle 专项深测
 
 - 新增 BuffSystem 生命周期专项测试入口：
