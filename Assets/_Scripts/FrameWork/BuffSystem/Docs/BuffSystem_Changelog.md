@@ -1,4 +1,112 @@
 ﻿# BuffSystem Changelog
+## Phase 3I-12H - BuffSystem Lifecycle 专项深测
+
+- 新增 BuffSystem 生命周期专项测试入口：
+  - `Tools / BuffSystem / Testing / Run BuffSystem Lifecycle Tests`
+  - `Tools / BuffSystem / Testing / Open BuffSystem Lifecycle Test Result`
+- 新增 MCP / executeMethod 静态入口：
+  - `BuffSystem.EditorTesting.BuffSystemLifecycleTestEntry.RunLifecycleTests()`
+  - `BuffSystem.EditorTesting.BuffSystemLifecycleTestEntry.OpenLatestResult()`
+- 新增 `BuffSystemLifecycleTestRunner`、`BuffSystemLifecycleTestReport`、`BuffSystemLifecycleTestCaseResult`，测试结果输出到 `Assets/_Scripts/FrameWork/BuffSystem/Test/生命周期测试结果.md`。
+- 覆盖 OnApply、OnTick / TickInterval、OnRemove、OnRefresh、OnStackChanged、生命周期交错和 Effect Context 基础正确性。
+- 测试内部使用 in-memory `World` / `BuffDefinitionRegistry` / `BuffEffectRegistry` / `BuffSystemCore`，并用测试自有 `CountingLifecycleEffect` 记录回调计数与事件序列。
+- 明确 EventTrigger、Tag、CompressedParallel、Rollback、View / Scene / Prefab 留给后续阶段，不宣称覆盖或 rollback-ready。
+- 本阶段不修改 BuffSystem runtime、`BuffSystemCore.cs`、ECS、RollBackSystem、View、Scene、Prefab、registry、Bootstrap、whitelist、eligibility、Packages 或 ProjectSettings。
+
+## Phase 3I-12F-FixRefreshAllFunctionalTest - 修正 RefreshAll 功能测试预期
+
+- 修正 Functional Coverage 中 `RefreshAll` 的测试预期：`RefreshAll` 语义为刷新已有层，并在未满 `MaxStack` 时追加本次 incoming 层。
+- 将原单一用例拆分为两个语义明确的 case：
+  - `Functional_Stack_RefreshAll_NotFull_AppendsIncomingAndRefreshesExisting`
+  - `Functional_Stack_RefreshAll_WhenFull_RefreshesWithoutAppending`
+- 未满层场景验证：首次添加 2 层、再次添加 1 层后，public `Stack` 应增长到 3，并触发 `OnRefresh` / `OnStackChanged`。
+- 满层场景验证：首次添加到 `MaxStack=3` 后再次添加，不再追加新层，但仍刷新现有层并触发 `OnRefresh`。
+- 本阶段仅修改 Functional Coverage Editor-only 测试与 Changelog；未修改 BuffSystem runtime、`BuffSystemCore.cs`、registry、Bootstrap、whitelist、eligibility、ECS、RollBackSystem、View、Scene、Prefab、Packages 或 ProjectSettings。
+
+## Phase 3I-12F - Functional Coverage Tests 基础功能语义覆盖
+
+- 新增 Editor-only 基础功能语义覆盖入口：
+  - `Tools / BuffSystem / Testing / Run BuffSystem Functional Coverage Tests`
+  - `Tools / BuffSystem / Testing / Open BuffSystem Functional Coverage Result`
+- 新增静态调用入口 `BuffSystem.EditorTesting.BuffSystemFunctionalCoverageEntry.RunFunctionalCoverageTests()` / `OpenLatestResult()`，可用于 Unity 菜单、MCP 或 batchmode `-executeMethod`。
+- 新增 `BuffSystemFunctionalCoverageRunner`、`BuffSystemFunctionalCoverageReport`、`BuffSystemFunctionalCoverageCaseResult`，测试结果输出到 `Assets/_Scripts/FrameWork/BuffSystem/Test/功能覆盖测试结果.md`。
+- 第一版覆盖 Add / Query、Duration / Expire、Stack / Refresh / Replace、Remove / Clear、Source / Target、Effect / Lifecycle Basic、Boundary 七类基础功能语义，case 数量不少于 25。
+- 每个 case 独立执行，失败不会中断后续 case；报告记录 `Category`、`CaseName`、`Status`、`Expected`、`Actual`、`InvariantChecks`、`FailureReason`、`Exception`、`DurationMs`。
+- 明确将 Tag、CompressedParallel、Rollback、View 标记为 `NotCovered`，留给后续独立阶段，不宣称 100% 覆盖或 rollback-ready。
+- 本阶段仅新增 Editor-only 测试与测试文档；未修改 BuffSystem runtime、`BuffSystemCore.cs`、`IBuffSystem`、registry、Bootstrap、whitelist、eligibility、ECS、RollBackSystem、View、Scene、Prefab、Packages 或 ProjectSettings。
+
+## Phase 3I-12D - Advanced Test Oracle 修正与 Fuzz 最小复现
+
+- 修正 Query Performance 用例的真实性断言：
+  - `Perf_TryGetBuff_RepeatedQueries` 现在同时覆盖 active 命中、missing config miss、hit + miss 查询总数、ViewData `ConfigId` / `Target` / `Source` / `Stack` 合法性。
+  - `Perf_GetBuffs_TargetQueries` 现在同时覆盖 active target 非空、empty target 空结果、返回 `Target` 一致、返回 `ConfigId` 属于测试 config set、查询总数和返回 ViewData 检查数。
+- 修正 Fuzz oracle 诊断：
+  - 新增 `FuzzAction` action name mapping，报告不再只显示 `action=0..7`。
+  - Fuzz expected model 明确 `expectedStack <= 0` 视为 inactive。
+  - Add / Remove / Tick / Refresh / Query 后以 public `TryGetBuff` 可见性同步 expected active / stack，避免轻量 oracle 在 duration / 延迟可见性上做过强假设。
+  - Fuzz 失败路径会在抛出前写入 `ActualOperations`、`MeasuredElapsedMs`、`FailureIteration`、`ExpectedCounts`、`ActualCounts` 和最近 50 条 before/after 操作。
+- 新增 deterministic repro case：`Repro_Fuzz_Seed32001_Iteration34`，用于复核 seed `32001`、iteration `34` 附近的历史失败路径；若仍出现不一致，应分类为 `PotentialRuntimeBehaviorMismatch`，不得直接修改 runtime。
+- `测试结果.md` 输出补充 Query 命中 / 未命中统计、Fuzz action mapping、Fuzz model 更新规则和失败诊断字段。
+- 本阶段仅修改 Advanced Test Editor-only 测试与测试文档；未修改 BuffSystem runtime、ECS、RollBackSystem、View、registry、Bootstrap、whitelist、Buff asset、Scene、Prefab 或 Packages。
+
+## Phase 3I-12C - Advanced Test 烈度修正与真实性增强
+
+- 提升 Advanced Test Quick / Standard / Heavy Profile 烈度参数：
+  - Quick：`EntityCount=500`、`BuffPerEntity=5`、`TickFrames=1000`、`FuzzIterations=5000`、`SoakFrames=5000`、`QueryIterations=10000`、`ChurnIterations=5000`。
+  - Standard：`EntityCount=2000`、`BuffPerEntity=10`、`TickFrames=5000`、`FuzzIterations=50000`、`SoakFrames=20000`、`QueryIterations=100000`、`ChurnIterations=50000`。
+  - Heavy：`EntityCount=10000`、`BuffPerEntity=20`、`TickFrames=10000`、`FuzzIterations=200000`、`SoakFrames=100000`、`QueryIterations=500000`、`ChurnIterations=200000`，仍由 `AllowHeavyProfile=false` 默认关闭。
+- Advanced Test 报告新增 / 强化：`ExpectedOperations`、`ActualOperations`、`InvariantChecks`、`InvariantFailures`、`SetupElapsedMs`、`MeasuredElapsedMs`、`SetupGCAllocBytes`、`MeasuredGCAllocBytes`、`GCMethod`、`GCMeasurementWindow`、`ProfileParameters`、`LastOperations`。
+- Stress 用例补充真实 Add / Tick / Remove 计数、Remove 后 public query 可见性断言、Stack / RemainingFrames / Target 不变量。
+- Performance 用例拆分 Setup / Measured 统计窗口，明确 OperationCount 口径，不再把 setup 成本混入核心 measured 指标。
+- Fuzz 用例提升 iterations，固定 seed，记录最近 50 条操作，并加入轻量期望模型与 public query 不变量检查。
+- Soak 用例提升长跑帧数，周期性执行 Add / Remove / Refresh / Query，并记录 active view 增长趋势与内存前后值。
+- CompressedParallel 自动高强度对比不再以 `SKIP` 伪装覆盖，改为 `MANUAL_REQUIRED`，需手动运行既有 `BuffSystemCompressedParallelValidationRunner` / `BuffSystemStoragePerformanceRunner`。
+- 本阶段仅修改 Advanced Test Editor-only 测试与测试文档；未修改 BuffSystem runtime、ECS、RollBackSystem、View、registry、Bootstrap、whitelist、Buff asset、Scene 或 Prefab。
+
+## Phase 3I-12B - BuffSystem Stress / Performance / Fuzz / Soak 测试脚本
+
+- 新增 BuffSystem 高强度 Editor-only 测试入口。
+- 新增菜单：
+  - `Tools / BuffSystem / Testing / Run Advanced BuffSystem Tests`
+  - `Tools / BuffSystem / Testing / Run BuffSystem Stress Tests`
+  - `Tools / BuffSystem / Testing / Run BuffSystem Performance Tests`
+  - `Tools / BuffSystem / Testing / Run BuffSystem Fuzz Tests`
+  - `Tools / BuffSystem / Testing / Run BuffSystem Soak Tests`
+  - `Tools / BuffSystem / Testing / Open BuffSystem Advanced Test Result`
+- 新增静态调用入口 `BuffSystem.EditorTesting.BuffSystemAdvancedTestEntry`，可用于菜单、Unity MCP `execute_menu_item` 或 Unity batchmode `-executeMethod`。
+- 支持压力测试、性能测试、随机模糊测试和稳定性长跑测试。
+- 测试结果输出到 `Assets/_Scripts/FrameWork/BuffSystem/Test/测试结果.md`。
+- 默认使用 Quick Profile，避免 Unity Editor 卡死。
+- Heavy Profile 通过 `AllowHeavyProfile=false` 默认关闭。
+- 测试只使用 in-memory `World` / `BuffDefinitionRegistry` / `BuffEffectRegistry`，不创建正式 Buff asset，不生成 Effect.cs，不写 registry。
+- 本阶段未修改 BuffSystem runtime、ECS、RollBackSystem、View、Scene、Prefab、registry、Bootstrap 或 whitelist。
+
+## Phase 3I-12A - BuffSystem MCP test orchestration entry
+
+- 新增 Editor-only 测试编排入口 `BuffSystem.EditorTesting.BuffSystemMcpTestEntry`。
+- 新增菜单：
+  - `Tools / BuffSystem / Testing / Run All BuffSystem Tests`
+  - `Tools / BuffSystem / Testing / Run BuffSystem Smoke Tests`
+  - `Tools / BuffSystem / Testing / Open Last BuffSystem Test Report`
+- 新增静态调用入口：
+  - `RunAllBuffSystemTests()`
+  - `RunUnitTests()`
+  - `RunIntegrationTests()`
+  - `RunWhiteBoxTests()`
+  - `RunBlackBoxTests()`
+  - `RunSmokeTests()`
+  - `RunAuthoringSmokeTests()`
+- 新增 `BuffSystemFullTestRunner`，用于执行无场景对象依赖的 unit / integration / white-box / black-box / smoke / authoring smoke 子集。
+- 新增报告模型 `BuffSystemTestReport` / `BuffSystemTestCaseResult`，测试结果写入：
+  - `Temp/BuffSystemTestReports/latest.json`
+  - `Temp/BuffSystemTestReports/latest.md`
+- 新增覆盖矩阵，明确区分 `Covered` / `SmokeOnly` / `ManualScene` / `NotCovered`，不宣称 100% 覆盖。
+- 新增 `BuffSystem_TestingGuide.md`，记录菜单入口、MCP / executeMethod 调用方式、报告路径、覆盖边界和手动验证项。
+- 新增 `Tools/BuffSystemTesting/run_buffsystem_mcp_tests.ps1` 与 README，用于等待 / 读取测试报告；脚本不硬编码未知 Unity MCP API。
+- 现有五个 MonoBehaviour ContextMenu Runner 仍保留为独立手动回归入口，本阶段只检测其类型和方法存在，不在测试入口中创建场景对象伪造执行。
+- 默认 `RunDestructiveWriteSmoke=false`，不会创建 Buff asset、不会生成 Effect 模板、不会写 registry。
+- 本阶段未修改 BuffSystem runtime、`BuffSystemCore.cs`、`BuffEffectRegistryBootstrap.cs`、BuffConfigData asset、registry、whitelist、eligibility、ECS、RollBackSystem、View、Scene / Prefab / `.meta` 或 Packages。
+
 ## Phase 3I-11V - CompositeEffect 文档 closeout 与验证清单
 
 - 整理 CompositeEffect 图形化生成的推荐使用流程。
