@@ -7,6 +7,10 @@ namespace FrameWork.RollBackSystem
 {
     public static class WorldChecksumCalculator
     {
+        // 静态缓冲区，避免 Calculate 中频繁分配 GC
+        private static readonly List<Entity> _entityBuffer = new List<Entity>();
+        private static readonly List<Type> _typeBuffer = new List<Type>();
+
         /// <summary>
         /// 计算当前 ECS World 的确定性状态校验值。
         ///
@@ -22,44 +26,42 @@ namespace FrameWork.RollBackSystem
             {
                 uint hash = 17;
 
-                var entities =
-                    new List<Entity>();
+                _entityBuffer.Clear();
 
                 world.FillAliveEntities(
-                    entities);
+                    _entityBuffer);
 
                 // 稳定排序：先 ID 后 Version
-                entities.Sort(EntityComparer.Instance);
+                _entityBuffer.Sort(EntityComparer.Instance);
 
-                hash = hash * 31u + (uint)entities.Count;
+                hash = hash * 31u + (uint)_entityBuffer.Count;
 
                 for (int i = 0;
-                     i < entities.Count;
+                     i < _entityBuffer.Count;
                      i++)
                 {
                     Entity entity =
-                        entities[i];
+                        _entityBuffer[i];
 
                     hash = hash * 31u + (uint)entity.ID;
                     hash = hash * 31u + (uint)entity.Version;
 
-                    var componentTypes =
-                        new List<Type>();
+                    _typeBuffer.Clear();
 
                     world.FillEntityComponentTypes(
                         entity,
-                        componentTypes);
+                        _typeBuffer);
 
                     // 稳定排序：按 FullName
-                    componentTypes.Sort(
+                    _typeBuffer.Sort(
                         TypeNameComparer.Instance);
 
                     for (int j = 0;
-                         j < componentTypes.Count;
+                         j < _typeBuffer.Count;
                          j++)
                     {
                         Type componentType =
-                            componentTypes[j];
+                            _typeBuffer[j];
 
                         // FullName 确定性 hash
                         string name = componentType.FullName;
@@ -101,6 +103,13 @@ namespace FrameWork.RollBackSystem
         {
             unchecked
             {
+                // 优先尝试 IDeterministicHash，组件自行定义 Hash 逻辑
+                if (component is IDeterministicHash dh)
+                {
+                    dh.AppendHash(ref hash);
+                    return;
+                }
+
                 if (AppendKnownComponentHash(componentType, component, ref hash))
                     return;
 

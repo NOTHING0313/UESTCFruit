@@ -28,5 +28,11 @@ namespace Simulation.Contracts
         /// 释放快照资源。
         /// </summary>
         void Release();
+
+        /// <summary>
+        /// 估算快照占用的内存字节数（用于内存预算控制）。
+        /// 默认实现返回 0，子类应重写以提供准确估算。
+        /// </summary>
+        long EstimateSizeInBytes() => 0;
     }
 }

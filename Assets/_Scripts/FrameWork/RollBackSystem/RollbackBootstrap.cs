@@ -17,6 +17,7 @@ using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
+using System;
 
 namespace FrameWork.RollBackSystem
 {
@@ -25,6 +26,9 @@ namespace FrameWork.RollBackSystem
         [SerializeField] private bool _enable = true;
         [SerializeField] private int _snapshotRingCapacity = 120;
         [SerializeField] private int _snapshotIntervalFrames = 10;
+
+        /// <summary>服务端期望客户端到达的帧号，用于加速追帧。</summary>
+        [SerializeField] private int _expectedFrame;
 
         private World _world;
         private SimulateRunner _runner;
@@ -214,6 +218,28 @@ namespace FrameWork.RollBackSystem
         public World World => _world;
 
         /// <summary>
+        /// 服务端已确认的帧号。收到服务端确认消息时调用，释放该帧前所有缓存数据。
+        /// </summary>
+        public void ConfirmFrame(int frame)
+        {
+            if (_coordinator == null) return;
+            _coordinator.ConfirmFrame(frame);
+        }
+
+        /// <summary>
+        /// 设置服务端期望客户端到达的帧号。Update 中会自动检测并加速追帧。
+        /// </summary>
+        public void SetExpectedFrame(int frame)
+        {
+            _expectedFrame = frame;
+        }
+
+        /// <summary>
+        /// 当前服务端期望帧号。
+        /// </summary>
+        public int ExpectedFrame => _expectedFrame;
+
+        /// <summary>
         /// 接收远程权威输入，触发回滚校验与重模拟。
         /// 回滚完成后通过 Runner.SetFrameCount 对齐帧号。
         /// </summary>
@@ -222,6 +248,29 @@ namespace FrameWork.RollBackSystem
             if (_coordinator == null) return;
             _coordinator.ReceiveAuthoritativeInput(frame, input);
             _runner?.SetFrameCount(_coordinator.CurrentFrame);
+        }
+
+        //--------------------------------
+        // Catch-up
+        //--------------------------------
+
+        private void Update()
+        {
+            if (!_mounted || _coordinator == null)
+                return;
+
+            // 加速追帧：若落后服务端，在一个 Unity 帧内执行多次逻辑 Tick
+            int framesBehind = _expectedFrame - _coordinator.CurrentFrame;
+            if (framesBehind > 1)
+            {
+                int ticksToRun = Math.Min(framesBehind - 1, _coordinator.MaxTicksPerUnityFrame);
+                if (ticksToRun > 0)
+                {
+                    _coordinator.TickMultiple(
+                        ticksToRun,
+                        (frame) => CollectInput(frame));
+                }
+            }
         }
     }
 }

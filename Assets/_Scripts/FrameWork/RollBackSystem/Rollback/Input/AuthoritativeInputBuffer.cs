@@ -23,6 +23,9 @@ namespace FrameWork.RollBackSystem
         private readonly Dictionary<int, TInput> _inputs
             = new Dictionary<int, TInput>();
 
+        // 复用缓冲区，避免 ClearBefore 中产生 GC
+        private readonly List<int> _recycleKeys = new List<int>();
+
         /// <summary>
         /// 保存指定帧的服务器权威输入。
         /// </summary>
@@ -37,6 +40,26 @@ namespace FrameWork.RollBackSystem
         public bool TryGet(int frame, out TInput input)
         {
             return _inputs.TryGetValue(frame, out input);
+        }
+
+        /// <summary>
+        /// 清除指定帧之前的权威输入（不含该帧）。
+        /// 使用成员缓冲区，零 GC。
+        /// </summary>
+        public void ClearBefore(int frame)
+        {
+            _recycleKeys.Clear();
+
+            foreach (var pair in _inputs)
+            {
+                if (pair.Key < frame)
+                    _recycleKeys.Add(pair.Key);
+            }
+
+            for (int i = 0; i < _recycleKeys.Count; i++)
+            {
+                _inputs.Remove(_recycleKeys[i]);
+            }
         }
     }
 }

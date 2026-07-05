@@ -5,7 +5,7 @@
  * 设计目标：
  * 1. 保存每一逻辑帧的本地输入。
  * 2. 支持回滚重模拟时重新读取输入。
- * 3. 支持旧帧输入清理。
+ * 3. 支持旧帧输入清理（零 GC）。
  *
  * 使用场景：
  * - 本地输入预测
@@ -23,6 +23,9 @@ namespace FrameWork.RollBackSystem
     {
         private readonly Dictionary<int, TInput>
             _inputs = new();
+
+        // 复用缓冲区，避免 ClearBefore 中产生 GC
+        private readonly List<int> _recycleKeys = new();
 
         /// <summary>
         /// 保存指定帧输入。
@@ -47,28 +50,24 @@ namespace FrameWork.RollBackSystem
         }
 
         /// <summary>
-        /// 清理指定帧之前的输入数据。
+        /// 清理指定帧之前的输入数据（不含该帧）。
+        /// 使用成员缓冲区，零 GC。
         /// </summary>
         public void ClearBefore(int frame)
         {
-            List<int> removeList = null;
+            _recycleKeys.Clear();
 
             foreach (var pair in _inputs)
             {
                 if (pair.Key >= frame)
                     continue;
 
-                removeList ??= new();
-
-                removeList.Add(pair.Key);
+                _recycleKeys.Add(pair.Key);
             }
 
-            if (removeList == null)
-                return;
-
-            for (int i = 0; i < removeList.Count; i++)
+            for (int i = 0; i < _recycleKeys.Count; i++)
             {
-                _inputs.Remove(removeList[i]);
+                _inputs.Remove(_recycleKeys[i]);
             }
         }
     }

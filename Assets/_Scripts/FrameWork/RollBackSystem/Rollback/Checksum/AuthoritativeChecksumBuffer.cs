@@ -13,6 +13,9 @@ namespace FrameWork.RollBackSystem
             _checksums =
                 new Dictionary<int, FrameChecksum>();
 
+        // 复用缓冲区，避免 ClearBefore 中产生 GC
+        private readonly List<int> _recycleKeys = new List<int>();
+
         /// <summary>
         /// 保存指定逻辑帧的权威 Checksum。
         /// </summary>
@@ -31,6 +34,26 @@ namespace FrameWork.RollBackSystem
             return _checksums.TryGetValue(
                 frame,
                 out checksum);
+        }
+
+        /// <summary>
+        /// 清除指定逻辑帧之前的权威校验值（不含该帧）。
+        /// 使用成员缓冲区，零 GC。
+        /// </summary>
+        public void ClearBefore(int frame)
+        {
+            _recycleKeys.Clear();
+
+            foreach (var pair in _checksums)
+            {
+                if (pair.Key < frame)
+                    _recycleKeys.Add(pair.Key);
+            }
+
+            for (int i = 0; i < _recycleKeys.Count; i++)
+            {
+                _checksums.Remove(_recycleKeys[i]);
+            }
         }
     }
 }

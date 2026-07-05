@@ -28,6 +28,16 @@ namespace FrameWork.RollBackSystem
         public float TickLength { get; set; } = 1f / 60f;
 
         //--------------------------------
+        // Catch-up
+        //--------------------------------
+
+        /// <summary>
+        /// 每个 Unity 帧最多执行的逻辑 Tick 数，用于加速追帧。
+        /// 默认 3，可根据网络延迟动态调整。
+        /// </summary>
+        public int MaxTicksPerUnityFrame { get; set; } = 3;
+
+        //--------------------------------
         // Buffers
         //--------------------------------
 
@@ -59,6 +69,15 @@ namespace FrameWork.RollBackSystem
 
         private readonly AuthoritativeChecksumBuffer
             _authoritativeChecksumBuffer;
+
+        //--------------------------------
+        // Confirmed Frame
+        //--------------------------------
+
+        private int _confirmedFrame = -1;
+
+        /// <summary>服务端已确认的最高帧号，此帧前的预测数据可安全释放。</summary>
+        public int ConfirmedFrame => _confirmedFrame;
 
         //--------------------------------
         // ctor
@@ -100,6 +119,24 @@ namespace FrameWork.RollBackSystem
             CurrentFrame = nextFrame;
         }
 
+        /// <summary>
+        /// 加速追帧：在一个调用中执行多次逻辑 Tick。
+        /// 用于客户端落后服务端时快速追上。
+        /// </summary>
+        /// <param name="count">要执行的 Tick 数</param>
+        /// <param name="inputProvider">为每帧提供输入的函数</param>
+        public void TickMultiple(int count, Func<int, TInput> inputProvider)
+        {
+            int actualCount = Math.Min(count, MaxTicksPerUnityFrame);
+
+            for (int i = 0; i < actualCount; i++)
+            {
+                int nextFrame = CurrentFrame + 1;
+                TInput input = inputProvider(nextFrame);
+                Step(input);
+            }
+        }
+
         //--------------------------------
         // Snapshot
         //--------------------------------
@@ -124,6 +161,34 @@ namespace FrameWork.RollBackSystem
             int frame,
             TInput input)
         {
+            //--------------------------------
+            // 输入时序校验
+            //--------------------------------
+
+            // 过时帧丢弃：权威输入帧号已过确认帧
+            if (frame <= _confirmedFrame)
+            {
+                UnityEngine.Debug.LogWarning(
+                    $"[RollbackCoordinator] ReceiveAuthoritativeInput: stale frame {frame} discarded (confirmed={_confirmedFrame}).");
+                return;
+            }
+
+            // 重复帧检测：同一帧收到多次权威输入
+            if (_authoritativeInputBuffer.TryGet(frame, out var existingInput))
+            {
+                if (!_inputComparer.IsEqual(existingInput, input))
+                {
+                    UnityEngine.Debug.LogWarning(
+                        $"[RollbackCoordinator] ReceiveAuthoritativeInput: duplicate authoritative input for frame {frame} with different content (possible network duplicate packet).");
+                }
+                else
+                {
+                    UnityEngine.Debug.Log(
+                        $"[RollbackCoordinator] ReceiveAuthoritativeInput: duplicate authoritative input for frame {frame} (identical, ignoring).");
+                    return;
+                }
+            }
+
             _authoritativeInputBuffer.Save(frame, input);
 
             bool hasPredicted =
@@ -144,7 +209,11 @@ namespace FrameWork.RollBackSystem
             bool rollbackSuccess = RollbackTo(frame - 1);
 
             if (!rollbackSuccess)
+            {
+                UnityEngine.Debug.LogError(
+                    $"[RollbackCoordinator] ReceiveAuthoritativeInput: rollback to frame {frame - 1} failed, skipping resimulate.");
                 return;
+            }
 
             _inputBuffer.Save(frame, input);
 
@@ -164,13 +233,48 @@ namespace FrameWork.RollBackSystem
                     out var snapshot);
 
             if (!found)
+            {
+                UnityEngine.Debug.LogWarning(
+                    $"[RollbackCoordinator] RollbackTo failed: no snapshot found for target frame {frame}. " +
+                    $"Snapshot range: [{_snapshotBuffer.MinFrame}, {_snapshotBuffer.MaxFrame}].");
                 return false;
+            }
 
             _world.Restore(snapshot);
 
             CurrentFrame = snapshot.Frame;
 
             return true;
+        }
+
+        //--------------------------------
+        // Confirm Frame
+        //--------------------------------
+
+        /// <summary>
+        /// 标记某帧已被服务端确认。释放该帧前所有缓存的输入、快照、Checksum。
+        /// 应在收到服务端确认消息时调用。
+        /// </summary>
+        public void ConfirmFrame(int frame)
+        {
+            if (frame <= _confirmedFrame)
+            {
+                UnityEngine.Debug.LogWarning(
+                    $"[RollbackCoordinator] ConfirmFrame ignored: frame {frame} <= already confirmed frame {_confirmedFrame}.");
+                return;
+            }
+
+            UnityEngine.Debug.Log(
+                $"[RollbackCoordinator] ConfirmFrame: advancing confirmed frame from {_confirmedFrame} to {frame}.");
+
+            _confirmedFrame = frame;
+
+            // 清理各缓冲区中指定帧之前的数据
+            _inputBuffer.ClearBefore(frame);
+            _authoritativeInputBuffer.ClearBefore(frame);
+            _checksumBuffer.ClearBefore(frame);
+            _authoritativeChecksumBuffer.ClearBefore(frame);
+            _snapshotBuffer.ClearBefore(frame);
         }
 
         //--------------------------------
@@ -198,7 +302,11 @@ namespace FrameWork.RollBackSystem
                     _inputBuffer.TryGet(nextFrame, out var input);
 
                 if (!found)
-                    break;
+                {
+                    UnityEngine.Debug.LogWarning(
+                        $"[RollbackCoordinator] Resimulate: input missing at frame {nextFrame}, using default input to keep frame alignment.");
+                    input = default;
+                }
 
                 var context = new SimulationContext(nextFrame, TickLength, true);
 
@@ -223,6 +331,12 @@ namespace FrameWork.RollBackSystem
         //--------------------------------
         // Checksum
         //--------------------------------
+
+        /// <summary>
+        /// Checksum 漂移检测事件。当本地 Checksum 与权威 Checksum 不匹配时触发。
+        /// 参数：frame, localChecksum, authoritativeChecksum
+        /// </summary>
+        public event Action<int, uint, uint> OnChecksumDrift;
 
         public uint CalculateChecksum()
         {
@@ -273,6 +387,16 @@ namespace FrameWork.RollBackSystem
 
             bool isMatch =
                 localChecksum.Value == authoritativeChecksum.Value;
+
+            if (!isMatch)
+            {
+                UnityEngine.Debug.LogWarning(
+                    $"[RollbackCoordinator] Checksum drift detected at frame {frame}: " +
+                    $"local=0x{localChecksum.Value:X8}, authoritative=0x{authoritativeChecksum.Value:X8}.");
+
+                OnChecksumDrift?.Invoke(
+                    frame, localChecksum.Value, authoritativeChecksum.Value);
+            }
 
             return new ChecksumComparisonResult(
                 isMatch, frame, localChecksum.Value, authoritativeChecksum.Value);
