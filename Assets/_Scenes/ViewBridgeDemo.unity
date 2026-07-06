@@ -1138,6 +1138,52 @@ RectTransform:
   m_AnchoredPosition: {x: 613, y: 194}
   m_SizeDelta: {x: 389.7301, y: 197.2}
   m_Pivot: {x: 0.49999994, y: 0.5}
+--- !u!1 &2104711524
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2104711526}
+  - component: {fileID: 2104711525}
+  m_Layer: 0
+  m_Name: GameObjectPoolCenter
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &2104711525
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2104711524}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0054bf67fc8e74c4e81a408d00f281a9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _defaultInitialCapacity: 8
+  _sceneUIRoot: {fileID: 1750212033}
+--- !u!4 &2104711526
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2104711524}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 982.08466, y: 433.7576, z: -3.3200624}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -1150,3 +1196,4 @@ SceneRoots:
   - {fileID: 708894833}
   - {fileID: 1750212033}
   - {fileID: 807412967}
+  - {fileID: 2104711526}
