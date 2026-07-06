@@ -1,0 +1,1766 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>BuffSystem_Architecture_DeepDive.md</title>
+<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+
+<style>
+/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+body {
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+	padding: 0 26px;
+	line-height: var(--vscode-markdown-line-height, 22px);
+	word-wrap: break-word;
+}
+
+#code-csp-warning {
+	position: fixed;
+	top: 0;
+	right: 0;
+	color: white;
+	margin: 16px;
+	text-align: center;
+	font-size: 12px;
+	font-family: sans-serif;
+	background-color:#444444;
+	cursor: pointer;
+	padding: 6px;
+	box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+}
+
+#code-csp-warning:hover {
+	text-decoration: none;
+	background-color:#007acc;
+	box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+}
+
+body.scrollBeyondLastLine {
+	margin-bottom: calc(100vh - 22px);
+}
+
+body.showEditorSelection .code-line {
+	position: relative;
+}
+
+body.showEditorSelection .code-active-line:before,
+body.showEditorSelection .code-line:hover:before {
+	content: "";
+	display: block;
+	position: absolute;
+	top: 0;
+	left: -12px;
+	height: 100%;
+}
+
+body.showEditorSelection li.code-active-line:before,
+body.showEditorSelection li.code-line:hover:before {
+	left: -30px;
+}
+
+.vscode-light.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+
+.vscode-light.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.40);
+}
+
+.vscode-light.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-dark.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.vscode-dark.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.60);
+}
+
+.vscode-dark.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-high-contrast.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 160, 0, 0.7);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 160, 0, 1);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+img {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+a {
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+	outline: 1px solid -webkit-focus-ring-color;
+	outline-offset: -1px;
+}
+
+hr {
+	border: 0;
+	height: 2px;
+	border-bottom: 2px solid;
+}
+
+h1 {
+	padding-bottom: 0.3em;
+	line-height: 1.2;
+	border-bottom-width: 1px;
+	border-bottom-style: solid;
+}
+
+h1, h2, h3 {
+	font-weight: normal;
+}
+
+table {
+	border-collapse: collapse;
+}
+
+table > thead > tr > th {
+	text-align: left;
+	border-bottom: 1px solid;
+}
+
+table > thead > tr > th,
+table > thead > tr > td,
+table > tbody > tr > th,
+table > tbody > tr > td {
+	padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+	border-top: 1px solid;
+}
+
+blockquote {
+	margin: 0 7px 0 5px;
+	padding: 0 16px 0 10px;
+	border-left-width: 5px;
+	border-left-style: solid;
+}
+
+code {
+	font-family: Menlo, Monaco, Consolas, "Droid Sans Mono", "Courier New", monospace, "Droid Sans Fallback";
+	font-size: 1em;
+	line-height: 1.357em;
+}
+
+body.wordWrap pre {
+	white-space: pre-wrap;
+}
+
+pre:not(.hljs),
+pre.hljs code > div {
+	padding: 16px;
+	border-radius: 3px;
+	overflow: auto;
+}
+
+pre code {
+	color: var(--vscode-editor-foreground);
+	tab-size: 4;
+}
+
+/** Theming */
+
+.vscode-light pre {
+	background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+	background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+	background-color: rgb(0, 0, 0);
+}
+
+.vscode-high-contrast h1 {
+	border-color: rgb(0, 0, 0);
+}
+
+.vscode-light table > thead > tr > th {
+	border-color: rgba(0, 0, 0, 0.69);
+}
+
+.vscode-dark table > thead > tr > th {
+	border-color: rgba(255, 255, 255, 0.69);
+}
+
+.vscode-light h1,
+.vscode-light hr,
+.vscode-light table > tbody > tr + tr > td {
+	border-color: rgba(0, 0, 0, 0.18);
+}
+
+.vscode-dark h1,
+.vscode-dark hr,
+.vscode-dark table > tbody > tr + tr > td {
+	border-color: rgba(255, 255, 255, 0.18);
+}
+
+</style>
+
+<style>
+/* Tomorrow Theme */
+/* http://jmblog.github.com/color-themes-for-google-code-highlightjs */
+/* Original theme - https://github.com/chriskempson/tomorrow-theme */
+
+/* Tomorrow Comment */
+.hljs-comment,
+.hljs-quote {
+	color: #8e908c;
+}
+
+/* Tomorrow Red */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-regexp,
+.hljs-deletion {
+	color: #c82829;
+}
+
+/* Tomorrow Orange */
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params,
+.hljs-meta,
+.hljs-link {
+	color: #f5871f;
+}
+
+/* Tomorrow Yellow */
+.hljs-attribute {
+	color: #eab700;
+}
+
+/* Tomorrow Green */
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+	color: #718c00;
+}
+
+/* Tomorrow Blue */
+.hljs-title,
+.hljs-section {
+	color: #4271ae;
+}
+
+/* Tomorrow Purple */
+.hljs-keyword,
+.hljs-selector-tag {
+	color: #8959a8;
+}
+
+.hljs {
+	display: block;
+	overflow-x: auto;
+	color: #4d4d4c;
+	padding: 0.5em;
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: bold;
+}
+</style>
+
+<style>
+/*
+ * Markdown PDF CSS
+ */
+
+ body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+	padding: 0 12px;
+}
+
+pre {
+	background-color: #f8f8f8;
+	border: 1px solid #cccccc;
+	border-radius: 3px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+pre:not(.hljs) {
+	padding: 23px;
+	line-height: 19px;
+}
+
+blockquote {
+	background: rgba(127, 127, 127, 0.1);
+	border-color: rgba(0, 122, 204, 0.5);
+}
+
+.emoji {
+	height: 1.4em;
+}
+
+code {
+	font-size: 14px;
+	line-height: 19px;
+}
+
+/* for inline code */
+:not(pre):not(.hljs) > code {
+	color: #C9AE75; /* Change the old color so it seems less like an error */
+	font-size: inherit;
+}
+
+/* Page Break : use <div class="page"/> or <div class="page"></div> to insert page break
+-------------------------------------------------------- */
+.page {
+	page-break-after: always;
+}
+
+</style>
+
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
+          ? 'dark'
+          : 'default'
+    });
+  </script>
+<h1 id="buffsystem-架构深度文档">BuffSystem 架构深度文档</h1>
+<blockquote>
+<p>生成范围：<code>Assets/_Scripts/FrameWork/BuffSystem/**</code> 静态只读分析。<br>
+生成时间：2026-07-06。<br>
+本文只描述当前代码形态和已存在边界，不宣称 <code>production-ready</code>、<code>rollback-ready</code> 或 <code>view-ready</code>。</p>
+</blockquote>
+<h2 id="1-总体定位">1. 总体定位</h2>
+<p>BuffSystem 是项目中的 ECS 风格 Buff 运行时与制作工具链集合。它的核心目标是把策划 / Editor 配置转换成固定帧可推进的运行时 Buff 状态，并通过 <code>IBuffSystem</code> 提供添加、移除、事件触发和只读查询能力。</p>
+<p>当前系统可以分为七层：</p>
+<table>
+<thead>
+<tr>
+<th>层级</th>
+<th>主要文件</th>
+<th>职责</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>runtime core</td>
+<td><code>Interface/BuffSystemCore.cs</code>, <code>Interface/ECSBuffSystem.cs</code></td>
+<td>维护 Buff runtime entity、命令队列、Tick、生命周期 Effect、查询缓存</td>
+</tr>
+<tr>
+<td>interface / contracts</td>
+<td><code>IBuffSystem.cs</code>, <code>BuffDefinition.cs</code>, <code>BuffViewData.cs</code>, <code>BuffEffectECS.cs</code>, <code>IGameEvent.cs</code></td>
+<td>对外 API、运行时定义、只读视图、Effect / Event 契约</td>
+</tr>
+<tr>
+<td>config / loader</td>
+<td><code>BuffConfigData.cs</code>, <code>BuffConfigDataLoader.cs</code>, catalog / tags</td>
+<td>ScriptableObject authoring 数据、Resources 加载、秒转帧、tag 配置查询</td>
+</tr>
+<tr>
+<td>storage</td>
+<td><code>BuffECSComponents.cs</code>, <code>BuffSystemCore.cs</code></td>
+<td><code>EntityPerStack</code> 与 <code>CompressedExpiryFrameList</code> 两种 runtime storage</td>
+</tr>
+<tr>
+<td>trigger / event</td>
+<td><code>IGameEvent.cs</code>, <code>BuffEventFrameCommand.cs</code>, <code>BuffEffectECS.cs</code>, <code>BuffSystemCore.Raise</code></td>
+<td>EventTrigger Buff 的事件输入、候选收集与事件 Effect dispatch</td>
+</tr>
+<tr>
+<td>effect</td>
+<td><code>BuffEffectRegistryBootstrap.cs</code>, <code>Effects/**</code>, <code>IBuffGraphAction.cs</code></td>
+<td>Effect 注册、生命周期回调、图生成 Effect / action 调用链</td>
+</tr>
+<tr>
+<td>authoring / test</td>
+<td><code>Editor/**</code>, <code>Test/**</code></td>
+<td>Authoring Hub、Validator、xNode 图、代码生成、功能/存储/触发/效果/高级测试</td>
+</tr>
+</tbody>
+</table>
+<h3 id="11-核心运行时入口">1.1 核心运行时入口</h3>
+<p><code>BuffSystemCore</code> 是真正的运行时核心，实现 <code>IBuffSystem</code> 和 <code>IDisposable</code>。它不持有 Unity 场景对象，主要依赖：</p>
+<ul>
+<li><code>World</code></li>
+<li><code>SimulationContext</code></li>
+<li><code>IBuffDefinitionProvider</code></li>
+<li><code>BuffEffectRegistry</code></li>
+<li>ECS component：<code>BuffRuntimeComponent</code> / <code>CompressedParallelBuffRuntimeComponent</code></li>
+</ul>
+<p><code>ECSBuffSystem</code> 是 <code>FixedStepSystemBase</code> 适配器，把 <code>BuffSystemCore.Tick(World, context)</code> 接入 ECS 固定帧 system。</p>
+<h3 id="12-对外-api">1.2 对外 API</h3>
+<p><code>IBuffSystem</code> 暴露：</p>
+<table>
+<thead>
+<tr>
+<th>API</th>
+<th>类型</th>
+<th>语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Tick(World, SimulationContext)</code></td>
+<td>simulation</td>
+<td>推进一帧 Buff 逻辑</td>
+</tr>
+<tr>
+<td><code>AddBuff(AddBuffCommand)</code></td>
+<td>command</td>
+<td>Tick 外调用时排队，下一次 Tick 消费</td>
+</tr>
+<tr>
+<td><code>RemoveBuff(RemoveBuffCommand)</code></td>
+<td>command</td>
+<td>Tick 外调用时排队，下一次 Tick 消费</td>
+</tr>
+<tr>
+<td><code>Raise&lt;TEvent&gt;(World, SimulationContext, in TEvent)</code></td>
+<td>event</td>
+<td>触发 EventTrigger Buff，不负责表现播放</td>
+</tr>
+<tr>
+<td><code>TryGetBuff(Entity, int, Entity, out BuffViewData)</code></td>
+<td>query</td>
+<td>按 target/config/source 查单个聚合视图</td>
+</tr>
+<tr>
+<td><code>GetBuffs(Entity)</code></td>
+<td>query</td>
+<td>获取 target 当前 Buff 聚合视图列表</td>
+</tr>
+</tbody>
+</table>
+<p>当前 <code>IBuffSystem</code> 没有提供 runtime tag query API。Tag 能力主要存在于 <code>BuffConfigData.Tags</code> 与 <code>BuffConfigDataLoader</code> 的配置级查询中。</p>
+<h2 id="2-数据模型关系">2. 数据模型关系</h2>
+<pre class="hljs"><code><div>BuffConfigData.asset
+  -&gt; BuffConfigData.ToDefinition(tickLength)
+  -&gt; BuffDefinition
+  -&gt; BuffSystemCore
+  -&gt; BuffRuntimeComponent / CompressedParallelBuffRuntimeComponent
+  -&gt; BuffViewData
+  -&gt; View / Debug / HUD 只读消费
+</div></code></pre>
+<h3 id="21-buffconfigdata">2.1 BuffConfigData</h3>
+<p>所在文件：<code>BuffConfigData.cs</code></p>
+<p>用途：Unity <code>ScriptableObject</code> authoring 配置。包含策划可编辑字段，例如：</p>
+<ul>
+<li><code>ID</code></li>
+<li><code>Name</code></li>
+<li><code>Description</code></li>
+<li><code>Icon</code></li>
+<li><code>Priority</code></li>
+<li><code>Tags</code></li>
+<li><code>IsForever</code></li>
+<li><code>Duration</code></li>
+<li><code>BuffTriggerType</code></li>
+<li><code>TickTime</code></li>
+<li><code>BuffType</code></li>
+<li><code>Unlimited</code></li>
+<li><code>MaxStack</code></li>
+<li><code>NormalStackPolicy</code></li>
+<li><code>ParallelStackUpPolicy</code></li>
+<li><code>ParallelStackDownPolicy</code></li>
+<li><code>ParallelStorageMode</code></li>
+<li><code>DurationExtendPerStack</code></li>
+<li><code>EffectId</code></li>
+<li><code>EventIds</code></li>
+</ul>
+<p>生命周期：Editor / Resources asset。运行时不直接把 ScriptableObject 当真状态，而是通过 <code>ToDefinition(float tickLength)</code> 转为 <code>BuffDefinition</code>。</p>
+<p>注意事项：</p>
+<ul>
+<li><code>Duration</code> / <code>TickTime</code> 是秒，转换为固定帧数后进入 runtime。</li>
+<li><code>Icon</code> 是表现层字段，不参与 ECS 模拟。</li>
+<li><code>Tags</code> 目前进入 loader 的配置级 tag 索引，但不进入 <code>BuffDefinition</code>。</li>
+</ul>
+<h3 id="22-buffdefinition">2.2 BuffDefinition</h3>
+<p>所在文件：<code>Interface/BuffDefinition.cs</code></p>
+<p>用途：运行时纯数据定义，作为 <code>BuffSystemCore</code> 的配置输入。核心字段：</p>
+<ul>
+<li><code>ConfigId</code></li>
+<li><code>Name</code></li>
+<li><code>Priority</code></li>
+<li><code>MaxStack</code></li>
+<li><code>Unlimited</code></li>
+<li><code>IsForever</code></li>
+<li><code>DurationFrames</code></li>
+<li><code>TickIntervalFrames</code></li>
+<li><code>DurationExtendFramesPerStack</code></li>
+<li><code>TriggerType</code></li>
+<li><code>BuffType</code></li>
+<li><code>NormalStackPolicy</code></li>
+<li><code>ParallelStackUpPolicy</code></li>
+<li><code>ParallelStackDownPolicy</code></li>
+<li><code>ParallelStorageMode</code></li>
+<li><code>EffectId</code></li>
+<li><code>EventIds</code></li>
+</ul>
+<p>谁创建：<code>BuffConfigData.ToDefinition</code> 或测试中的 <code>BuffDefinitionRegistry.Register</code>。</p>
+<p>谁消费：<code>BuffSystemCore</code> 在 Add / Remove / Tick / Raise / query cache 构建中读取。</p>
+<p>注意事项：</p>
+<ul>
+<li><code>DurationFrames</code> 对非永久 Buff 最小为 1。</li>
+<li><code>TickIntervalFrames</code> 最小为 0。</li>
+<li><code>CanRespondToEvent(eventId)</code> 仅对 <code>TriggerType == EventTrigger</code> 且 <code>EventIds</code> 命中时返回 true。</li>
+</ul>
+<h3 id="23-buffruntimecomponent">2.3 BuffRuntimeComponent</h3>
+<p>所在文件：<code>Interface/BuffECSComponents.cs</code></p>
+<p>用途：普通 Buff 或 EntityPerStack 并行 Buff 的 ECS runtime component。</p>
+<p>核心字段：</p>
+<ul>
+<li><code>target</code></li>
+<li><code>source</code></li>
+<li><code>configId</code></li>
+<li><code>runtimeHandle</code></li>
+<li><code>stack</code></li>
+<li><code>durationFrames</code></li>
+<li><code>remainingFrames</code></li>
+<li><code>tickIntervalFrames</code></li>
+<li><code>elapsedFrames</code></li>
+<li><code>ticks</code></li>
+<li><code>maxStack</code></li>
+<li><code>priority</code></li>
+<li><code>unlimited</code></li>
+<li><code>isForever</code></li>
+<li><code>buffType</code></li>
+</ul>
+<p>生命周期：</p>
+<ul>
+<li>Add 时由 <code>CreateRuntimeBuffEntity</code> 创建 ECS Entity 并写入 component。</li>
+<li>Tick 中递减 <code>remainingFrames</code>、累加 <code>elapsedFrames</code> / <code>ticks</code>。</li>
+<li>Remove / expire 时先进入 pending remove，生命周期 Effect 执行后销毁 entity。</li>
+</ul>
+<h3 id="24-compressedparallelbuffruntimecomponent">2.4 CompressedParallelBuffRuntimeComponent</h3>
+<p>所在文件：<code>Interface/BuffECSComponents.cs</code></p>
+<p>用途：压缩并行 Buff runtime，一个 runtime entity 内部保存多层并行层。</p>
+<p>核心字段：</p>
+<ul>
+<li><code>target</code></li>
+<li><code>source</code></li>
+<li><code>configId</code></li>
+<li><code>compressedRuntimeHandle</code></li>
+<li><code>priority</code></li>
+<li><code>layerCount</code></li>
+<li><code>nextLayerId</code></li>
+<li><code>CompressedParallelBuffLayerBuffer layers</code></li>
+</ul>
+<p><code>CompressedParallelBuffLayerBuffer</code> 是固定容量值类型容器，容量为 <code>16</code>，内部用 <code>_layer0</code> 到 <code>_layer15</code> 存储，不用数组 / List / Dictionary 表示真状态。</p>
+<p>适用条件：</p>
+<pre class="hljs"><code><div>BuffType == parallel
+ParallelStorageMode == CompressedExpiryFrameList
+TriggerType == Tick
+Unlimited == false
+MaxStack &lt;= CompressedParallelBuffLayerBuffer.Capacity
+configId 在 compressed whitelist 中
+</div></code></pre>
+<p>production whitelist 当前只包含 <code>991001</code>。</p>
+<h3 id="25-buffviewdata">2.5 BuffViewData</h3>
+<p>所在文件：<code>Interface/BuffViewData.cs</code></p>
+<p>用途：面向 UI、Debug、View adapter 的只读 Buff 聚合视图。</p>
+<p>字段：</p>
+<ul>
+<li><code>Target</code></li>
+<li><code>Source</code></li>
+<li><code>ConfigId</code></li>
+<li><code>Stack</code></li>
+<li><code>RemainingFrames</code></li>
+<li><code>RuntimeHandle</code></li>
+</ul>
+<p>语义：</p>
+<ul>
+<li><code>RemainingFrames == -1</code> 表示永久 Buff。</li>
+<li>对 EntityPerStack 并行 Buff，多个 runtime 会合并为同一个 <code>(target, source, configId)</code> view。</li>
+<li>对 CompressedParallel，多个 layer 会聚合为一个 view，<code>Stack</code> 为 active layer 数，<code>RemainingFrames</code> 取最小剩余帧。</li>
+</ul>
+<h3 id="26-buffeffectcontext">2.6 BuffEffectContext</h3>
+<p>所在文件：<code>Interface/BuffEffectECS.cs</code></p>
+<p>用途：传给 Effect 的只读上下文。</p>
+<p>字段：</p>
+<ul>
+<li><code>World</code></li>
+<li><code>SimulationContext</code></li>
+<li><code>BuffEntity</code></li>
+<li><code>Runtime</code></li>
+<li><code>Definition</code></li>
+</ul>
+<p>Effect 可以通过 <code>World</code> 修改 ECS component，但不应持有需要回滚的私有状态；持久状态应写入 ECS。</p>
+<h3 id="27-命令结构">2.7 命令结构</h3>
+<p>所在文件：<code>Interface/IBuffSystem.cs</code>, <code>Interface/BuffECSComponents.cs</code>, <code>Interface/BuffEventFrameCommand.cs</code></p>
+<table>
+<thead>
+<tr>
+<th>结构</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AddBuffCommand</code></td>
+<td>Tick 外添加 / 刷新 Buff 的命令数据</td>
+</tr>
+<tr>
+<td><code>RemoveBuffCommand</code></td>
+<td>Tick 外移除 Buff 层数的命令数据</td>
+</tr>
+<tr>
+<td><code>AddBuffRequestComponent</code></td>
+<td>通过 ECS 单帧请求 entity 输入 Add</td>
+</tr>
+<tr>
+<td><code>RemoveBuffRequestComponent</code></td>
+<td>通过 ECS 单帧请求 entity 输入 Remove</td>
+</tr>
+<tr>
+<td><code>RaiseBuffEventFrameCommand&lt;TEvent&gt;</code></td>
+<td>把 <code>IGameEvent</code> 作为 frame command 重放</td>
+</tr>
+</tbody>
+</table>
+<p><code>BuffSystemCore</code> 同时支持直接队列命令和 ECS request component。两者都在 Tick 内消费，保证时序集中。</p>
+<h2 id="3-核心机制">3. 核心机制</h2>
+<h3 id="31-addbuff-机制">3.1 AddBuff 机制</h3>
+<p>输入：</p>
+<ul>
+<li><code>AddBuffCommand(Target, ConfigId, Source, Stack)</code></li>
+<li><code>IBuffDefinitionProvider</code></li>
+<li>当前 <code>World</code> / <code>SimulationContext</code></li>
+</ul>
+<p>过程：</p>
+<ol>
+<li><code>AddBuff(command)</code> 只把有效命令加入 <code>_queuedCommands</code>。</li>
+<li>下一次 <code>Tick()</code> 中 <code>ConsumeQueuedCommands()</code> 调用 <code>ApplyAddCommand</code>。</li>
+<li><code>ApplyAddCommand</code> 先检查 target 是否存活，再按 <code>ConfigId</code> 解析 <code>BuffDefinition</code>。</li>
+<li>如果是 <code>parallel</code>：
+<ul>
+<li>满足 compressed 条件则进入 <code>ApplyCompressedParallelAdd</code>。</li>
+<li>否则进入 <code>ApplyParallelAdd</code>。</li>
+</ul>
+</li>
+<li>如果是 <code>normal</code>，进入 <code>ApplyNormalAdd</code>。</li>
+<li>创建 / 刷新 / 叠层 / 替换后，排队生命周期 Effect。</li>
+<li>最后由 <code>FlushLifecycleEffects</code> 排序执行 Effect。</li>
+</ol>
+<p>输出：</p>
+<ul>
+<li>ECS runtime component 更新。</li>
+<li>public view cache 标记 dirty。</li>
+<li>lifecycle effect request 进入待执行队列。</li>
+</ul>
+<p>风险点：</p>
+<ul>
+<li><code>ConfigId</code> 找不到时静默无效果。</li>
+<li>EffectId 未注册时 runtime 状态仍可存在，但生命周期回调不会执行。</li>
+</ul>
+<h3 id="32-命令队列与-ecs-request-component">3.2 命令队列与 ECS request component</h3>
+<p><code>BuffSystemCore.Tick</code> 的前半段顺序是：</p>
+<pre class="hljs"><code><div>EnsureQueries
+CaptureRuntimeEntities
+CaptureCompressedRuntimeEntities
+RebuildRuntimeLookup
+RebuildCompressedRuntimeLookup
+ConsumeRequestComponents
+ConsumeQueuedCommands
+</div></code></pre>
+<p>设计意图：</p>
+<ul>
+<li>request component 允许 frame command / ECS 外部系统用 entity 表达一次性请求。</li>
+<li><code>_queuedCommands</code> 允许普通 API 调用方在 Tick 外提交 Add / Remove。</li>
+<li>两类命令都在 BuffSystem Tick 内消费，避免调用时立即改 World。</li>
+</ul>
+<p>性能影响：</p>
+<ul>
+<li>每帧会抓取 Add / Remove request query。</li>
+<li>request entities 按 Entity 排序，避免 query 或 dictionary 遍历顺序影响确定性。</li>
+</ul>
+<h3 id="33-tick--duration--expire">3.3 Tick / Duration / Expire</h3>
+<p><code>TickRuntimeBuffs</code> 对 EntityPerStack runtime：</p>
+<ol>
+<li>跳过 pending remove。</li>
+<li>找 definition。</li>
+<li>target 不存活或 stack &lt;= 0，则排队 remove。</li>
+<li><code>elapsedFrames++</code>。</li>
+<li>命中 <code>TickIntervalFrames</code> 时 <code>ticks++</code> 并排队 <code>OnTick</code>。</li>
+<li>非永久 Buff 执行 <code>remainingFrames--</code>。</li>
+<li><code>remainingFrames &lt;= 0</code> 时：
+<ul>
+<li>parallel 或 stack &lt;= 1：整 runtime remove。</li>
+<li>normal 多层：<code>stack--</code>，重置 <code>remainingFrames</code>，排队 <code>OnStackChanged(-1)</code>。</li>
+</ul>
+</li>
+</ol>
+<p>CompressedParallel 通过 <code>TickCompressedParallelRuntimes</code> 对每个 layer 增加 elapsed/ticks，并通过 <code>ExpireCompressedParallelLayers</code> 移除到期 layer。</p>
+<h3 id="34-stack--refresh--replace">3.4 Stack / Refresh / Replace</h3>
+<p>普通 Buff 使用 <code>NormalBuffStackPolicy</code>：</p>
+<table>
+<thead>
+<tr>
+<th>策略</th>
+<th>语义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RefreshDuration</code></td>
+<td>增加 stack 并重置 duration</td>
+</tr>
+<tr>
+<td><code>AddDuration</code></td>
+<td>按 <code>DurationExtendFramesPerStack</code> 延长 duration</td>
+</tr>
+<tr>
+<td><code>AddStackOnly</code></td>
+<td>只增加 stack</td>
+</tr>
+<tr>
+<td><code>AddStackAndRefreshDuration</code></td>
+<td>增加 stack 并刷新 duration</td>
+</tr>
+<tr>
+<td><code>CyclicStack</code></td>
+<td>非 unlimited 时循环层数</td>
+</tr>
+<tr>
+<td><code>ResetDurationOnly</code></td>
+<td>不改变 stack，只重置 duration / tick 计数</td>
+</tr>
+</tbody>
+</table>
+<p>并行 Buff 使用 <code>ParallelBuffStackUpPolicy</code>：</p>
+<table>
+<thead>
+<tr>
+<th>策略</th>
+<th>EntityPerStack 行为</th>
+<th>Compressed 行为</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Append</code></td>
+<td>追加 runtime entity，受 MaxStack 限制</td>
+<td>追加 layer，受 capacity / MaxStack 限制</td>
+</tr>
+<tr>
+<td><code>RefreshEarliest</code></td>
+<td>优先刷新最早到期层，不足再 append</td>
+<td>优先刷新最早 layer，不足再 append</td>
+</tr>
+<tr>
+<td><code>RefreshAll</code></td>
+<td>刷新全部已有层，同时未满时仍可 append incoming</td>
+<td>刷新全部已有 layer，同时未满时仍可 append incoming</td>
+</tr>
+<tr>
+<td><code>ReplaceEarliestWhenFull</code></td>
+<td>未满 append，满时移除最早再创建</td>
+<td>未满 append，满时替换最早 layer</td>
+</tr>
+</tbody>
+</table>
+<p>并行移除使用 <code>ParallelBuffStackDownPolicy</code>：</p>
+<ul>
+<li><code>RemoveEarliest</code></li>
+<li><code>RemoveLatest</code></li>
+<li><code>ClearAll</code></li>
+</ul>
+<p>排序比较使用剩余时间 / expireFrame、runtimeHandle、Entity ID / Version 等稳定 tie-breaker，避免依赖容器遍历顺序。</p>
+<h3 id="35-remove--clear">3.5 Remove / Clear</h3>
+<p>Remove 输入是 <code>RemoveBuffCommand</code>：</p>
+<ul>
+<li><code>Target</code></li>
+<li><code>ConfigId</code></li>
+<li><code>Source</code></li>
+<li><code>StackCount</code></li>
+<li><code>MatchAnySource</code></li>
+<li><code>ClearAllStacks</code></li>
+</ul>
+<p>处理过程：</p>
+<ol>
+<li>如果 definition 是 compressed eligible，进入 compressed remove。</li>
+<li>否则收集 runtime entities。</li>
+<li>非 <code>MatchAnySource</code> 按 <code>(target, source, configId)</code> 查 lookup。</li>
+<li><code>MatchAnySource</code> 从本帧 runtime 快照和 pending runtime 中收集相同 target/config。</li>
+<li>按 remove policy 排序。</li>
+<li>normal 多层可减少 stack；parallel 通常移除 runtime entity。</li>
+<li>remove 先写 pending remove、排队 <code>OnStackChanged</code> / <code>OnRemove</code>，最后 <code>DestroyPendingRemoveRuntimes</code> 销毁 entity。</li>
+</ol>
+<h3 id="36-source--target-机制">3.6 Source / Target 机制</h3>
+<p><code>BuffRuntimeKey</code> 是核心定位 key：</p>
+<pre class="hljs"><code><div>(target, source, configId)
+</div></code></pre>
+<p><code>source</code> 无效时会归一化为 <code>Entity.Invalid</code>。这意味着同 target/config 但不同 source 的 Buff 会形成不同查询结果；<code>TryGetBuff</code> 必须传入匹配 source。<code>RemoveBuffCommand.MatchAnySource</code> 可以跨 source 移除。</p>
+<h3 id="37-buffviewdata-查询机制">3.7 BuffViewData 查询机制</h3>
+<p><code>TryGetBuff</code> 和 <code>GetBuffs</code> 都先调用 <code>EnsureViewCache()</code>。</p>
+<p>View cache 核心结构：</p>
+<ul>
+<li><code>_viewByKey: Dictionary&lt;BuffRuntimeKey, BuffViewData&gt;</code></li>
+<li><code>_viewsByTarget: Dictionary&lt;Entity, List&lt;BuffViewData&gt;&gt;</code></li>
+<li><code>_validTargetViewCache: HashSet&lt;Entity&gt;</code></li>
+</ul>
+<p>构建策略：</p>
+<ol>
+<li>runtime component 改动时 <code>MarkViewCacheDirty()</code>。</li>
+<li>外部首次 query 时延迟重建。</li>
+<li>普通 / EntityPerStack runtime 由 <code>ToViewData</code> 转换。</li>
+<li>同 key 的多个 view 通过 <code>MergeViewData</code> 聚合：
+<ul>
+<li><code>Stack</code> 相加。</li>
+<li><code>RemainingFrames</code> 取最小，永久优先为 -1。</li>
+<li><code>RuntimeHandle</code> 取最小。</li>
+</ul>
+</li>
+<li>compressed runtime 通过 <code>ToCompressedViewData</code> 把 active layers 聚合成一个 view。</li>
+</ol>
+<p>边界：</p>
+<ul>
+<li>View cache 是派生缓存，不是真状态。</li>
+<li>restore 后必须清空并重建。</li>
+<li>View 层应只读调用 <code>IBuffSystem.GetBuffs</code> / <code>TryGetBuff</code>，不应直接枚举 runtime component。</li>
+</ul>
+<h3 id="38-lifecycle-effect-机制">3.8 Lifecycle Effect 机制</h3>
+<p>Effect 接口：</p>
+<ul>
+<li><code>OnApply</code></li>
+<li><code>OnRefresh</code></li>
+<li><code>OnStackChanged</code></li>
+<li><code>OnTick</code></li>
+<li><code>OnRemove</code></li>
+</ul>
+<p>运行时并不直接立即执行生命周期回调，而是创建 <code>BuffEffectRequest</code> 进入 <code>_pendingLifecycleEffects</code>。flush 前排序：</p>
+<ol>
+<li>frameNumber</li>
+<li>lifecycle phase order：Apply -&gt; Refresh -&gt; StackChanged -&gt; Tick -&gt; Remove</li>
+<li>priority</li>
+<li>runtimeHandle</li>
+<li>runtime entity</li>
+<li>sequence</li>
+</ol>
+<p>设计目的：</p>
+<ul>
+<li>生命周期回调顺序稳定。</li>
+<li>Remove effect 能看到 pre-removal snapshot。</li>
+<li>同帧多个变更不依赖字典 / query 顺序。</li>
+</ul>
+<h3 id="39-eventtrigger-机制">3.9 EventTrigger 机制</h3>
+<p>EventTrigger 依赖：</p>
+<ul>
+<li><code>IGameEvent</code></li>
+<li><code>IBuffSystem.Raise&lt;TEvent&gt;</code></li>
+<li><code>IBuffEventEffectExecutor&lt;TEvent&gt;</code></li>
+<li><code>BuffDefinition.EventIds</code></li>
+</ul>
+<p>流程：</p>
+<ol>
+<li>外部调用 <code>Raise(world, context, in gameEvent)</code>。</li>
+<li><code>gameEvent.EventId &lt;= 0</code> 直接返回。</li>
+<li><code>EnsureEventRuntimeIndex</code> 按当前帧构建 eventId -&gt; runtime entity 索引。</li>
+<li>候选 runtime 必须：
+<ul>
+<li>target 存活。</li>
+<li>definition 是 <code>EventTrigger</code>。</li>
+<li><code>definition.CanRespondToEvent(eventId)</code>。</li>
+<li>effect registry 中存在匹配 <code>IBuffEventEffectExecutor&lt;TEvent&gt;</code>。</li>
+<li><code>ShouldTrigger(context, event)</code> 返回 true。</li>
+</ul>
+</li>
+<li>候选按 priority / runtimeHandle / entity 排序。</li>
+<li>执行 <code>OnEvent</code>。</li>
+</ol>
+<p>边界：</p>
+<ul>
+<li>EventTrigger 不进入 compressed whitelist。</li>
+<li>Event effect 使用泛型 struct event，避免 Raise 热路径装箱。</li>
+</ul>
+<h3 id="310-restore-hook">3.10 Restore Hook</h3>
+<p><code>BuffSystemCore.OnWorldRestored(World world)</code> 是内部 restore hook。</p>
+<p>处理：</p>
+<ol>
+<li>清空 <code>_queuedCommands</code>、pending effect、pending remove、lookup、view cache、event index 等派生状态。</li>
+<li>不修改 ECS component 真状态。</li>
+<li>重新 query runtime / compressed runtime。</li>
+<li>重建 lookup。</li>
+<li>标记 view cache 和 event index dirty。</li>
+</ol>
+<p>边界：</p>
+<ul>
+<li>当前注释明确只支持 stable snapshot boundary。</li>
+<li>半帧命令不会被重放。</li>
+<li>rollback 真正确认依赖外部 snapshot / restore / replay 时序，不应仅凭该 hook 宣称 rollback-ready。</li>
+</ul>
+<h2 id="4-核心算法详解">4. 核心算法详解</h2>
+<h3 id="41-runtime-lookup">4.1 Runtime lookup</h3>
+<p>输入：本帧 runtime entity 快照。</p>
+<p>过程：</p>
+<pre class="hljs"><code><div>CaptureRuntimeEntities
+  -&gt; _runtimeEntitiesThisFrame
+  -&gt; RebuildRuntimeLookup
+  -&gt; Dictionary&lt;BuffRuntimeKey, List&lt;Entity&gt;&gt;
+</div></code></pre>
+<p>输出：按 <code>(target, source, configId)</code> 快速定位 runtime entities。</p>
+<p>性能：</p>
+<ul>
+<li>避免每次 Add / Remove / Query 都全量扫描 World。</li>
+<li>空 list 延迟若干帧回收，降低频繁创建销毁 Buff 时的分配抖动。</li>
+</ul>
+<p>风险：</p>
+<ul>
+<li>lookup 是派生缓存，restore / component 写入 / remove 后必须 dirty 或重建。</li>
+</ul>
+<h3 id="42-entityperstack-storage">4.2 EntityPerStack storage</h3>
+<p>输入：parallel Buff，且不走 compressed。</p>
+<p>过程：</p>
+<ul>
+<li>每个 stack layer 创建一个 <code>BuffRuntimeComponent</code> entity。</li>
+<li>同一 <code>(target, source, configId)</code> 下可以有多个 runtime entity。</li>
+<li>query 时聚合成一个 <code>BuffViewData</code>。</li>
+</ul>
+<p>优点：</p>
+<ul>
+<li>语义直观。</li>
+<li>每层有独立 runtime entity / remainingFrames / runtimeHandle。</li>
+</ul>
+<p>缺点：</p>
+<ul>
+<li>高 stack / 大量目标下 entity 数、query、排序和 rollback snapshot 成本更高。</li>
+</ul>
+<h3 id="43-compressedexpiryframelist-storage">4.3 CompressedExpiryFrameList storage</h3>
+<p>输入：parallel + Tick + CompressedExpiryFrameList + 非 unlimited + MaxStack &lt;= 16 + whitelist。</p>
+<p>过程：</p>
+<ul>
+<li>每个 <code>(target, source, configId)</code> 只创建一个 <code>CompressedParallelBuffRuntimeComponent</code>。</li>
+<li>每个 layer 记录：
+<ul>
+<li><code>layerId</code></li>
+<li><code>expireFrame</code></li>
+<li><code>elapsedFrames</code></li>
+<li><code>ticks</code></li>
+<li><code>layerRuntimeHandle</code></li>
+</ul>
+</li>
+<li>append / refresh / replace 在固定容量 buffer 内操作。</li>
+<li>expire 按 <code>expireFrame</code> 找最早过期 layer 并移除。</li>
+</ul>
+<p>输出：</p>
+<ul>
+<li>runtime entity 数从“每层一个”降为“每组一个”。</li>
+<li>public view 聚合成 active layer count 和最小 remainingFrames。</li>
+</ul>
+<p>性能影响：</p>
+<ul>
+<li>降低 Entity 数和 snapshot 体积。</li>
+<li>层操作是固定容量线性扫描，容量上限 16。</li>
+</ul>
+<p>适用边界：</p>
+<ul>
+<li>当前 production whitelist 只含 991001。</li>
+<li>EventTrigger / Unlimited / MaxStack 超容量 / 依赖逐层 runtime entity 的 Buff 不适合 compressed。</li>
+</ul>
+<h3 id="44-effect-registry-dispatch">4.4 Effect registry dispatch</h3>
+<p>输入：<code>EffectId</code> 与 <code>IBuffEffectExecutor</code> 实例。</p>
+<p>过程：</p>
+<ul>
+<li><code>BuffEffectRegistry.Register(effectId, effect)</code> 保存普通生命周期 executor。</li>
+<li>注册时反射扫描 effect 是否实现 <code>IBuffEventEffectExecutor&lt;TEvent&gt;</code>，并缓存到 eventType -&gt; effectId -&gt; executor。</li>
+<li>生命周期通过 <code>TryGet(effectId)</code> 调度。</li>
+<li>EventTrigger 通过 <code>TryGetEventEffect&lt;TEvent&gt;(effectId)</code> 调度。</li>
+</ul>
+<p>输出：Effect 回调执行。</p>
+<p>风险：</p>
+<ul>
+<li><code>EffectId == 0</code> 不执行 effect。</li>
+<li>未注册 EffectId 不阻止 Buff 状态创建，但 effect 不会运行。</li>
+<li><code>BuffEffectRegistryBootstrap</code> 自动注册块不等价于 whitelist 审批或 runtime 验证。</li>
+</ul>
+<h3 id="45-compositeeffect--graph-action">4.5 CompositeEffect / Graph action</h3>
+<p>当前图形化 authoring 允许从 <code>BuffCandidateGraph</code> 构建 Effect 草稿或 CompositeEffect 草稿。核心原则：</p>
+<ul>
+<li>Graph 是 Editor-only 设计 / 审查输入，不是 runtime 配置源。</li>
+<li>真实 runtime 仍依赖 <code>BuffConfigData</code> 与 <code>BuffEffectRegistryBootstrap</code>。</li>
+<li><code>ScriptActionNode</code> 通过 <code>MonoScript</code> / type name 引用实现 <code>IBuffGraphAction</code> 的 action。</li>
+<li>生成的 Effect 类继承 <code>BuffEffectExecutorBase</code>，在生命周期方法中顺序调用 action 的 <code>Execute(in BuffEffectContext)</code>。</li>
+<li>CompositeEffect 会按 EffectNode 顺序组织多段 lifecycle action。</li>
+</ul>
+<p>顺序解析：</p>
+<ul>
+<li>没有 <code>Next</code> 边时按 <code>ExecutionOrder</code> 排序。</li>
+<li>有 <code>Next</code> 边时要求链路单起点、无分叉、覆盖全部 EffectNode，且与 <code>ExecutionOrder</code> 不冲突。</li>
+<li>若链路非法，报告 error，不应生成可投入生产的代码。</li>
+</ul>
+<p>边界：</p>
+<ul>
+<li>生成模板不等于 production 可用。</li>
+<li>自动注册不等于 whitelist。</li>
+<li><code>IBuffGraphAction</code> 不应持有需要回滚的私有状态。</li>
+</ul>
+<h2 id="5-关键流程图">5. 关键流程图</h2>
+<h3 id="51-addbuff-流程">5.1 AddBuff 流程</h3>
+<pre class="hljs"><code><div>AddBuffCommand
+  -&gt; IBuffSystem.AddBuff
+  -&gt; _queuedCommands
+  -&gt; Tick()
+  -&gt; ConsumeQueuedCommands()
+  -&gt; ApplyAddCommand()
+  -&gt; Resolve BuffDefinition
+  -&gt; normal / parallel / compressed branch
+  -&gt; Create / Refresh / Stack / Replace
+  -&gt; Queue OnApply / OnRefresh / OnStackChanged
+  -&gt; FlushLifecycleEffects()
+  -&gt; Update / rebuild public view cache on demand
+</div></code></pre>
+<h3 id="52-tick-流程">5.2 Tick 流程</h3>
+<pre class="hljs"><code><div>BuffSystemCore.Tick(world, context)
+  -&gt; EnsureQueries
+  -&gt; CaptureRuntimeEntities
+  -&gt; CaptureCompressedRuntimeEntities
+  -&gt; RebuildRuntimeLookup
+  -&gt; RebuildCompressedRuntimeLookup
+  -&gt; ConsumeRequestComponents
+  -&gt; ConsumeQueuedCommands
+  -&gt; TickRuntimeBuffs
+  -&gt; TickCompressedParallelRuntimes
+  -&gt; FlushLifecycleEffects
+  -&gt; DestroyPendingRemoveRuntimes
+</div></code></pre>
+<h3 id="53-query-流程">5.3 Query 流程</h3>
+<pre class="hljs"><code><div>TryGetBuff / GetBuffs
+  -&gt; EnsureViewCache
+  -&gt; if dirty: clear view cache
+  -&gt; add EntityPerStack runtime views
+  -&gt; add same-frame created runtime views
+  -&gt; add compressed runtime aggregate views
+  -&gt; merge by target/source/configId
+  -&gt; return BuffViewData / IReadOnlyList&lt;BuffViewData&gt;
+</div></code></pre>
+<h3 id="54-effect-执行流程">5.4 Effect 执行流程</h3>
+<pre class="hljs"><code><div>Runtime state change
+  -&gt; QueueLifecycleEffect(phase)
+  -&gt; _pendingLifecycleEffects
+  -&gt; sort by frame / phase / priority / handle / entity / sequence
+  -&gt; BuffEffectRegistry.TryGet(effectId)
+  -&gt; BuffEffectContext
+  -&gt; OnApply / OnRefresh / OnStackChanged / OnTick / OnRemove
+</div></code></pre>
+<h3 id="55-eventtrigger-流程">5.5 EventTrigger 流程</h3>
+<pre class="hljs"><code><div>IGameEvent
+  -&gt; IBuffSystem.Raise(world, context, in event)
+  -&gt; EnsureEventRuntimeIndex
+  -&gt; filter EventTrigger Buffs by EventId
+  -&gt; BuffEffectRegistry.TryGetEventEffect&lt;TEvent&gt;
+  -&gt; ShouldTrigger
+  -&gt; sort candidates
+  -&gt; OnEvent
+</div></code></pre>
+<h3 id="56-compressedparallel-查询流程">5.6 CompressedParallel 查询流程</h3>
+<pre class="hljs"><code><div>CompressedParallelBuffRuntimeComponent
+  -&gt; layers[0..layerCount)
+  -&gt; filter active layers by expireFrame
+  -&gt; Stack = activeLayerCount
+  -&gt; RemainingFrames = min(layer.expireFrame - currentFrame)
+  -&gt; RuntimeHandle = min(layerRuntimeHandle)
+  -&gt; BuffViewData
+</div></code></pre>
+<h3 id="57-restore-hook-流程">5.7 Restore Hook 流程</h3>
+<pre class="hljs"><code><div>World restored by external rollback/snapshot layer
+  -&gt; BuffSystemCore.OnWorldRestored(world)
+  -&gt; clear queued commands / lifecycle effects / lookup / caches
+  -&gt; EnsureQueries
+  -&gt; CaptureRuntimeEntities
+  -&gt; CaptureCompressedRuntimeEntities
+  -&gt; RebuildRuntimeLookup
+  -&gt; RebuildCompressedRuntimeLookup
+  -&gt; mark ViewCache and EventIndex dirty
+</div></code></pre>
+<h3 id="58-view-adapter-只读消费流程">5.8 View Adapter 只读消费流程</h3>
+<pre class="hljs"><code><div>View / Debug / HUD
+  -&gt; IBuffSystem.GetBuffs(ownerEntity)
+  -&gt; IReadOnlyList&lt;BuffViewData&gt;
+  -&gt; View-only adapter / formatter
+  -&gt; Text HUD / debug panel
+</div></code></pre>
+<p>原则：View 层只读消费 public query，不应调用 Add / Remove / Raise，也不应直接读取 <code>BuffRuntimeComponent</code> 或 <code>CompressedParallelBuffRuntimeComponent</code> 作为正式表现数据源。</p>
+<h2 id="6-每个脚本作用索引">6. 每个脚本作用索引</h2>
+<h3 id="a-runtime-core">A. Runtime Core</h3>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>类 / 结构</th>
+<th>职责</th>
+<th>类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Interface/BuffSystemCore.cs</code></td>
+<td><code>BuffSystemCore</code></td>
+<td>Buff runtime 核心，处理命令、Tick、storage、effect、query cache、restore hook</td>
+<td>runtime</td>
+</tr>
+<tr>
+<td><code>Interface/ECSBuffSystem.cs</code></td>
+<td><code>ECSBuffSystem</code></td>
+<td><code>FixedStepSystemBase</code> 适配器，把 core 接入 ECS Tick</td>
+<td>runtime</td>
+</tr>
+</tbody>
+</table>
+<h3 id="b-interface--contracts">B. Interface / Contracts</h3>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>类 / 结构</th>
+<th>职责</th>
+<th>类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Interface/IBuffSystem.cs</code></td>
+<td><code>IBuffSystem</code>, <code>AddBuffCommand</code>, <code>RemoveBuffCommand</code></td>
+<td>对外 API 与命令结构</td>
+<td>runtime contract</td>
+</tr>
+<tr>
+<td><code>Interface/BuffDefinition.cs</code></td>
+<td><code>BuffDefinition</code>, <code>IBuffDefinitionProvider</code>, <code>BuffDefinitionRegistry</code></td>
+<td>运行时 Buff 定义与内存 provider</td>
+<td>runtime contract</td>
+</tr>
+<tr>
+<td><code>Interface/BuffViewData.cs</code></td>
+<td><code>BuffViewData</code></td>
+<td>UI / Debug 只读视图</td>
+<td>runtime contract</td>
+</tr>
+<tr>
+<td><code>Interface/BuffEffectECS.cs</code></td>
+<td><code>BuffEffectContext</code>, <code>IBuffEffectExecutor</code>, <code>IBuffEventEffectExecutor&lt;T&gt;</code>, <code>BuffEffectRegistry</code></td>
+<td>Effect 上下文、生命周期 / 事件回调与注册表</td>
+<td>runtime contract</td>
+</tr>
+<tr>
+<td><code>Interface/IGameEvent.cs</code></td>
+<td><code>IGameEvent</code>, <code>IReframeableGameEvent&lt;T&gt;</code></td>
+<td>逻辑事件契约</td>
+<td>runtime contract</td>
+</tr>
+<tr>
+<td><code>Interface/BuffEventFrameCommand.cs</code></td>
+<td><code>RaiseBuffEventFrameCommand&lt;T&gt;</code>, extensions</td>
+<td>把 Buff event 纳入 frame command</td>
+<td>runtime integration</td>
+</tr>
+<tr>
+<td><code>Interface/IBuffGraphAction.cs</code></td>
+<td><code>IBuffGraphAction</code></td>
+<td>graph-generated Effect 调用 action 的 runtime-safe 接口</td>
+<td>runtime contract</td>
+</tr>
+</tbody>
+</table>
+<h3 id="c-config--definition--loader">C. Config / Definition / Loader</h3>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>类 / 结构</th>
+<th>职责</th>
+<th>类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BuffConfigData.cs</code></td>
+<td><code>BuffConfigData</code></td>
+<td>Buff ScriptableObject authoring 配置，转 <code>BuffDefinition</code></td>
+<td>config asset</td>
+</tr>
+<tr>
+<td><code>BuffConfigDataLoader.cs</code></td>
+<td><code>BuffConfigDataLoader</code></td>
+<td>从 <code>Resources/BuffSystem/Buff</code> 加载配置，建立 definition registry 与 tag index</td>
+<td>runtime/config</td>
+</tr>
+<tr>
+<td><code>BuffEffectCatalogData.cs</code></td>
+<td><code>BuffEffectCatalogData</code>, <code>BuffEffectCatalogEntry</code></td>
+<td>Editor / authoring 用 Effect 目录</td>
+<td>config/editor helper</td>
+</tr>
+<tr>
+<td><code>BuffEventCatalogData.cs</code></td>
+<td><code>BuffEventCatalogData</code>, <code>BuffEventCatalogEntry</code></td>
+<td>Editor / authoring 用 Event 目录</td>
+<td>config/editor helper</td>
+</tr>
+<tr>
+<td><code>BuffTags.cs</code></td>
+<td><code>BuffTags</code>, <code>TagPair&lt;T&gt;</code></td>
+<td>Tag 配置资产</td>
+<td>config/editor helper</td>
+</tr>
+<tr>
+<td><code>TagRegistry.cs</code></td>
+<td><code>TagRegistry</code></td>
+<td>string tag 到 int id 的映射</td>
+<td>config helper</td>
+</tr>
+<tr>
+<td><code>BuffSystemEnumCollection.cs</code></td>
+<td>多个 enum</td>
+<td>Buff 类型、触发、叠层、storage 策略枚举</td>
+<td>shared</td>
+</tr>
+</tbody>
+</table>
+<h3 id="d-effect--registry--compositeeffect">D. Effect / Registry / CompositeEffect</h3>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>类 / 结构</th>
+<th>职责</th>
+<th>类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BuffEffectRegistryBootstrap.cs</code></td>
+<td><code>BuffEffectRegistryBootstrap</code></td>
+<td>production Effect 注册入口；当前注册 <code>990101 DebugNoOpTickEffect</code></td>
+<td>runtime bootstrap</td>
+</tr>
+<tr>
+<td><code>Effects/DebugNoOpTickEffect.cs</code></td>
+<td><code>DebugNoOpTickEffect</code></td>
+<td>991001 compressed production smoke 用空 Tick effect</td>
+<td>runtime effect</td>
+</tr>
+<tr>
+<td><code>Effects/Generated/NewBuffCandidateGraph_1Effect.cs</code></td>
+<td><code>NewBuffCandidateGraph_1Effect</code></td>
+<td>Authoring Hub 从图生成的 Effect 草稿；需要人工注册审批</td>
+<td>generated draft</td>
+</tr>
+<tr>
+<td><code>Graph/TestGraphAction.cs</code></td>
+<td><code>TestGraphAction_DeleteMe</code></td>
+<td>测试 / 原型用 <code>IBuffGraphAction</code> 实现</td>
+<td>runtime/test residue</td>
+</tr>
+</tbody>
+</table>
+<h3 id="e-trigger--event">E. Trigger / Event</h3>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>类 / 结构</th>
+<th>职责</th>
+<th>类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Interface/IGameEvent.cs</code></td>
+<td><code>IGameEvent</code></td>
+<td>EventTrigger 输入契约</td>
+<td>runtime contract</td>
+</tr>
+<tr>
+<td><code>Interface/BuffEventFrameCommand.cs</code></td>
+<td><code>RaiseBuffEventFrameCommand&lt;TEvent&gt;</code></td>
+<td>可按帧重放 Buff event</td>
+<td>runtime integration</td>
+</tr>
+<tr>
+<td><code>Interface/BuffEffectECS.cs</code></td>
+<td><code>IBuffEventEffectExecutor&lt;TEvent&gt;</code></td>
+<td>Event effect 回调契约</td>
+<td>runtime contract</td>
+</tr>
+</tbody>
+</table>
+<h3 id="f-storage--compressedparallel">F. Storage / CompressedParallel</h3>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>类 / 结构</th>
+<th>职责</th>
+<th>类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Interface/BuffECSComponents.cs</code></td>
+<td><code>BuffRuntimeComponent</code></td>
+<td>普通 / EntityPerStack runtime 真状态</td>
+<td>runtime ECS component</td>
+</tr>
+<tr>
+<td><code>Interface/BuffECSComponents.cs</code></td>
+<td><code>CompressedParallelBuffLayer</code></td>
+<td>compressed 单层数据</td>
+<td>runtime ECS data</td>
+</tr>
+<tr>
+<td><code>Interface/BuffECSComponents.cs</code></td>
+<td><code>CompressedParallelBuffLayerBuffer</code></td>
+<td>固定容量 layer 容器，capacity=16</td>
+<td>runtime ECS data</td>
+</tr>
+<tr>
+<td><code>Interface/BuffECSComponents.cs</code></td>
+<td><code>CompressedParallelBuffRuntimeComponent</code></td>
+<td>compressed runtime 聚合 component</td>
+<td>runtime ECS component</td>
+</tr>
+<tr>
+<td><code>Interface/BuffECSComponents.cs</code></td>
+<td><code>AddBuffRequestComponent</code>, <code>RemoveBuffRequestComponent</code></td>
+<td>单帧 ECS 请求 component</td>
+<td>runtime ECS component</td>
+</tr>
+</tbody>
+</table>
+<h3 id="g-authoring--xnode--codegen">G. Authoring / xNode / Codegen</h3>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>类 / 结构</th>
+<th>职责</th>
+<th>类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Editor/BuffAuthoringHubWindow.cs</code></td>
+<td><code>BuffAuthoringHubWindow</code></td>
+<td>Authoring Hub 主窗口，整合 Validator / Create Buff / Effect Template / Graph</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/BuffAuthoringValidatorWindow.cs</code></td>
+<td><code>BuffAuthoringValidatorWindow</code></td>
+<td>扫描 Buff asset，显示 eligibility / registry / category</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/BuffCreateWizardWindow.cs</code></td>
+<td><code>BuffCreateWizardWindow</code></td>
+<td>创建 BuffConfigData 草稿</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/EffectTemplateGeneratorPanel.cs</code></td>
+<td><code>EffectTemplateGeneratorPanel</code></td>
+<td>生成 Effect <code>.cs</code> 草稿与 registry snippet</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/BuffAuthoringValidationUtility.cs</code></td>
+<td><code>BuffAuthoringValidationUtility</code></td>
+<td>共享只读扫描、effect 注册检查、compressed eligibility、文件名安全处理</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/BuffAuthoringHubSettings.cs</code></td>
+<td><code>BuffAuthoringHubSettings</code>, <code>BuffAuthoringHubSettingsData</code></td>
+<td>Authoring Hub 设置 / 默认路径 / ID 策略</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/BuffAuthoringText.cs</code></td>
+<td><code>BuffAuthoringText</code></td>
+<td>Authoring UI 文案集中管理</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/AuthoringData/*IdRegistry*</code></td>
+<td>多个 registry model / scanner / store / service</td>
+<td>Buff / Effect ID Registry 扫描、分配、持久化与报告</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/AuthoringData/BuffEffectBootstrapAutoRegistryPatcher.cs</code></td>
+<td>patcher</td>
+<td>维护 Bootstrap auto registration block</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/AuthoringData/BuffEffectBootstrapRegistrationScanner.cs</code></td>
+<td>scanner</td>
+<td>扫描 Bootstrap 注册项</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/AuthoringValidation/BuffAuthoringPreflightValidator.cs</code></td>
+<td>preflight validator</td>
+<td>创建 Buff / Effect 前的字段修正与阻断检查</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/AuthoringGraphs/BuffCandidateGraph.cs</code></td>
+<td><code>BuffCandidateGraph</code></td>
+<td>xNode 候选图资产，Editor-only review input</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/AuthoringGraphs/BuffCandidateNodes.cs</code></td>
+<td>candidate nodes</td>
+<td>候选提交、形态、eligibility、风险、决策节点</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/AuthoringGraphs/BuffEffectGraphNodes.cs</code></td>
+<td>effect graph nodes</td>
+<td>EffectCompositionRoot / EffectNode / ScriptActionNode 等</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/AuthoringGraphs/BuffCandidateGraphBridge.cs</code></td>
+<td>bridge / summary / drafts</td>
+<td>Graph -&gt; Authoring Hub 单向导入</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/AuthoringGraphs/BuffCandidateGraphEvaluation.cs</code></td>
+<td>evaluator</td>
+<td>候选图最小完整性评估</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/AuthoringGraphs/BuffCandidateNodeEditors.cs</code></td>
+<td>xNode editors</td>
+<td>节点 UI 显示与可读性</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/AuthoringGraphs/BuffGraphGenerateService.cs</code></td>
+<td>generate service</td>
+<td>从 graph 创建 Buff / Effect / CompositeEffect 草稿</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/AuthoringGraphs/BuffGraphEffectCodegen*</code></td>
+<td>codegen plan/builder/emitter</td>
+<td>Graph action 调用链 Effect 模板生成</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/AuthoringGraphs/BuffGraphCompositeEffect*</code></td>
+<td>composite plan/builder/emitter</td>
+<td>多 EffectNode 合成 CompositeEffect 草稿</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/AuthoringGraphs/BuffGraphEffectOrderUtility.cs</code></td>
+<td>order utility</td>
+<td>解析 EffectNode 顺序</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/AuthoringGraphs/BuffGraphGeneratePlan.cs</code></td>
+<td>plan</td>
+<td>图生成请求计划</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/AuthoringGraphs/BuffGraphGenerateReport.cs</code></td>
+<td>report</td>
+<td>图生成结果报告</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/AuthoringGraphs/BuffScriptActionNodeValidation.cs</code></td>
+<td>validator</td>
+<td>校验 ScriptActionNode action 类型</td>
+<td>editor-only</td>
+</tr>
+<tr>
+<td><code>Editor/AuthoringGraphs/BuffCandidateGraphCreateMenu.cs</code></td>
+<td>menu</td>
+<td>创建候选图菜单</td>
+<td>editor-only</td>
+</tr>
+</tbody>
+</table>
+<h3 id="h-debug--probe">H. Debug / Probe</h3>
+<p>BuffSystem 目录内当前主要 debug 形态是：</p>
+<ul>
+<li><code>Effects/DebugNoOpTickEffect.cs</code>：991001 smoke effect。</li>
+<li>多个 <code>Test/**Runner.cs</code>：通过 MonoBehaviour / Editor entry 形成验证探针。</li>
+</ul>
+<p>View debug 数据如 <code>BuffDebugSnapshot</code> / <code>BuffDebugViewRow</code> 位于 View 目录，不属于本次 BuffSystem 目录扫描范围。它们应只读消费 public query / adapter 输出，不应反向修改 BuffSystem。</p>
+<h3 id="i-test--editortesting">I. Test / EditorTesting</h3>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>职责</th>
+<th>类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Editor/Testing/BuffSystemFullTestRunner.cs</code></td>
+<td>全量轻量 smoke/unit/integration/whitebox/blackbox/authoring smoke 编排</td>
+<td>editor test</td>
+</tr>
+<tr>
+<td><code>Editor/Testing/BuffSystemMcpTestEntry.cs</code></td>
+<td>Editor menu / bridge 可调用测试入口</td>
+<td>editor test</td>
+</tr>
+<tr>
+<td><code>Editor/Testing/BuffSystemTestReport.cs</code></td>
+<td>full runner 报告模型</td>
+<td>editor test</td>
+</tr>
+<tr>
+<td><code>Editor/Testing/BuffSystemTestCaseResult.cs</code></td>
+<td>full runner case 结果模型</td>
+<td>editor test</td>
+</tr>
+<tr>
+<td><code>Test/BuffSystemPhase2AValidationRunner.cs</code></td>
+<td>早期 Add/Tick/Event/Effect 验证 Runner</td>
+<td>scene/manual runner</td>
+</tr>
+<tr>
+<td><code>Test/BuffSystemCompressedParallelValidationRunner.cs</code></td>
+<td>compressed parallel 验证 Runner</td>
+<td>scene/manual runner</td>
+</tr>
+<tr>
+<td><code>Test/BuffSystemRestoreHookValidationRunner.cs</code></td>
+<td>restore hook / cache 验证 Runner</td>
+<td>scene/manual runner</td>
+</tr>
+<tr>
+<td><code>Test/BuffSystemStorageBehaviorConsistencyRunner.cs</code></td>
+<td>EntityPerStack vs Compressed 行为一致性 Runner</td>
+<td>scene/manual runner</td>
+</tr>
+<tr>
+<td><code>Test/BuffSystemStoragePerformanceRunner.cs</code></td>
+<td>storage 性能观察 Runner</td>
+<td>scene/manual runner</td>
+</tr>
+<tr>
+<td><code>Test/Editor/BuffSystemAdvanced*</code></td>
+<td>stress / performance / fuzz / soak advanced runner 与报告</td>
+<td>editor test</td>
+</tr>
+<tr>
+<td><code>Test/Editor/BuffSystemFunctionalCoverage*</code></td>
+<td>功能覆盖测试与报告</td>
+<td>editor test</td>
+</tr>
+<tr>
+<td><code>Test/Editor/BuffSystemLifecycle*</code></td>
+<td>lifecycle 专项测试与报告</td>
+<td>editor test</td>
+</tr>
+<tr>
+<td><code>Test/Editor/BuffSystemStorage*</code></td>
+<td>storage / compressed 专项测试与报告</td>
+<td>editor test</td>
+</tr>
+<tr>
+<td><code>Test/Editor/BuffSystemTrigger*</code></td>
+<td>trigger / EventTrigger 专项测试与报告</td>
+<td>editor test</td>
+</tr>
+<tr>
+<td><code>Test/Editor/BuffSystemEffect*</code></td>
+<td>effect / CompositeEffect / GraphStyle 专项测试与报告</td>
+<td>editor test</td>
+</tr>
+<tr>
+<td><code>Test/Editor/BuffSystemTag*</code></td>
+<td>tag 能力发现与边界报告</td>
+<td>editor test</td>
+</tr>
+</tbody>
+</table>
+<h3 id="j-docs--reports">J. Docs / Reports</h3>
+<p><code>Docs</code> 下已有 Overview、API、StackPolicy、ParallelBuff、EffectPipeline、EventPipeline、TestingGuide、AuthoringGuide、CompositeEffectAuthoring、xNodeAuthoringGraph 等文档。本文是深度架构索引，不替代已有指南。</p>
+<h2 id="7-当前生产-smoke-与边界">7. 当前生产 smoke 与边界</h2>
+<h3 id="71-991001-compressed-production-smoke">7.1 991001 compressed production smoke</h3>
+<p>当前 Resources 中的 <code>Debug_CompressedParallel_TickSmoke.asset</code>：</p>
+<ul>
+<li><code>ConfigId = 991001</code></li>
+<li><code>EffectId = 990101</code></li>
+<li><code>BuffType = parallel</code></li>
+<li><code>TriggerType = Tick</code></li>
+<li><code>ParallelStorageMode = CompressedExpiryFrameList</code></li>
+<li><code>Unlimited = false</code></li>
+<li><code>MaxStack = 3</code></li>
+</ul>
+<p><code>BuffEffectRegistryBootstrap</code> 注册了 <code>990101 DebugNoOpTickEffect</code>。<code>BuffSystemCore.CreateForProduction</code> 的 compressed production whitelist 仅包含 <code>991001</code>。</p>
+<p>边界：</p>
+<ul>
+<li>991001 是 debug / smoke asset，不是正式 gameplay Buff。</li>
+<li>whitelist 单点 smoke 不代表更多生产 Buff 已可进入 compressed path。</li>
+</ul>
+<h3 id="72-当前-resources-状态注意">7.2 当前 Resources 状态注意</h3>
+<p>当前 <code>Assets/Resources/BuffSystem/Buff</code> 下存在：</p>
+<ul>
+<li><code>Debug_CompressedParallel_TickSmoke.asset</code></li>
+<li><code>100001_NewBuffCandidateGraph_1.asset</code></li>
+</ul>
+<p>因此 <code>BuffConfigDataLoader</code> 会扫描到不止一个 asset。任何 production path 验证都应明确目标 configId，不应把全部 Resources asset 都视为正式 production candidate。</p>
+<h3 id="73-tag-runtime-query-边界">7.3 Tag runtime query 边界</h3>
+<p>当前：</p>
+<ul>
+<li><code>BuffConfigData.Tags</code> 存在。</li>
+<li><code>BuffConfigDataLoader</code> 支持配置级 tag 查询，如 <code>BuffHasTag</code>、<code>FindBuffsWithTag</code>、<code>FindBuffWithAllTags</code>。</li>
+<li><code>BuffDefinition</code> 不包含 tag 字段。</li>
+<li><code>IBuffSystem</code> / <code>BuffSystemCore</code> 没有公开 live runtime tag query API。</li>
+</ul>
+<p>因此 Tag 专项测试中的 runtime tag case 当前应标记为能力缺失 / not supported，而不是 runtime bug。</p>
+<h3 id="74-rollback-边界">7.4 Rollback 边界</h3>
+<p><code>OnWorldRestored</code> 只重建 BuffSystem 派生缓存，不负责：</p>
+<ul>
+<li>保存 / 恢复 World snapshot。</li>
+<li>重放半帧命令。</li>
+<li>校验 View resync。</li>
+<li>证明 deterministic replay 完整闭环。</li>
+</ul>
+<p>因此当前不能宣称 BuffSystem rollback-ready。</p>
+<h3 id="75-view-边界">7.5 View 边界</h3>
+<p>BuffSystem runtime 只提供 <code>BuffViewData</code> public query。正式 View / HUD 应只读消费：</p>
+<pre class="hljs"><code><div>IBuffSystem.GetBuffs(ownerEntity)
+IBuffSystem.TryGetBuff(target, configId, source, out view)
+</div></code></pre>
+<p>View 不应直接枚举 runtime component，也不应调用 Add / Remove / Raise 影响权威状态。当前 View smoke 已有代码侧路径，但这不等价于完整 view-ready 或 PlayMode 全场景覆盖。</p>
+<h2 id="8-风险清单">8. 风险清单</h2>
+<table>
+<thead>
+<tr>
+<th>风险</th>
+<th>当前状态</th>
+<th>建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>正式 gameplay Buff 候选缺失</td>
+<td>只有 smoke / draft asset 证据</td>
+<td>候选提交后先走只读审查与单 configId 验证</td>
+</tr>
+<tr>
+<td>compressed whitelist 扩大风险</td>
+<td>production whitelist 仅 991001</td>
+<td>不应批量放开，逐个审批</td>
+</tr>
+<tr>
+<td>Effect 未注册</td>
+<td>未注册 effect 不阻止状态创建，但不会执行回调</td>
+<td>Validator / preflight 必须检查</td>
+</tr>
+<tr>
+<td>Resources 草稿污染 production 验证</td>
+<td>当前 Resources 有 100001 draft</td>
+<td>验证报告必须列出扫描 asset，明确目标</td>
+</tr>
+<tr>
+<td>runtime tag query 缺失</td>
+<td>config-level tag 有，live runtime tag 无</td>
+<td>若需要 runtime tag，另开 contract 阶段</td>
+</tr>
+<tr>
+<td>rollback-ready 过度声明</td>
+<td>restore hook 只管派生缓存</td>
+<td>rollback 闭环另行验证</td>
+</tr>
+<tr>
+<td>View 直接读 runtime</td>
+<td>不应作为正式路径</td>
+<td>只用 <code>BuffViewData</code> / View adapter</td>
+</tr>
+<tr>
+<td>Graph 生成误认为生产可用</td>
+<td>Graph / template / auto registration 不等于 production approval</td>
+<td>文档、工具和流程继续强调人工审查</td>
+</tr>
+</tbody>
+</table>
+<h2 id="9-推荐阅读路径">9. 推荐阅读路径</h2>
+<p>如果后续接手 BuffSystem，建议按以下顺序读代码：</p>
+<ol>
+<li><code>Interface/IBuffSystem.cs</code></li>
+<li><code>Interface/BuffDefinition.cs</code></li>
+<li><code>Interface/BuffECSComponents.cs</code></li>
+<li><code>Interface/BuffEffectECS.cs</code></li>
+<li><code>Interface/BuffSystemCore.cs</code></li>
+<li><code>BuffConfigData.cs</code></li>
+<li><code>BuffConfigDataLoader.cs</code></li>
+<li><code>BuffEffectRegistryBootstrap.cs</code></li>
+<li><code>Editor/BuffAuthoringValidationUtility.cs</code></li>
+<li><code>Editor/AuthoringGraphs/BuffCandidateGraph.cs</code></li>
+<li><code>Editor/AuthoringGraphs/BuffGraphGenerateService.cs</code></li>
+<li><code>Test/Editor/BuffSystemFunctionalCoverageRunner.cs</code></li>
+<li><code>Test/Editor/BuffSystemStorageTestRunner.cs</code></li>
+<li><code>Test/Editor/BuffSystemEffectTestRunner.cs</code></li>
+</ol>
+<h2 id="10-当前结论">10. 当前结论</h2>
+<p>BuffSystem 当前已经具备较完整的 ECS Buff runtime 基础：命令队列、固定帧 Tick、普通 / 并行 / 压缩并行 storage、生命周期 Effect、EventTrigger、只读 view query、restore hook 缓存刷新、Editor authoring、xNode 图生成和多套测试 runner。</p>
+<p>但当前仍必须保守：</p>
+<ul>
+<li>不宣称 production-ready。</li>
+<li>不宣称 rollback-ready。</li>
+<li>不宣称 view-ready。</li>
+<li>不宣称 991001 是正式玩法 Buff。</li>
+<li>不宣称所有真实生产场景已完整回归。</li>
+</ul>
+<p>下一步若要推进生产化，应优先围绕真实 gameplay Buff 候选执行单 configId 审查、effect 注册审查、EntityPerStack vs Compressed 行为一致性验证、View production path 手动验证和回退方案确认。</p>
+
+</body>
+</html>

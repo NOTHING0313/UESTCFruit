@@ -89,7 +89,7 @@ public sealed class ViewManager
     {
         if (!_prefabs.TryGetValue(prefabID, out GameObject prefab) || prefab == null)
             return 0;
-
+       
         GameObject instance = _instanceProvider.Spawn(prefab, position, rotation);
 
         if (instance == null)
