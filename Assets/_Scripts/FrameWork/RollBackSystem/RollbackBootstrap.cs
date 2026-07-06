@@ -7,7 +7,7 @@
  *   3. 自动发现 World 中的玩家 Entity（PlayerTagComponent）
  *   4. 移除 SimulationInitializer 对 Runner.BeforeTick 的直接输入写入
  *      使输入经过 Roordinator 的预测/回滚管线
- *   5. 接管 Runner.BeforeTick，coordinator.Step 写输入
+ *   5. 接管 Runner.BeforeTick，coordinator.TryStep 写输入
  *
  * 不修改任何外部文件，全部通过运行时发现与 Hook 实现。
  */
@@ -39,6 +39,7 @@ namespace FrameWork.RollBackSystem
         private PlayerSnapshotInputApplier _inputApplier;
 
         private bool _mounted;
+        private bool _catchUpBlockedLogged;
 
         private void Start()
         {
@@ -76,12 +77,8 @@ namespace FrameWork.RollBackSystem
         {
             _inputApplier = new PlayerSnapshotInputApplier();
 
-            var cmdBuffer = new SimulationFrameCommandBuffer();
-            var cmdApplier = new SimulationFrameCommandApplier(_world, cmdBuffer);
-            var frameSource = new FrameCommandSourceAdapter(cmdApplier);
-
             _rollbackAdapter = new WorldRollbackAdapter<PlayerInputSnapshot>(
-                _world, _world, _inputApplier, frameSource);
+                _world, _world, _inputApplier, null);
 
             var snapBuf = new SnapshotRingBuffer<EcsWorldSnapshot>(_snapshotRingCapacity);
 
@@ -169,7 +166,13 @@ namespace FrameWork.RollBackSystem
                 return;
 
             var input = CollectInput(ctx.frameNumber);
-            _coordinator.Step(input);
+            RollbackStepResult result = _coordinator.TryStep(ctx.frameNumber, input);
+            if (result.Succeeded)
+                return;
+
+            throw new InvalidOperationException(
+                $"[RollbackBootstrap] TryStep failed before World.Tick. " +
+                $"frame={ctx.frameNumber}, kind={result.FailureKind}, message={result.Message}");
         }
 
         /// <summary>
@@ -263,13 +266,13 @@ namespace FrameWork.RollBackSystem
             int framesBehind = _expectedFrame - _coordinator.CurrentFrame;
             if (framesBehind > 1)
             {
-                int ticksToRun = Math.Min(framesBehind - 1, _coordinator.MaxTicksPerUnityFrame);
-                if (ticksToRun > 0)
-                {
-                    _coordinator.TickMultiple(
-                        ticksToRun,
-                        (frame) => CollectInput(frame));
-                }
+                if (_catchUpBlockedLogged)
+                    return;
+
+                _catchUpBlockedLogged = true;
+                Debug.LogWarning(
+                    "[RollbackBootstrap] Catch-up is disabled in RBS-Fix-A1-A6 logic-only closure. " +
+                    "RollbackBootstrap.Update will not call TickMultiple because TimeSimulator/Runner remains the unique normal-frame driver.");
             }
         }
     }

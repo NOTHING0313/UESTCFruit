@@ -5,7 +5,7 @@
  * 2. 回滚后必须通过历史输入重新模拟所有后续帧。
  * 3. Snapshot 与 Checksum 必须与逻辑帧保持一致。
  * 4. Coordinator 本身不保存游戏状态，只协调 Buffer 与 World。
- * 5. Simulate() 只写输入和帧命令，World.Tick() 由外部调用。
+ * 5. 正常 TryStep 只写输入，World.Tick() 由 SimulateRunner 调用；重模拟路径才显式 Tick。
  */
 
 using FrameWork.RollBackSystem.Interfaces;
@@ -70,6 +70,8 @@ namespace FrameWork.RollBackSystem
         private readonly AuthoritativeChecksumBuffer
             _authoritativeChecksumBuffer;
 
+        private bool _frameCommandReplaySkippedLogged;
+
         //--------------------------------
         // Confirmed Frame
         //--------------------------------
@@ -105,18 +107,90 @@ namespace FrameWork.RollBackSystem
         // Step
         //--------------------------------
 
-        /// <summary>推进一个新的逻辑帧。只写输入和帧命令，不 Tick。</summary>
+        /// <summary>推进一个新的逻辑帧。只写输入，不 Tick。</summary>
         public void Step(TInput input)
         {
-            int nextFrame = CurrentFrame + 1;
+            var result = TryStep(CurrentFrame + 1, input);
+            if (result.Succeeded)
+                return;
 
-            _inputBuffer.Save(nextFrame, input);
+            UnityEngine.Debug.LogError(
+                $"[RollbackCoordinator] Step failed at frame {result.RequestedFrame}: {result.FailureKind}, {result.Message}");
 
-            _world.Simulate(
-                input,
-                new SimulationContext(nextFrame, TickLength, false));
+            throw new InvalidOperationException(
+                $"Rollback Step failed at frame {result.RequestedFrame}: {result.FailureKind}. {result.Message}");
+        }
 
-            CurrentFrame = nextFrame;
+        /// <summary>按指定帧号执行正常帧输入准备。成功后 Runner 继续执行 World.Tick。</summary>
+        public RollbackStepResult TryStep(int frame, TInput input)
+        {
+            int previousFrame = CurrentFrame;
+            int expectedFrame = previousFrame + 1;
+
+            if (frame != expectedFrame)
+            {
+                return RollbackStepResult.Failure(
+                    frame,
+                    previousFrame,
+                    CurrentFrame,
+                    RollbackStepFailureKind.FrameMismatch,
+                    $"Requested frame {frame} does not match expected frame {expectedFrame}.");
+            }
+
+            TInput inputToApply = input;
+            if (_authoritativeInputBuffer.TryGet(frame, out var authoritativeInput))
+            {
+                if (!_inputComparer.IsEqual(authoritativeInput, input))
+                {
+                    UnityEngine.Debug.LogWarning(
+                        $"[RollbackCoordinator] TryStep: authoritative input pre-arrived for frame {frame}; using authoritative input before Tick.");
+                }
+
+                inputToApply = authoritativeInput;
+            }
+
+            try
+            {
+                _inputBuffer.Save(frame, inputToApply);
+
+                _world.Simulate(
+                    inputToApply,
+                    new SimulationContext(frame, TickLength, false));
+
+                CurrentFrame = frame;
+
+                return RollbackStepResult.Success(
+                    frame,
+                    previousFrame,
+                    CurrentFrame);
+            }
+            catch (SingleInputAppliedToMultiplePlayersException ex)
+            {
+                return RollbackStepResult.Failure(
+                    frame,
+                    previousFrame,
+                    CurrentFrame,
+                    RollbackStepFailureKind.SingleInputAppliedToMultiplePlayersBlocked,
+                    ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return RollbackStepResult.Failure(
+                    frame,
+                    previousFrame,
+                    CurrentFrame,
+                    RollbackStepFailureKind.WorldSimulateFailed,
+                    ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return RollbackStepResult.Failure(
+                    frame,
+                    previousFrame,
+                    CurrentFrame,
+                    RollbackStepFailureKind.Exception,
+                    ex.Message);
+            }
         }
 
         /// <summary>
@@ -127,14 +201,9 @@ namespace FrameWork.RollBackSystem
         /// <param name="inputProvider">为每帧提供输入的函数</param>
         public void TickMultiple(int count, Func<int, TInput> inputProvider)
         {
-            int actualCount = Math.Min(count, MaxTicksPerUnityFrame);
-
-            for (int i = 0; i < actualCount; i++)
-            {
-                int nextFrame = CurrentFrame + 1;
-                TInput input = inputProvider(nextFrame);
-                Step(input);
-            }
+            UnityEngine.Debug.LogWarning(
+                "[RollbackCoordinator] TickMultiple is disabled for production logic-only closure. " +
+                "Runner must remain the unique normal-frame driver; catch-up requires a later owner API.");
         }
 
         //--------------------------------
@@ -150,7 +219,7 @@ namespace FrameWork.RollBackSystem
                 return;
 
             _snapshotBuffer.Save(snapshot);
-            SaveChecksum();
+            SaveChecksum(CurrentFrame);
         }
 
         //--------------------------------
@@ -203,21 +272,33 @@ namespace FrameWork.RollBackSystem
             if (!isDifferent)
                 return;
 
+            if (frame > CurrentFrame)
+            {
+                UnityEngine.Debug.LogWarning(
+                    $"[RollbackCoordinator] ReceiveAuthoritativeInput: mismatch for future frame {frame} stored; TryStep will resolve before Tick.");
+                return;
+            }
+
             // 保存回滚前的目标帧号（ReceiveAuthoritativeInput 期间外部不能再调 Step）
             int preRollbackFrame = CurrentFrame;
 
-            bool rollbackSuccess = RollbackTo(frame - 1);
+            RollbackRestoreResult rollbackResult = TryRollbackTo(frame - 1);
 
-            if (!rollbackSuccess)
+            if (!rollbackResult.Succeeded)
             {
                 UnityEngine.Debug.LogError(
-                    $"[RollbackCoordinator] ReceiveAuthoritativeInput: rollback to frame {frame - 1} failed, skipping resimulate.");
+                    $"[RollbackCoordinator] ReceiveAuthoritativeInput: rollback to frame {frame - 1} failed ({rollbackResult.FailureKind}), skipping resimulate. {rollbackResult.Message}");
                 return;
             }
 
             _inputBuffer.Save(frame, input);
 
-            ResimulateTo(preRollbackFrame);
+            RollbackResimulateResult resimulateResult = TryResimulateTo(preRollbackFrame);
+            if (!resimulateResult.Succeeded)
+            {
+                UnityEngine.Debug.LogError(
+                    $"[RollbackCoordinator] ReceiveAuthoritativeInput: resimulate to frame {preRollbackFrame} failed ({resimulateResult.FailureKind}). {resimulateResult.Message}");
+            }
         }
 
         //--------------------------------
@@ -227,6 +308,18 @@ namespace FrameWork.RollBackSystem
         /// <summary>回滚到指定帧之前的状态（回到该帧执行前）。</summary>
         public bool RollbackTo(int frame)
         {
+            RollbackRestoreResult result = TryRollbackTo(frame);
+            if (!result.Succeeded)
+            {
+                UnityEngine.Debug.LogWarning(
+                    $"[RollbackCoordinator] RollbackTo failed for frame {frame}: {result.FailureKind}, {result.Message}");
+            }
+
+            return result.Succeeded;
+        }
+
+        public RollbackRestoreResult TryRollbackTo(int frame)
+        {
             bool found =
                 _snapshotBuffer.TryGetNearestSnapshot(
                     frame,
@@ -234,17 +327,28 @@ namespace FrameWork.RollBackSystem
 
             if (!found)
             {
-                UnityEngine.Debug.LogWarning(
-                    $"[RollbackCoordinator] RollbackTo failed: no snapshot found for target frame {frame}. " +
-                    $"Snapshot range: [{_snapshotBuffer.MinFrame}, {_snapshotBuffer.MaxFrame}].");
-                return false;
+                return RollbackRestoreResult.Failure(
+                    frame,
+                    CurrentFrame,
+                    RollbackRestoreFailureKind.MissingSnapshot,
+                    $"No snapshot found for target frame {frame}. Snapshot range: [{_snapshotBuffer.MinFrame}, {_snapshotBuffer.MaxFrame}].");
             }
 
-            _world.Restore(snapshot);
+            RollbackRestoreResult restoreResult = _world.TryRestore(snapshot);
+            if (!restoreResult.Succeeded)
+            {
+                return RollbackRestoreResult.Failure(
+                    frame,
+                    restoreResult.RestoredFrame,
+                    restoreResult.FailureKind,
+                    restoreResult.Message);
+            }
 
-            CurrentFrame = snapshot.Frame;
+            CurrentFrame = restoreResult.RestoredFrame;
 
-            return true;
+            return RollbackRestoreResult.Success(
+                frame,
+                CurrentFrame);
         }
 
         //--------------------------------
@@ -281,51 +385,147 @@ namespace FrameWork.RollBackSystem
         // Resimulate
         //--------------------------------
 
-        /// <summary>使用历史输入重新模拟。每帧写输入，Tick 由外部 onEachFrame 负责。</summary>
+        /// <summary>使用历史输入重新模拟。兼容旧调用方，失败时 fail-fast 记录。</summary>
         public void ResimulateTo(int targetFrame, Action<TSnapshot> onEachFrame = null)
         {
-            ResimulateInternal(targetFrame, onEachFrame);
+            RollbackResimulateResult result = ResimulateInternal(targetFrame, onEachFrame);
+            if (result.Succeeded)
+                return;
+
+            UnityEngine.Debug.LogError(
+                $"[RollbackCoordinator] ResimulateTo failed at target {targetFrame}: {result.FailureKind}, {result.Message}");
         }
 
         void IRollbackSimulation<TInput>.ResimulateTo(int targetFrame)
         {
-            ResimulateInternal(targetFrame, null);
+            RollbackResimulateResult result = ResimulateInternal(targetFrame, null);
+            if (!result.Succeeded)
+            {
+                UnityEngine.Debug.LogError(
+                    $"[RollbackCoordinator] IRollbackSimulation.ResimulateTo failed at target {targetFrame}: {result.FailureKind}, {result.Message}");
+            }
         }
 
-        private void ResimulateInternal(int targetFrame, Action<TSnapshot> onEachFrame)
+        public RollbackResimulateResult TryResimulateTo(int targetFrame)
         {
+            return ResimulateInternal(targetFrame, null);
+        }
+
+        private RollbackResimulateResult ResimulateInternal(int targetFrame, Action<TSnapshot> onEachFrame)
+        {
+            int startFrame = CurrentFrame;
+
+            if (targetFrame < CurrentFrame)
+            {
+                return RollbackResimulateResult.Failure(
+                    targetFrame,
+                    startFrame,
+                    CurrentFrame,
+                    RollbackResimulateFailureKind.TargetBeforeCurrentFrame,
+                    $"Target frame {targetFrame} is before current frame {CurrentFrame}.");
+            }
+
             while (CurrentFrame < targetFrame)
             {
                 int nextFrame = CurrentFrame + 1;
 
-                bool found =
-                    _inputBuffer.TryGet(nextFrame, out var input);
+                bool foundAuthoritative =
+                    _authoritativeInputBuffer.TryGet(nextFrame, out var authoritativeInput);
 
-                if (!found)
+                bool foundPredicted =
+                    _inputBuffer.TryGet(nextFrame, out var predictedInput);
+
+                if (!foundAuthoritative && !foundPredicted)
                 {
-                    UnityEngine.Debug.LogWarning(
-                        $"[RollbackCoordinator] Resimulate: input missing at frame {nextFrame}, using default input to keep frame alignment.");
-                    input = default;
+                    return RollbackResimulateResult.Failure(
+                        targetFrame,
+                        startFrame,
+                        CurrentFrame,
+                        RollbackResimulateFailureKind.MissingPredictedInput,
+                        $"Input missing at frame {nextFrame}; resimulation stopped instead of using default input.");
                 }
+
+                TInput input = foundAuthoritative ? authoritativeInput : predictedInput;
 
                 var context = new SimulationContext(nextFrame, TickLength, true);
 
-                _world.Simulate(input, context);
+                try
+                {
+                    _world.Simulate(input, context);
+                }
+                catch (Exception ex)
+                {
+                    return RollbackResimulateResult.Failure(
+                        targetFrame,
+                        startFrame,
+                        CurrentFrame,
+                        RollbackResimulateFailureKind.WorldSimulateFailed,
+                        ex.Message);
+                }
 
-                _world.Tick(context);
+                ReplayFrameCommandsIfAvailable(
+                    context,
+                    SimulationFrameCommandTiming.BeforeTick);
+
+                try
+                {
+                    _world.Tick(context);
+                }
+                catch (Exception ex)
+                {
+                    return RollbackResimulateResult.Failure(
+                        targetFrame,
+                        startFrame,
+                        CurrentFrame,
+                        RollbackResimulateFailureKind.WorldTickFailed,
+                        ex.Message);
+                }
+
+                ReplayFrameCommandsIfAvailable(
+                    context,
+                    SimulationFrameCommandTiming.AfterTick);
 
                 TSnapshot snapshot =
                     (TSnapshot)_world.Capture(nextFrame);
 
-                if (snapshot != null)
-                    _snapshotBuffer.Save(snapshot);
+                if (snapshot == null)
+                {
+                    return RollbackResimulateResult.Failure(
+                        targetFrame,
+                        startFrame,
+                        CurrentFrame,
+                        RollbackResimulateFailureKind.SnapshotCaptureFailed,
+                        $"Snapshot capture failed at frame {nextFrame}.");
+                }
 
-                SaveChecksum();
+                _snapshotBuffer.Save(snapshot);
+
+                try
+                {
+                    SaveChecksum(nextFrame);
+                }
+                catch (Exception ex)
+                {
+                    return RollbackResimulateResult.Failure(
+                        targetFrame,
+                        startFrame,
+                        CurrentFrame,
+                        RollbackResimulateFailureKind.ChecksumSaveFailed,
+                        ex.Message);
+                }
 
                 CurrentFrame = nextFrame;
 
                 onEachFrame?.Invoke(snapshot);
             }
+
+            if (_world is IRollbackWorldRestoreNotifier notifier)
+                notifier.NotifyRollbackResimulated(CurrentFrame);
+
+            return RollbackResimulateResult.Success(
+                targetFrame,
+                startFrame,
+                CurrentFrame);
         }
 
         //--------------------------------
@@ -345,10 +545,39 @@ namespace FrameWork.RollBackSystem
 
         private void SaveChecksum()
         {
+            SaveChecksum(CurrentFrame);
+        }
+
+        private void SaveChecksum(int frame)
+        {
             uint checksum = _world.CalculateChecksum();
 
             _checksumBuffer.Save(
-                new FrameChecksum(CurrentFrame, checksum));
+                new FrameChecksum(frame, checksum));
+        }
+
+        private void ReplayFrameCommandsIfAvailable(
+            SimulationContext context,
+            SimulationFrameCommandTiming timing)
+        {
+            string message = string.Empty;
+
+            if (_world is IRollbackFrameCommandReplay replay &&
+                replay.TryReplayFrameCommands(context, timing, out message))
+            {
+                return;
+            }
+
+            if (_frameCommandReplaySkippedLogged)
+                return;
+
+            _frameCommandReplaySkippedLogged = true;
+
+            UnityEngine.Debug.LogWarning(
+                "[RollbackCoordinator] FrameCommand replay skipped during resimulation. " +
+                "A7 real FrameCommandApplier integration is blocked. " +
+                (_world is IRollbackFrameCommandReplay ? string.Empty : "World does not expose replay boundary. ") +
+                (string.IsNullOrEmpty(message) ? string.Empty : message));
         }
 
         //--------------------------------

@@ -4,6 +4,7 @@
  */
 
 using ECSFrameWork;
+using FrameWork.RollBackSystem;
 using Simulation.Contracts;
 
 namespace FrameWork.RollBackSystem.Interfaces
@@ -18,5 +19,8 @@ namespace FrameWork.RollBackSystem.Interfaces
 
         void Tick(
             SimulationContext context);
+
+        RollbackRestoreResult TryRestore(
+            ISnapshot snapshot);
     }
 }

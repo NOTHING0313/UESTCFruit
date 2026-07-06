@@ -7,6 +7,7 @@
  */
 
 using ECSFrameWork;
+using System;
 using System.Collections.Generic;
 
 namespace FrameWork.RollBackSystem
@@ -40,6 +41,12 @@ namespace FrameWork.RollBackSystem
         {
             RebuildSortedList();
 
+            if (_sortedPlayerIDs.Count > 1)
+            {
+                throw new SingleInputAppliedToMultiplePlayersException(
+                    $"Single PlayerInputSnapshot for frame {input.frameNumber} cannot be applied to {_sortedPlayerIDs.Count} registered players.");
+            }
+
             for (int i = 0; i < _sortedPlayerIDs.Count; i++)
             {
                 int playerID = _sortedPlayerIDs[i];
@@ -61,6 +68,14 @@ namespace FrameWork.RollBackSystem
                 _sortedPlayerIDs.Add(pid);
             _sortedPlayerIDs.Sort();
             _dirty = false;
+        }
+    }
+
+    internal sealed class SingleInputAppliedToMultiplePlayersException : InvalidOperationException
+    {
+        public SingleInputAppliedToMultiplePlayersException(string message)
+            : base(message)
+        {
         }
     }
 }
