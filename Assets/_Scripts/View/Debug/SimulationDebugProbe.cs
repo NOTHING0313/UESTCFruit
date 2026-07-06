@@ -10,7 +10,11 @@ namespace View
         private readonly World _world;
         private readonly BuffSystemCore _buffSystem;
         private readonly SimulateRunner _runner;
+        private int _snapshotCount;
+        private int _lastRollbackFrame = -1;
 
+        public int SnapshotCount => _snapshotCount;
+        public int LastRollbackFrame => _lastRollbackFrame;
         private bool _isRollbacking;
         private uint _currentChecksum;
         private Entity _debugTarget = Entity.Invalid;
@@ -28,6 +32,14 @@ namespace View
         {
             _isRollbacking = isRollbacking;
             _currentChecksum = checksum;
+        }
+
+        public void SetRollbackInfo(bool isRollbacking, uint checksum, int snapshotCount, int lastRollbackFrame)
+        {
+            _isRollbacking = isRollbacking;
+            _currentChecksum = checksum;
+            _snapshotCount = snapshotCount;
+            _lastRollbackFrame = lastRollbackFrame;
         }
 
         public int CurrentFrame => _runner?.FrameCount ?? 0;

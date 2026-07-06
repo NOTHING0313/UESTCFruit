@@ -193,6 +193,7 @@ namespace View
 
         public void Refresh()
         {
+            
             if (_probe == null)
                 return;
 
@@ -203,10 +204,13 @@ namespace View
                 _entityCountText.text = $"Entities: {_probe.EntityCount}";
 
             if (_checksumText != null)
-                _checksumText.text = $"Checksum: {_probe.CurrentChecksum:X8}";
+                _checksumText.text = $"Checksum: {_probe.CurrentChecksum}";
 
             if (_modeText != null)
-                _modeText.text = _probe.IsRollbacking ? "ROLLBACK" : "NORMAL";
+            {
+                string rollbackText = _probe.IsRollbacking ? "Rollback" : "Normal";
+                _modeText.text = $"Mode: {rollbackText} | Snapshots: {_probe.SnapshotCount} | Last RB: {_probe.LastRollbackFrame}";
+            }
         }
 
         [FoldoutGroup("调试实体")]
