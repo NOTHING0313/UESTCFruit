@@ -1,4 +1,21 @@
 ﻿# BuffSystem Changelog
+## Phase View-1C-Impl - BuffSystem Text HUD Presenter minimal implementation
+
+- 新增 View-only `BuffTextHudFormatter`，将 `BuffViewModel` 列表格式化为稳定文本；空列表输出 `No Buffs`。
+- 新增可挂载但未接入 Scene / Prefab 的 `BuffTextHudPresenter`，通过 `BuffSystemViewAdapter` 消费 `IBuffSystem.GetBuffs` 的只读查询结果并刷新 `UnityEngine.UI.Text`。
+- Presenter 未初始化、owner 无效或 Text 为空时安全 no-op；不会自动创建 Canvas / Text / GameObject，不查找 `SimulationInitializer`，不查找全局 BuffSystem。
+- 新增 Editor-only `BuffTextHudFormatterTests` 静态轻量测试结构，覆盖 formatter null/empty/single/multiple/runtime-detail 边界，以及 presenter 未初始化和 Text 缺失 no-op。
+- 本阶段不修改 `PlayerBuffUI`、`SimulationInitializer`、Scene、Prefab、BuffSystem runtime、ECS、RollBackSystem、registry、Bootstrap、whitelist 或 eligibility。
+- 本阶段不代表 view-ready；真正 `ZP_Test` 可见验证后置到单独批准阶段。
+
+## Phase View-1B - BuffSystem View Adapter / ViewModel minimal data layer
+
+- 新增 View-only `BuffViewModel` 与 `BuffSystemViewAdapter`，用于将 `IBuffSystem.GetBuffs(ownerEntity)` 的 public query 输出转换为 View 可消费的只读数据。
+- 新增 View-only `IBuffViewDefinitionResolver` / `BuffViewDefinitionViewData`，用于可选解析 `EffectIdText` 与 `DebugName`；Adapter 不强依赖 Resources、Scene、Prefab 或 `BuffConfigDataLoader`。
+- 新增 Editor-only `BuffSystemViewAdapterTests` 静态轻量测试结构，覆盖 null/empty、单 Buff、多 Buff、resolver missing/hit、只调用 public query、不调用 Add/Remove/Raise/Tick。
+- 本阶段只完成代码侧 View 数据适配层，不接入 `PlayerBuffUI`，不实现可见 HUD，不创建图标、Tooltip、DamageNumber、FloatingText 或 HealthBar。
+- 本阶段不修改 BuffSystem runtime、`IBuffSystem`、ECS、RollBackSystem、`SimulationInitializer.cs`、Scene、Prefab、registry、Bootstrap、whitelist 或 eligibility。
+
 ## CodexUnityBridge - BuffSystem Suite Result Parser Fix
 
 - 修正 `CodexUnityBuffSystemBridge` 的 `testResult` 解析逻辑，避免非 `tag` suite 仅因报告正文提到 `TAG_RUNTIME_API_NOT_FOUND` 被整体误判。

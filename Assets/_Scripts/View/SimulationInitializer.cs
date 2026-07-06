@@ -9,6 +9,8 @@ namespace View
 {
     public class SimulationInitializer : MonoBehaviour
     {
+        private const int DefaultDebugHudSmokeBuffDurationFrames = 60;
+
         [Header("Time")]
         [SerializeField] private float _fixedDeltaTime = 1f / 60f;
         [SerializeField] private int _maxCompensationTicks = 5;
@@ -22,6 +24,13 @@ namespace View
 
         [Header("Debug")]
         [SerializeField] private LogicFrameDebugPanel _debugPanel;
+
+        [Header("Buff HUD")]
+        [SerializeField] private BuffTextHudPresenter _buffTextHudPresenter;
+
+        [Header("Debug Buff Smoke")]
+        [Tooltip("Only for View/HUD smoke. This configId=1 TestBuff duration is not a production Buff config.")]
+        [SerializeField] private int _debugHudSmokeBuffDurationFrames = DefaultDebugHudSmokeBuffDurationFrames;
 
         private World _world;
         private SimulateRunner _runner;
@@ -58,7 +67,7 @@ namespace View
                 maxStack: 1,
                 unlimited: false,
                 isForever: false,
-                durationFrames: 60,
+                durationFrames: GetDebugHudSmokeBuffDurationFrames(),
                 tickIntervalFrames: 0,
                 durationExtendFramesPerStack: 0,
                 triggerType: BuffTriggerType.Tick,
@@ -97,6 +106,9 @@ namespace View
 
             // ---------- 创建玩家实体 ----------
             CreatePlayerEntity();
+
+            if (_buffTextHudPresenter != null)
+                _buffTextHudPresenter.Initialize(_buffSystem, _playerEntity);
 
             // ---------- 输入 ----------
             if (_inputAdapter != null)
@@ -173,6 +185,13 @@ namespace View
             // 测试 Buff
             var buffCmd = new AddBuffCommand(_playerEntity, configId: 1, source: _playerEntity, stack: 1);
             _buffSystem.AddBuff(buffCmd);
+        }
+
+        private int GetDebugHudSmokeBuffDurationFrames()
+        {
+            return _debugHudSmokeBuffDurationFrames > 0
+                ? _debugHudSmokeBuffDurationFrames
+                : DefaultDebugHudSmokeBuffDurationFrames;
         }
 
         private class BuffSystemBridge : IFixedStepSystem
