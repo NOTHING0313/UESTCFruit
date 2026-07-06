@@ -70,8 +70,6 @@ namespace FrameWork.RollBackSystem
         private readonly AuthoritativeChecksumBuffer
             _authoritativeChecksumBuffer;
 
-        private bool _frameCommandReplaySkippedLogged;
-
         //--------------------------------
         // Confirmed Frame
         //--------------------------------
@@ -379,6 +377,12 @@ namespace FrameWork.RollBackSystem
             _checksumBuffer.ClearBefore(frame);
             _authoritativeChecksumBuffer.ClearBefore(frame);
             _snapshotBuffer.ClearBefore(frame);
+
+            if (!TryCleanupFrameCommandHistory(frame, out string message))
+            {
+                UnityEngine.Debug.LogWarning(
+                    $"[RollbackCoordinator] ConfirmFrame frame command cleanup failed: {message}");
+            }
         }
 
         //--------------------------------
@@ -463,9 +467,15 @@ namespace FrameWork.RollBackSystem
                         ex.Message);
                 }
 
-                ReplayFrameCommandsIfAvailable(
+                if (!TryReplayFrameCommands(
                     context,
-                    SimulationFrameCommandTiming.BeforeTick);
+                    SimulationFrameCommandTiming.BeforeTick,
+                    targetFrame,
+                    startFrame,
+                    out RollbackResimulateResult beforeTickReplayFailure))
+                {
+                    return beforeTickReplayFailure;
+                }
 
                 try
                 {
@@ -481,9 +491,15 @@ namespace FrameWork.RollBackSystem
                         ex.Message);
                 }
 
-                ReplayFrameCommandsIfAvailable(
+                if (!TryReplayFrameCommands(
                     context,
-                    SimulationFrameCommandTiming.AfterTick);
+                    SimulationFrameCommandTiming.AfterTick,
+                    targetFrame,
+                    startFrame,
+                    out RollbackResimulateResult afterTickReplayFailure))
+                {
+                    return afterTickReplayFailure;
+                }
 
                 TSnapshot snapshot =
                     (TSnapshot)_world.Capture(nextFrame);
@@ -556,28 +572,58 @@ namespace FrameWork.RollBackSystem
                 new FrameChecksum(frame, checksum));
         }
 
-        private void ReplayFrameCommandsIfAvailable(
+        private bool TryReplayFrameCommands(
             SimulationContext context,
-            SimulationFrameCommandTiming timing)
+            SimulationFrameCommandTiming timing,
+            int targetFrame,
+            int startFrame,
+            out RollbackResimulateResult failureResult)
         {
-            string message = string.Empty;
+            failureResult = default(RollbackResimulateResult);
 
-            if (_world is IRollbackFrameCommandReplay replay &&
-                replay.TryReplayFrameCommands(context, timing, out message))
+            if (!(_world is IRollbackFrameCommandReplay replay))
             {
-                return;
+                failureResult = RollbackResimulateResult.Failure(
+                    targetFrame,
+                    startFrame,
+                    CurrentFrame,
+                    RollbackResimulateFailureKind.FrameCommandReplayUnavailable,
+                    "World does not expose frame command replay boundary.");
+                return false;
             }
 
-            if (_frameCommandReplaySkippedLogged)
-                return;
+            if (!replay.HasFrameCommandSource)
+            {
+                failureResult = RollbackResimulateResult.Failure(
+                    targetFrame,
+                    startFrame,
+                    CurrentFrame,
+                    RollbackResimulateFailureKind.FrameCommandReplayUnavailable,
+                    "FrameCommand replay binding is unavailable.");
+                return false;
+            }
 
-            _frameCommandReplaySkippedLogged = true;
+            if (replay.TryReplayFrameCommands(context, timing, out string message))
+                return true;
 
-            UnityEngine.Debug.LogWarning(
-                "[RollbackCoordinator] FrameCommand replay skipped during resimulation. " +
-                "A7 real FrameCommandApplier integration is blocked. " +
-                (_world is IRollbackFrameCommandReplay ? string.Empty : "World does not expose replay boundary. ") +
-                (string.IsNullOrEmpty(message) ? string.Empty : message));
+            failureResult = RollbackResimulateResult.Failure(
+                targetFrame,
+                startFrame,
+                CurrentFrame,
+                RollbackResimulateFailureKind.FrameCommandReplayFailed,
+                string.IsNullOrEmpty(message)
+                    ? $"FrameCommand replay failed at frame {context.frameNumber}, timing {timing}."
+                    : message);
+            return false;
+        }
+
+        private bool TryCleanupFrameCommandHistory(int frame, out string message)
+        {
+            if (_world is IRollbackFrameCommandHistoryCleaner cleaner)
+                return cleaner.TryRemoveFrameCommandsBefore(frame, out message);
+
+            message = "World does not expose frame command history cleanup boundary.";
+            return false;
         }
 
         //--------------------------------

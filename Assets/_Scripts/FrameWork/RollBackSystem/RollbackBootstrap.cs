@@ -30,6 +30,8 @@ namespace FrameWork.RollBackSystem
         /// <summary>服务端期望客户端到达的帧号，用于加速追帧。</summary>
         [SerializeField] private int _expectedFrame;
 
+        internal const string AlreadyMountedMessage = "Already mounted.";
+
         private World _world;
         private SimulateRunner _runner;
         private UnityInputAdapter _adapter;
@@ -37,40 +39,103 @@ namespace FrameWork.RollBackSystem
         private RollbackCoordinator<PlayerInputSnapshot, EcsWorldSnapshot> _coordinator;
         private WorldRollbackAdapter<PlayerInputSnapshot> _rollbackAdapter;
         private PlayerSnapshotInputApplier _inputApplier;
+        private RollbackFrameCommandReplayBinding _frameCommandReplayBinding;
 
         private bool _mounted;
         private bool _catchUpBlockedLogged;
+        private Coroutine _mountCoroutine;
 
         private void Start()
         {
             if (!_enable) return;
-            StartCoroutine(InitCoro());
+            if (TryMount(TimeSimulator.Instance, out _))
+                return;
+
+            _mountCoroutine = StartCoroutine(InitCoro());
         }
 
         private IEnumerator InitCoro()
         {
             yield return null;
 
+            _mountCoroutine = null;
+
+            if (_mounted)
+                yield break;
+
             var timeSim = TimeSimulator.Instance;
+            if (!TryMount(timeSim, out string failureReason))
+            {
+                Debug.LogWarning(
+                    $"[RollbackBootstrap] Mount skipped: {failureReason}");
+            }
+        }
+
+        internal bool TryMount(TimeSimulator timeSim)
+        {
+            return TryMount(timeSim, out _);
+        }
+
+        internal bool TryMount(TimeSimulator timeSim, out string failureReason)
+        {
+            failureReason = string.Empty;
+
+            if (!_enable)
+            {
+                failureReason = "RollbackBootstrap is disabled by configuration.";
+                return false;
+            }
+
+            if (this == null || !isActiveAndEnabled)
+            {
+                failureReason = "RollbackBootstrap component is disabled.";
+                return false;
+            }
+
+            if (_mounted)
+            {
+                failureReason = AlreadyMountedMessage;
+                return true;
+            }
+
             if (timeSim == null)
             {
-                Debug.LogError("[RollbackBootstrap] TimeSimulator.Instance missing!");
-                yield break;
+                failureReason = "TimeSimulator.Instance missing.";
+                return false;
             }
 
-            _world = timeSim.DebugWorld;
-            _runner = timeSim.DebugRunner;
-            if (_world == null || _runner == null)
+            World world = timeSim.DebugWorld;
+            SimulateRunner runner = timeSim.DebugRunner;
+            if (world == null || runner == null)
             {
-                Debug.LogError("[RollbackBootstrap] World or Runner not found on TimeSimulator!");
-                yield break;
+                failureReason = "World or Runner not found on TimeSimulator.";
+                return false;
             }
 
+            if (runner.IsTicking || runner.FrameCount > 0)
+            {
+                failureReason = "Runner already advanced; late rollback mount is not allowed.";
+                return false;
+            }
+
+            if (!TryCreateFrameCommandReplayBinding(
+                    timeSim,
+                    out _frameCommandReplayBinding,
+                    out string frameCommandBindingFailure))
+            {
+                failureReason = frameCommandBindingFailure;
+                return false;
+            }
+
+            _world = world;
+            _runner = runner;
             _adapter = FindObjectOfType<UnityInputAdapter>();
             if (_adapter == null)
                 Debug.LogWarning("[RollbackBootstrap] UnityInputAdapter not found — input will fall back to hardcoded keys.");
 
             Mount();
+            failureReason = string.Empty;
+            return true;
         }
 
         private void Mount()
@@ -79,6 +144,7 @@ namespace FrameWork.RollBackSystem
 
             _rollbackAdapter = new WorldRollbackAdapter<PlayerInputSnapshot>(
                 _world, _world, _inputApplier, null);
+            _rollbackAdapter.SetFrameCommandReplayBinding(_frameCommandReplayBinding);
 
             var snapBuf = new SnapshotRingBuffer<EcsWorldSnapshot>(_snapshotRingCapacity);
 
@@ -160,6 +226,39 @@ namespace FrameWork.RollBackSystem
         /// 在每个逻辑帧开始前：采集输入 → 进入回滚预测管线 → 写入 ECS World。
         /// 接下来 SimulateRunner.TickFrame 会执行 World.Tick，System 会消费帧输入。
         /// </summary>
+        private static bool TryCreateFrameCommandReplayBinding(
+            TimeSimulator timeSim,
+            out RollbackFrameCommandReplayBinding binding,
+            out string failureReason)
+        {
+            binding = default(RollbackFrameCommandReplayBinding);
+
+            if (timeSim == null)
+            {
+                failureReason = "TimeSimulator is null.";
+                return false;
+            }
+
+            SimulationFrameCommandBuffer commandBuffer = timeSim.DebugFrameCommandBuffer;
+            SimulationFrameCommandApplier commandApplier = timeSim.DebugFrameCommandApplier;
+            if (commandBuffer == null || commandApplier == null)
+            {
+                failureReason = "TimeSimulator has no SimulationFrameCommandBuffer/SimulationFrameCommandApplier. SimulationInitializer must create and inject the real pipeline before RollbackBootstrap mounts.";
+                return false;
+            }
+
+            if (!ReferenceEquals(commandBuffer, commandApplier.CommandBuffer))
+            {
+                failureReason = "TimeSimulator DebugFrameCommandBuffer is not the same instance used by DebugFrameCommandApplier.";
+                return false;
+            }
+
+            binding = new RollbackFrameCommandReplayBinding(commandBuffer, commandApplier);
+            failureReason = string.Empty;
+            return true;
+        }
+
+        /// <summary>Runs rollback input preparation before the normal runner tick.</summary>
         private void OnBeforeTick(SimulationContext ctx)
         {
             if (!_mounted || _coordinator == null)
@@ -203,13 +302,39 @@ namespace FrameWork.RollBackSystem
             return new PlayerInputSnapshot(frameNumber, 1) { moveX = h, moveY = 0f };
         }
 
+        private void OnDisable()
+        {
+            Unmount();
+        }
+
         private void OnDestroy()
         {
-            if (_mounted && _runner != null)
+            Unmount();
+        }
+
+        private void Unmount()
+        {
+            if (_mountCoroutine != null)
+            {
+                StopCoroutine(_mountCoroutine);
+                _mountCoroutine = null;
+            }
+
+            if (!_mounted)
+                return;
+
+            if (_runner != null)
             {
                 _runner.BeforeTick -= OnBeforeTick;
                 _runner.AfterTick -= OnAfterTick;
             }
+
+            _mounted = false;
+            _coordinator = null;
+            _rollbackAdapter = null;
+            _inputApplier = null;
+            _adapter = null;
+            _frameCommandReplayBinding = default(RollbackFrameCommandReplayBinding);
         }
 
         //--------------------------------

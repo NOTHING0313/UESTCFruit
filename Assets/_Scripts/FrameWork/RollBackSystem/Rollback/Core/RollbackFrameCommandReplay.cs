@@ -16,4 +16,9 @@ namespace FrameWork.RollBackSystem
             SimulationFrameCommandTiming timing,
             out string message);
     }
+
+    internal interface IRollbackFrameCommandHistoryCleaner
+    {
+        bool TryRemoveFrameCommandsBefore(int frameNumber, out string message);
+    }
 }

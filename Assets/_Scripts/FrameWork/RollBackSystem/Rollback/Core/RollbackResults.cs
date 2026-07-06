@@ -113,6 +113,9 @@ namespace FrameWork.RollBackSystem
         WorldTickFailed = 4,
         SnapshotCaptureFailed = 5,
         ChecksumSaveFailed = 6,
+        FrameCommandReplayUnavailable = 7,
+        FrameCommandReplayFailed = 8,
+        FrameCommandHistoryCleanupFailed = 9,
         Exception = 100
     }
 

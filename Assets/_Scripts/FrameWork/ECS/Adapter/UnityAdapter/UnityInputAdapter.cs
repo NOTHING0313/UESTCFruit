@@ -15,17 +15,35 @@ namespace ECSFrameWork
 /// </summary>
 public sealed class UnityInputAdapter : MonoBehaviour
 {
+    private enum UnityInputButtonKind
+    {
+        None = 0,
+        KeySpace = 1,
+        KeyE = 2,
+        KeyQ = 4,
+        KeyR = 8,
+        KeyF = 16,
+        KeyLeftShift = 32,
+        KeyLeftCtrl = 64,
+        KeyEscape = 128,
+        MouseLeft = 65536,
+        MouseRight = 131072,
+        MouseMiddle = 262144,
+        MouseBack = 524288,
+        MouseForward = 1048576,
+    }
+
     [Serializable]
     private struct KeyboardBinding
     {
-        public InputButtonFlags button;
+        public UnityInputButtonKind button;
         public Key key;
     }
 
     [Serializable]
     private struct MouseBinding
     {
-        public InputButtonFlags button;
+        public UnityInputButtonKind button;
         public MouseButtonType mouseButton;
     }
 
@@ -42,25 +60,25 @@ public sealed class UnityInputAdapter : MonoBehaviour
     [SerializeField]
     private KeyboardBinding[] keyboardBindings =
     {
-        new KeyboardBinding { button = InputButtonFlags.KeySpace, key = Key.Space },
-        new KeyboardBinding { button = InputButtonFlags.KeyE, key = Key.E },
-        new KeyboardBinding { button = InputButtonFlags.KeyQ, key = Key.Q },
-        new KeyboardBinding { button = InputButtonFlags.KeyR, key = Key.R },
-        new KeyboardBinding { button = InputButtonFlags.KeyF, key = Key.F },
-        new KeyboardBinding { button = InputButtonFlags.KeyLeftShift, key = Key.LeftShift },
-        new KeyboardBinding { button = InputButtonFlags.KeyLeftCtrl, key = Key.LeftCtrl },
-        new KeyboardBinding { button = InputButtonFlags.KeyEscape, key = Key.Escape },
+        new KeyboardBinding { button = UnityInputButtonKind.KeySpace, key = Key.Space },
+        new KeyboardBinding { button = UnityInputButtonKind.KeyE, key = Key.E },
+        new KeyboardBinding { button = UnityInputButtonKind.KeyQ, key = Key.Q },
+        new KeyboardBinding { button = UnityInputButtonKind.KeyR, key = Key.R },
+        new KeyboardBinding { button = UnityInputButtonKind.KeyF, key = Key.F },
+        new KeyboardBinding { button = UnityInputButtonKind.KeyLeftShift, key = Key.LeftShift },
+        new KeyboardBinding { button = UnityInputButtonKind.KeyLeftCtrl, key = Key.LeftCtrl },
+        new KeyboardBinding { button = UnityInputButtonKind.KeyEscape, key = Key.Escape },
     };
 
     [Header("Mouse Buttons")]
     [SerializeField]
     private MouseBinding[] mouseBindings =
     {
-        new MouseBinding { button = InputButtonFlags.MouseLeft, mouseButton = MouseButtonType.Left },
-        new MouseBinding { button = InputButtonFlags.MouseRight, mouseButton = MouseButtonType.Right },
-        new MouseBinding { button = InputButtonFlags.MouseMiddle, mouseButton = MouseButtonType.Middle },
-        new MouseBinding { button = InputButtonFlags.MouseBack, mouseButton = MouseButtonType.Back },
-        new MouseBinding { button = InputButtonFlags.MouseForward, mouseButton = MouseButtonType.Forward },
+        new MouseBinding { button = UnityInputButtonKind.MouseLeft, mouseButton = MouseButtonType.Left },
+        new MouseBinding { button = UnityInputButtonKind.MouseRight, mouseButton = MouseButtonType.Right },
+        new MouseBinding { button = UnityInputButtonKind.MouseMiddle, mouseButton = MouseButtonType.Middle },
+        new MouseBinding { button = UnityInputButtonKind.MouseBack, mouseButton = MouseButtonType.Back },
+        new MouseBinding { button = UnityInputButtonKind.MouseForward, mouseButton = MouseButtonType.Forward },
     };
 
     private World _world;
@@ -71,9 +89,14 @@ public sealed class UnityInputAdapter : MonoBehaviour
     private Vector2 _mouseDelta;
     private Vector2 _mouseScroll;
 
-    private InputButtonFlags _heldButtons;
-    private InputButtonFlags _pressedBuffer;
-    private InputButtonFlags _releasedBuffer;
+    /// <summary>运行时 held 按钮位缓存；避免 MonoBehaviour 字段直接持有 InputButtonFlags。</summary>
+    private long _heldButtonsRaw;
+
+    /// <summary>运行时 pressed 按钮位缓存；每个逻辑帧消费一次。</summary>
+    private long _pressedBufferRaw;
+
+    /// <summary>运行时 released 按钮位缓存；每个逻辑帧消费一次。</summary>
+    private long _releasedBufferRaw;
 
     public int PlayerID => playerID;
 
@@ -131,9 +154,9 @@ public sealed class UnityInputAdapter : MonoBehaviour
             mouseDeltaY = _mouseDelta.y,
             scrollX = _mouseScroll.x,
             scrollY = _mouseScroll.y,
-            heldButtons = _heldButtons,
-            pressedButtons = _pressedBuffer,
-            releasedButtons = _releasedBuffer,
+            heldButtons = (InputButtonFlags)_heldButtonsRaw,
+            pressedButtons = (InputButtonFlags)_pressedBufferRaw,
+            releasedButtons = (InputButtonFlags)_releasedBufferRaw,
         };
 
         return snapshot;
@@ -146,16 +169,16 @@ public sealed class UnityInputAdapter : MonoBehaviour
         _mousePosition = Vector2.zero;
         _mouseDelta = Vector2.zero;
         _mouseScroll = Vector2.zero;
-        _heldButtons = InputButtonFlags.None;
-        _pressedBuffer = InputButtonFlags.None;
-        _releasedBuffer = InputButtonFlags.None;
+        _heldButtonsRaw = 0;
+        _pressedBufferRaw = 0;
+        _releasedBufferRaw = 0;
     }
 
     /// <summary>清理只应该被一个逻辑帧消费一次的输入。</summary>
     private void ClearLogicFrameInput()
     {
-        _pressedBuffer = InputButtonFlags.None;
-        _releasedBuffer = InputButtonFlags.None;
+        _pressedBufferRaw = 0;
+        _releasedBufferRaw = 0;
         _mouseDelta = Vector2.zero;
         _mouseScroll = Vector2.zero;
     }
@@ -193,11 +216,12 @@ public sealed class UnityInputAdapter : MonoBehaviour
         for (int i = 0; i < keyboardBindings.Length; i++)
         {
             KeyboardBinding binding = keyboardBindings[i];
+            InputButtonFlags button = ToInputButtonFlags(binding.button);
 
-            if (binding.button == InputButtonFlags.None)
+            if (button == InputButtonFlags.None)
                 continue;
 
-            SampleKeyButton(keyboard, binding.key, binding.button);
+            SampleKeyButton(keyboard, binding.key, button);
         }
     }
 
@@ -224,11 +248,49 @@ public sealed class UnityInputAdapter : MonoBehaviour
         for (int i = 0; i < mouseBindings.Length; i++)
         {
             MouseBinding binding = mouseBindings[i];
+            InputButtonFlags button = ToInputButtonFlags(binding.button);
 
-            if (binding.button == InputButtonFlags.None)
+            if (button == InputButtonFlags.None)
                 continue;
 
-            SampleMouseButton(mouse, binding.mouseButton, binding.button);
+            SampleMouseButton(mouse, binding.mouseButton, button);
+        }
+    }
+
+    /// <summary>采样单个键盘按钮。</summary>
+    /// <summary>将 Inspector 友好的按钮枚举映射为运行时输入位标记。</summary>
+    private static InputButtonFlags ToInputButtonFlags(UnityInputButtonKind button)
+    {
+        switch (button)
+        {
+            case UnityInputButtonKind.KeySpace:
+                return InputButtonFlags.KeySpace;
+            case UnityInputButtonKind.KeyE:
+                return InputButtonFlags.KeyE;
+            case UnityInputButtonKind.KeyQ:
+                return InputButtonFlags.KeyQ;
+            case UnityInputButtonKind.KeyR:
+                return InputButtonFlags.KeyR;
+            case UnityInputButtonKind.KeyF:
+                return InputButtonFlags.KeyF;
+            case UnityInputButtonKind.KeyLeftShift:
+                return InputButtonFlags.KeyLeftShift;
+            case UnityInputButtonKind.KeyLeftCtrl:
+                return InputButtonFlags.KeyLeftCtrl;
+            case UnityInputButtonKind.KeyEscape:
+                return InputButtonFlags.KeyEscape;
+            case UnityInputButtonKind.MouseLeft:
+                return InputButtonFlags.MouseLeft;
+            case UnityInputButtonKind.MouseRight:
+                return InputButtonFlags.MouseRight;
+            case UnityInputButtonKind.MouseMiddle:
+                return InputButtonFlags.MouseMiddle;
+            case UnityInputButtonKind.MouseBack:
+                return InputButtonFlags.MouseBack;
+            case UnityInputButtonKind.MouseForward:
+                return InputButtonFlags.MouseForward;
+            default:
+                return InputButtonFlags.None;
         }
     }
 
@@ -292,16 +354,21 @@ public sealed class UnityInputAdapter : MonoBehaviour
     /// <summary>应用按钮状态到缓存。</summary>
     private void ApplyButtonState(InputButtonFlags button, bool isPressed, bool wasPressedThisFrame, bool wasReleasedThisFrame)
     {
+        long mask = (long)button;
+
+        if (mask == 0)
+            return;
+
         if (isPressed)
-            _heldButtons |= button;
+            _heldButtonsRaw |= mask;
         else
-            _heldButtons &= ~button;
+            _heldButtonsRaw &= ~mask;
 
         if (wasPressedThisFrame)
-            _pressedBuffer |= button;
+            _pressedBufferRaw |= mask;
 
         if (wasReleasedThisFrame)
-            _releasedBuffer |= button;
+            _releasedBufferRaw |= mask;
     }
 
     /// <summary>判断某个键是否按住。</summary>

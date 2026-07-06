@@ -34,6 +34,8 @@ namespace View
 
         private World _world;
         private SimulateRunner _runner;
+        private SimulationFrameCommandBuffer _frameCommandBuffer;
+        private SimulationFrameCommandApplier _frameCommandApplier;
         private BuffSystemCore _buffSystem;
         private ViewManager _viewManager;
         private EntityViewBinder _binder;
@@ -42,8 +44,8 @@ namespace View
 
         private bool _playerBuffUIAttached = false;
 
-        // 回滚相关
-        private RollbackBootstrap _rollbackBootstrap;
+        [Header("Rollback")]
+        [SerializeField] private RollbackBootstrap _rollbackBootstrap;
         private SimulationDebugProbe _probe;
 
         private void Start()
@@ -81,6 +83,9 @@ namespace View
 
             // ---------- 固定帧推进 ----------
             _runner = new SimulateRunner(_world, _fixedDeltaTime, _maxCompensationTicks);
+            _frameCommandBuffer = new SimulationFrameCommandBuffer();
+            _frameCommandApplier = new SimulationFrameCommandApplier(_world, _frameCommandBuffer);
+            timeSim.SetFrameCommandApplier(_frameCommandApplier);
             timeSim.InitSimulator(_runner);
 
             // ---------- 视图管理 ----------
@@ -125,11 +130,30 @@ namespace View
             }
 
             // ---------- 回滚系统自动接入 ----------
-            _rollbackBootstrap = GetComponent<RollbackBootstrap>();
-            if (_rollbackBootstrap != null)
-                Debug.Log("[SimulationInitializer] RollbackBootstrap found – probe will show checksum.");
+            RollbackBootstrap rollbackBootstrap = ResolveRollbackBootstrap();
+            if (rollbackBootstrap != null && rollbackBootstrap.isActiveAndEnabled)
+            {
+                Debug.Log("[SimulationInitializer] RollbackBootstrap reference resolved, attempting mount...");
+                if (rollbackBootstrap.TryMount(timeSim, out string rollbackMountMessage))
+                {
+                    if (rollbackMountMessage == RollbackBootstrap.AlreadyMountedMessage)
+                        Debug.Log("[SimulationInitializer] RollbackBootstrap already mounted.");
+                    else
+                        Debug.Log("[SimulationInitializer] RollbackBootstrap mounted by SimulationInitializer.");
+                }
+                else
+                {
+                    Debug.LogWarning($"[SimulationInitializer] RollbackBootstrap mount skipped: {rollbackMountMessage}");
+                }
+            }
+            else if (rollbackBootstrap != null)
+            {
+                Debug.Log("[SimulationInitializer] RollbackBootstrap is disabled; rollback mount skipped.");
+            }
             else
-                Debug.Log("[SimulationInitializer] No RollbackBootstrap on this GameObject – checksum will be 0.");
+            {
+                Debug.Log("[SimulationInitializer] RollbackBootstrap not configured; rollback mount skipped.");
+            }
 
             Debug.Log("[SimulationInitializer] Initialized. Use WASD to move.");
         }
@@ -167,8 +191,22 @@ namespace View
         {
             if (_runner != null && _inputAdapter != null)
                 _runner.BeforeTick -= _inputAdapter.WriteInputToWorld;
+
+            TimeSimulator timeSim = TimeSimulator.Instance;
+            if (timeSim != null && ReferenceEquals(timeSim.DebugFrameCommandApplier, _frameCommandApplier))
+                timeSim.SetFrameCommandApplier(null);
+
             _viewManager?.Clear();
             _world?.Dispose();
+        }
+
+        private RollbackBootstrap ResolveRollbackBootstrap()
+        {
+            if (_rollbackBootstrap != null)
+                return _rollbackBootstrap;
+
+            _rollbackBootstrap = GetComponent<RollbackBootstrap>();
+            return _rollbackBootstrap;
         }
 
         private void CreatePlayerEntity()

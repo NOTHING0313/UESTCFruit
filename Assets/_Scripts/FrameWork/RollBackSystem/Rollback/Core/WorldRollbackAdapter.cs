@@ -19,13 +19,14 @@ namespace FrameWork.RollBackSystem
     public sealed class WorldRollbackAdapter<TInput>
         : IRollbackableWorld<TInput>,
           IRollbackFrameCommandReplay,
+          IRollbackFrameCommandHistoryCleaner,
           IRollbackWorldRestoreNotifier
     {
         private readonly IEcsWorldSnapshotProvider _snapshotProvider;
         private readonly World _world;
         private readonly IWorldInputApplier<TInput> _inputApplier;
-        private readonly IFrameCommandSource _frameCommandSource;
         private readonly List<IRollbackRestoreListener> _restoreListeners = new List<IRollbackRestoreListener>();
+        private RollbackFrameCommandReplayBinding _frameCommandReplayBinding;
 
         /// <summary>创建 ECS 回滚适配器。</summary>
         public WorldRollbackAdapter(
@@ -37,10 +38,16 @@ namespace FrameWork.RollBackSystem
             _snapshotProvider = snapshotProvider;
             _world = world;
             _inputApplier = inputApplier;
-            _frameCommandSource = frameCommandSource;
+            // Kept for constructor compatibility; A7 replay/cleanup requires the real binding.
+            _ = frameCommandSource;
         }
 
-        bool IRollbackFrameCommandReplay.HasFrameCommandSource => _frameCommandSource != null;
+        bool IRollbackFrameCommandReplay.HasFrameCommandSource => _frameCommandReplayBinding.IsValid;
+
+        internal void SetFrameCommandReplayBinding(RollbackFrameCommandReplayBinding binding)
+        {
+            _frameCommandReplayBinding = binding;
+        }
 
         /// <summary>写入输入到 ECS World；不执行帧命令、不 Tick。</summary>
         public void Simulate(
@@ -165,17 +172,48 @@ namespace FrameWork.RollBackSystem
             SimulationFrameCommandTiming timing,
             out string message)
         {
-            if (_frameCommandSource == null)
+            if (!_frameCommandReplayBinding.IsValid)
             {
-                message = "FrameCommand source is null; replay skipped.";
+                message = "FrameCommand replay binding is invalid.";
                 return false;
             }
 
-            _frameCommandSource.ApplyCommandsAtTiming(
-                _world,
-                context.frameNumber,
-                timing,
-                true);
+            try
+            {
+                _frameCommandReplayBinding.CommandApplier.ReplayCommandsToWorld(
+                    context.frameNumber,
+                    timing);
+            }
+            catch (Exception ex)
+            {
+                message = ex.Message;
+                return false;
+            }
+
+            message = string.Empty;
+            return true;
+        }
+
+        bool IRollbackFrameCommandHistoryCleaner.TryRemoveFrameCommandsBefore(
+            int frameNumber,
+            out string message)
+        {
+            if (!_frameCommandReplayBinding.IsValid)
+            {
+                message = "FrameCommand replay binding is invalid.";
+                return false;
+            }
+
+            try
+            {
+                _frameCommandReplayBinding.CommandBuffer.RemoveBefore(frameNumber);
+                _frameCommandReplayBinding.CommandApplier.RemoveAppliedBefore(frameNumber);
+            }
+            catch (Exception ex)
+            {
+                message = ex.Message;
+                return false;
+            }
 
             message = string.Empty;
             return true;

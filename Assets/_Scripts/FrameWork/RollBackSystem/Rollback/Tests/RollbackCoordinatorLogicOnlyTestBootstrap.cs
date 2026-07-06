@@ -26,6 +26,9 @@ namespace FrameWork.RollBackSystem
             TestAuthoritativePreArrivalUsesAuthoritativeInput();
             TestSingleInputMultiplePlayersGuard();
             TestTickMultipleDoesNotAdvanceProductionState();
+            TestResimulateFailsWithoutFrameCommandReplayBoundary();
+            TestWorldRollbackAdapterReplaysThroughRealApplier();
+            TestConfirmFrameCleansFrameCommandHistory();
 
             Debug.Log("[RollbackCoordinatorLogicOnlyTestBootstrap] All logic-only rollback checks passed.");
         }
@@ -161,6 +164,82 @@ namespace FrameWork.RollBackSystem
             Expect(env.World.SimulateCount == 0, "TickMultiple must not simulate in logic-only production path.");
         }
 
+        private static void TestResimulateFailsWithoutFrameCommandReplayBoundary()
+        {
+            var inputBuffer = new InputBuffer<int>();
+            inputBuffer.Save(1, 10);
+            var world = new NoReplayRollbackWorld();
+
+            var coordinator = new RollbackCoordinator<int, TestSnapshot>(
+                inputBuffer,
+                new AuthoritativeInputBuffer<int>(),
+                new SnapshotRingBuffer<TestSnapshot>(32),
+                world,
+                new IntInputComparer(),
+                new ChecksumBuffer(),
+                new AuthoritativeChecksumBuffer());
+
+            RollbackResimulateResult result = coordinator.TryResimulateTo(1);
+
+            Expect(!result.Succeeded, "Resimulate must fail when frame command replay boundary is missing.");
+            Expect(result.FailureKind == RollbackResimulateFailureKind.FrameCommandReplayUnavailable, "Missing replay boundary should return FrameCommandReplayUnavailable.");
+            Expect(world.SimulateCount == 1, "Resimulate should apply input before detecting missing replay boundary.");
+            Expect(world.TickCount == 0, "Resimulate must not tick when before-tick frame command replay is unavailable.");
+        }
+
+        private static void TestWorldRollbackAdapterReplaysThroughRealApplier()
+        {
+            var world = new World();
+            var buffer = new SimulationFrameCommandBuffer();
+            var applier = new SimulationFrameCommandApplier(world, buffer);
+            var adapter = new WorldRollbackAdapter<int>(world, world, new IntInputApplier(), null);
+            adapter.SetFrameCommandReplayBinding(new RollbackFrameCommandReplayBinding(buffer, applier));
+
+            var command = new CountingFrameCommand(1);
+            buffer.AddCommand(command, SimulationFrameCommandTiming.BeforeTick);
+
+            var replay = (IRollbackFrameCommandReplay)adapter;
+            bool replayed = replay.TryReplayFrameCommands(
+                new SimulationContext(1, 1f / 60f, true),
+                SimulationFrameCommandTiming.BeforeTick,
+                out string message);
+
+            Expect(replay.HasFrameCommandSource, "Adapter should expose the real frame command binding.");
+            Expect(replayed, $"Real applier replay should succeed. {message}");
+            Expect(command.ExecuteCount == 1, "Real applier replay should execute the buffered command once.");
+
+            world.Dispose();
+        }
+
+        private static void TestConfirmFrameCleansFrameCommandHistory()
+        {
+            var world = new World();
+            var buffer = new SimulationFrameCommandBuffer();
+            var applier = new SimulationFrameCommandApplier(world, buffer);
+            var adapter = new WorldRollbackAdapter<int>(world, world, new IntInputApplier(), null);
+            adapter.SetFrameCommandReplayBinding(new RollbackFrameCommandReplayBinding(buffer, applier));
+
+            var command = new CountingFrameCommand(1);
+            buffer.AddCommand(command, SimulationFrameCommandTiming.BeforeTick);
+            applier.ApplyCommandsToWorld(1, SimulationFrameCommandTiming.BeforeTick);
+
+            var coordinator = new RollbackCoordinator<int, EcsWorldSnapshot>(
+                new InputBuffer<int>(),
+                new AuthoritativeInputBuffer<int>(),
+                new SnapshotRingBuffer<EcsWorldSnapshot>(32),
+                adapter,
+                new IntInputComparer(),
+                new ChecksumBuffer(),
+                new AuthoritativeChecksumBuffer());
+
+            coordinator.ConfirmFrame(2);
+
+            Expect(!buffer.TryGetCommands(1, SimulationFrameCommandTiming.BeforeTick, out _), "ConfirmFrame should remove frame command history before the confirmed frame.");
+            Expect(applier.AppliedFrameCount == 0, "ConfirmFrame should remove applied frame command markers before the confirmed frame.");
+
+            world.Dispose();
+        }
+
         private static TestEnvironment CreateCoordinator()
         {
             var inputBuffer = new InputBuffer<int>();
@@ -202,10 +281,11 @@ namespace FrameWork.RollBackSystem
         {
             public readonly List<int> SimulatedInputs = new List<int>();
             public readonly List<int> CalculateChecksumFrames = new List<int>();
+            public readonly List<string> ReplayedFrameCommands = new List<string>();
             public int SimulateCount { get; private set; }
             public int TickCount { get; private set; }
             public int CaptureCount { get; private set; }
-            public bool HasFrameCommandSource => false;
+            public bool HasFrameCommandSource => true;
 
             private int _lastTickFrame;
 
@@ -267,12 +347,64 @@ namespace FrameWork.RollBackSystem
 
             public bool TryReplayFrameCommands(SimulationContext context, SimulationFrameCommandTiming timing, out string message)
             {
-                message = "Test world has no frame command source.";
-                return false;
+                ReplayedFrameCommands.Add($"{context.frameNumber}:{timing}");
+                message = string.Empty;
+                return true;
             }
 
             public void NotifyRollbackResimulated(int currentFrame)
             {
+            }
+        }
+
+        private sealed class NoReplayRollbackWorld : IRollbackableWorld<int>
+        {
+            public int SimulateCount { get; private set; }
+            public int TickCount { get; private set; }
+
+            public void Simulate(int input, SimulationContext context)
+            {
+                SimulateCount++;
+            }
+
+            public void Tick(SimulationContext context)
+            {
+                TickCount++;
+            }
+
+            public ISnapshot Capture(int frame)
+            {
+                return new TestSnapshot(frame);
+            }
+
+            public void Restore(ISnapshot snapshot)
+            {
+            }
+
+            public RollbackRestoreResult TryRestore(ISnapshot snapshot)
+            {
+                return RollbackRestoreResult.Success(snapshot != null ? snapshot.Frame : -1, snapshot != null ? snapshot.Frame : -1);
+            }
+
+            public uint CalculateChecksum()
+            {
+                return 0;
+            }
+        }
+
+        private sealed class CountingFrameCommand : ISimulationFrameCommand
+        {
+            public int FrameNumber { get; }
+            public int ExecuteCount { get; private set; }
+
+            public CountingFrameCommand(int frameNumber)
+            {
+                FrameNumber = frameNumber;
+            }
+
+            public void Execute(World world)
+            {
+                ExecuteCount++;
             }
         }
 
