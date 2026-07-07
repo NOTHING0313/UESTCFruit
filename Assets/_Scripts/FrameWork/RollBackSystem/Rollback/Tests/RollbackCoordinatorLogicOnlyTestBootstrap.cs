@@ -18,6 +18,16 @@ namespace FrameWork.RollBackSystem
         [ContextMenu("Run Logic-Only Rollback Tests")]
         public void RunLogicOnlyRollbackTests()
         {
+            RunLogicOnlyRollbackTestsStatic();
+
+            Debug.Log("[RollbackCoordinatorLogicOnlyTestBootstrap] All logic-only rollback checks passed.");
+        }
+
+        /// <summary>
+        /// 测试专用静态入口，供 Unity EditMode / NUnit 包装测试复用同一套 logic-only 检查。
+        /// </summary>
+        public static void RunLogicOnlyRollbackTestsStatic()
+        {
             TestFrameMismatchDoesNotAdvance();
             TestTryStepDoesNotTick();
             TestRollbackMissingSnapshotDoesNotAdvance();
@@ -29,8 +39,6 @@ namespace FrameWork.RollBackSystem
             TestResimulateFailsWithoutFrameCommandReplayBoundary();
             TestWorldRollbackAdapterReplaysThroughRealApplier();
             TestConfirmFrameCleansFrameCommandHistory();
-
-            Debug.Log("[RollbackCoordinatorLogicOnlyTestBootstrap] All logic-only rollback checks passed.");
         }
 
         private static void TestFrameMismatchDoesNotAdvance()
