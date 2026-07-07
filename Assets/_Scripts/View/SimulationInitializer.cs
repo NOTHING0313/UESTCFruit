@@ -28,6 +28,9 @@ namespace View
         [Header("Buff HUD")]
         [SerializeField] private BuffTextHudPresenter _buffTextHudPresenter;
 
+        [Header("Midterm Debug HUD")]
+        [SerializeField] private MidtermDebugHudPresenter _midtermDebugHudPresenter;
+
         [Header("Debug Buff Smoke")]
         [Tooltip("Only for View/HUD smoke. This configId=1 TestBuff duration is not a production Buff config.")]
         [SerializeField] private int _debugHudSmokeBuffDurationFrames = DefaultDebugHudSmokeBuffDurationFrames;
@@ -153,6 +156,19 @@ namespace View
             else
             {
                 Debug.Log("[SimulationInitializer] RollbackBootstrap not configured; rollback mount skipped.");
+            }
+
+            if (_midtermDebugHudPresenter != null)
+            {
+                _midtermDebugHudPresenter.Initialize(
+                    _world,
+                    _runner,
+                    _buffSystem,
+                    _playerEntity,
+                    _binder,
+                    _worldViewRoot,
+                    _playerPrefab,
+                    rollbackBootstrap);
             }
 
             Debug.Log("[SimulationInitializer] Initialized. Use WASD to move.");
