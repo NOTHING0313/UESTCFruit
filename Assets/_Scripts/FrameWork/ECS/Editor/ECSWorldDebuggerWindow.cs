@@ -34,6 +34,9 @@ public sealed class ECSWorldDebuggerWindow : EditorWindow
     private const double DefaultTargetScanInterval = 1.0d;
     private const int EntityPageSize = 64;
     private const int ArcheTypeEntityPreviewCount = 128;
+    private const string BuffConfigResourceAssetPath = "Assets/Resources/BuffSystem/Buff";
+    private const string BuffConfigResourcesPath = "BuffSystem/Buff";
+    private const float DebugBuffDefinitionTickLength = 1f / 60f;
     private const int CollectionPreviewCount = 8;
     private const int MaxObjectDepth = 2;
     private const float SidebarWidth = 260f;
@@ -70,8 +73,12 @@ public sealed class ECSWorldDebuggerWindow : EditorWindow
     private readonly List<FrameCommandHistoryFrameDebugInfo> _frameCommandHistoryFrames = new List<FrameCommandHistoryFrameDebugInfo>(64);
     private readonly List<BuffViewData> _buffDebugViews = new List<BuffViewData>(16);
     private readonly List<string> _buffDebugLogs = new List<string>(16);
+    private readonly List<BuffDefinitionOption> _buffDefinitionOptions = new List<BuffDefinitionOption>(16);
     private readonly List<BuffCommandQueueFieldInfo> _buffCommandQueueFields = new List<BuffCommandQueueFieldInfo>(32);
     private readonly List<BuffCommandQueueStageSnapshot> _buffCommandQueueStages = new List<BuffCommandQueueStageSnapshot>(8);
+    private readonly List<Entity> _buffDebugEntityDrawBuffer = new List<Entity>(256);
+    private readonly List<BuffViewData> _buffDebugViewDrawBuffer = new List<BuffViewData>(16);
+    private string[] _buffDefinitionLabels = Array.Empty<string>();
     private string _buffDebugCopyText = string.Empty;
 
     /// <summary>组件和复杂字段的折叠状态缓存，使用 Entity/Component/Field 路径作为 key。</summary>
@@ -113,12 +120,26 @@ public sealed class ECSWorldDebuggerWindow : EditorWindow
     private string _buffTargetVersionText = string.Empty;
     private string _buffSourceIdText = string.Empty;
     private string _buffSourceVersionText = string.Empty;
+    private int _selectedBuffDefinitionIndex;
+    private int _selectedBuffViewIndex = -1;
+    private bool _showLegacyBuffEntityFields;
     private Entity _buffDebugTarget = Entity.Invalid;
     private Entity _buffDebugSource = Entity.Invalid;
     private BuffDebugSnapshot _buffDebugSnapshot;
     private BuffDebugPreflight _buffDebugPreflight;
     private bool _hasBuffDebugSnapshot;
     private bool _hasBuffDebugPreflight;
+    private int _lastBuffRequestedStack = -1;
+    private int _lastBuffExpectedStack = -1;
+    private int _lastBuffMaxStack = -1;
+    private int _lastBuffConfigId;
+    private Entity _lastBuffTarget = Entity.Invalid;
+    private Entity _lastBuffSource = Entity.Invalid;
+    private string _lastBuffStackDiagnosis = "N/A";
+    private string _lastAddResult = "N/A";
+    private string _lastAddFailureReason = "N/A";
+    private int _lastAfterTickActualBuffCount = -1;
+    private bool _lastFoundSelectedConfigOnTarget;
     private World _cachedBuffSystemWorld;
     private BuffSystemCore _cachedBuffSystemCore;
     private SimulateRunner _buffDebugLogRunner;
@@ -296,41 +317,51 @@ public sealed class ECSWorldDebuggerWindow : EditorWindow
     private void DrawContent(World world, IECSRuntimeDebugSource source)
     {
         EditorGUILayout.BeginVertical(GUILayout.ExpandWidth(true));
-        _contentScroll = EditorGUILayout.BeginScrollView(_contentScroll);
-
-        switch (_currentTab)
+        try
         {
-            case DebuggerTab.Overview:
-                DrawOverviewTab(source);
-                break;
-            case DebuggerTab.Entities:
-                DrawEntitiesTab(world);
-                break;
-            case DebuggerTab.Systems:
-                DrawSystemsTab();
-                break;
-            case DebuggerTab.ArcheTypes:
-                DrawArcheTypesTab(world);
-                break;
-            case DebuggerTab.ComponentStores:
-                DrawComponentStoresTab();
-                break;
-            case DebuggerTab.Singletons:
-                DrawSingletonsTab(world);
-                break;
-            case DebuggerTab.WorldEvents:
-                DrawWorldEventsTab();
-                break;
-            case DebuggerTab.Commands:
-                DrawCommandsTab(source);
-                break;
-            case DebuggerTab.BuffDebug:
-                DrawBuffDebugTab(world, source);
-                break;
+            _contentScroll = EditorGUILayout.BeginScrollView(_contentScroll);
+            try
+            {
+                switch (_currentTab)
+                {
+                    case DebuggerTab.Overview:
+                        DrawOverviewTab(source);
+                        break;
+                    case DebuggerTab.Entities:
+                        DrawEntitiesTab(world);
+                        break;
+                    case DebuggerTab.Systems:
+                        DrawSystemsTab();
+                        break;
+                    case DebuggerTab.ArcheTypes:
+                        DrawArcheTypesTab(world);
+                        break;
+                    case DebuggerTab.ComponentStores:
+                        DrawComponentStoresTab();
+                        break;
+                    case DebuggerTab.Singletons:
+                        DrawSingletonsTab(world);
+                        break;
+                    case DebuggerTab.WorldEvents:
+                        DrawWorldEventsTab();
+                        break;
+                    case DebuggerTab.Commands:
+                        DrawCommandsTab(source);
+                        break;
+                    case DebuggerTab.BuffDebug:
+                        DrawBuffDebugTab(world, source);
+                        break;
+                }
+            }
+            finally
+            {
+                EditorGUILayout.EndScrollView();
+            }
         }
-
-        EditorGUILayout.EndScrollView();
-        EditorGUILayout.EndVertical();
+        finally
+        {
+            EditorGUILayout.EndVertical();
+        }
     }
 
     /// <summary>根据自动扫描和自动刷新设置更新 Debug 数据。</summary>
@@ -843,29 +874,1267 @@ public sealed class ECSWorldDebuggerWindow : EditorWindow
     /// <summary>绘制 BuffSystem 压缩 Buff 试点调试页。</summary>
     private void DrawBuffDebugTab(World world, IECSRuntimeDebugSource source)
     {
-        DrawSectionTitle("BuffSystem 压缩 Buff 调试面板");
-        EditorGUILayout.HelpBox("本页用于验证 configId=991001 是否走 CompressedExpiryFrameList。Entity 由当前 World.CreateEntity() 创建，不是 Unity GameObject。Source 默认等于 Target，Add / Remove / Query 使用同一组 Entity。Add / Remove 是队列命令，必须 Tick 后才会创建 / 移除 runtime；新建 runtime 的 ViewData 可能需要下一帧 Capture 后才可见。", MessageType.Info);
-
-        _buffDebugBinding = ResolveBuffDebugBinding(source, world);
-        _buffDebugLogRunner = _buffDebugBinding.runner;
-        DrawBuffDebugBindingDiagnostics(_buffDebugBinding);
-
-        if (!_buffDebugBinding.IsUsable)
+        EditorGUILayout.BeginVertical();
+        try
         {
-            EditorGUILayout.HelpBox("绑定失败：未找到同一 SimulationInitializer 下的 World / Runner / BuffSystemCore。请确认场景已启动，并在 ECS Debugger 中选择当前生产场景的调试源。", MessageType.Warning);
+            DrawSectionTitle("BuffSystem Entity + Buff 调试面板");
+
+            _buffDebugBinding = ResolveBuffDebugBinding(source, world);
+            _buffDebugLogRunner = _buffDebugBinding.runner;
+            RefreshBuffDefinitionOptions(_buffDebugBinding.buffSystem);
+            DrawBuffDebugBindingSummary(_buffDebugBinding);
+
+            if (!_buffDebugBinding.IsUsable)
+            {
+                EditorGUILayout.HelpBox("绑定失败：未找到可用 World / Runner / BuffSystemCore。详细信息可在下方日志区生成或复制。", MessageType.Warning);
+                DrawBuffDebugDiagnosticBar(_buffDebugBinding);
+                DrawBuffDebugLogs();
+                return;
+            }
+
+            DrawBuffDebugOperationBar(_buffDebugBinding);
+            DrawBuffDebugEntitySelectionSummary(_buffDebugBinding);
+            DrawBuffDebugEntityList(_buffDebugBinding);
+            DrawBuffDebugSelectedEntityDetail(_buffDebugBinding);
+            DrawBuffDebugDiagnosticBar(_buffDebugBinding);
+            DrawBuffDebugLogs();
+        }
+        finally
+        {
+            EditorGUILayout.EndVertical();
+        }
+    }
+
+    private void DrawBuffDebugBindingSummary(BuffDebugBinding binding)
+    {
+        DrawCompactBuffDebugBindingSummary(binding);
+    }
+
+    private void DrawCompactBuffDebugBindingSummary(BuffDebugBinding binding)
+    {
+        EditorGUILayout.BeginHorizontal(EditorStyles.helpBox, GUILayout.MinHeight(EditorGUIUtility.singleLineHeight + 8f));
+        try
+        {
+            EditorGUILayout.LabelField("Header", EditorStyles.boldLabel, GUILayout.Width(54f));
+            DrawCompactStatusItem("Binding", binding.IsUsable ? "PASS" : "FAIL", 96f);
+            DrawCompactStatusItem("Source", ShortenDiagnostic(binding.selectedSourceName, 30), 220f);
+            DrawCompactStatusItem("World", binding.world != null ? "Valid" : "Invalid", 106f);
+            DrawCompactStatusItem("Runner", binding.runner != null ? "Valid" : "Invalid", 112f);
+            DrawCompactStatusItem("BuffSystem", binding.buffSystem != null ? "Valid" : "Invalid", 138f);
+            DrawCompactStatusItem("Target", FormatEntity(_buffDebugTarget), 112f);
+            DrawCompactStatusItem("SourceEntity", FormatEntity(_buffDebugSource), 138f);
+            DrawCompactStatusItemFlexible("Last", binding.IsUsable ? "PASS" : ShortenDiagnostic(binding.diagnosis, 54), 180f);
+        }
+        finally
+        {
+            EditorGUILayout.EndHorizontal();
+        }
+    }
+
+    private static void DrawCompactStatusItem(string label, string value, float width)
+    {
+        EditorGUILayout.LabelField(label + ": " + value, EditorStyles.miniLabel, GUILayout.Width(width));
+    }
+
+    private static void DrawCompactStatusItemFlexible(string label, string value, float minWidth)
+    {
+        EditorGUILayout.LabelField(label + ": " + value, EditorStyles.miniLabel, GUILayout.MinWidth(minWidth), GUILayout.ExpandWidth(true));
+    }
+
+    private void DrawBuffDebugOperationBar(BuffDebugBinding binding)
+    {
+        DrawSectionTitle("Buff Operation Bar");
+        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+        try
+        {
+            string[] labelsSnapshot = _buffDefinitionLabels ?? Array.Empty<string>();
+            bool hasBuffOptions = labelsSnapshot.Length > 0;
+
+            if (!hasBuffOptions)
+            {
+                EditorGUILayout.LabelField("Buff", "没有可用 Buff 配置");
+                EditorGUILayout.HelpBox("没有可用 Buff 配置。Add Buff 不会执行；请确认当前 BuffConfigDataLoader / DefinitionProvider 已加载。", MessageType.Warning);
+            }
+            else
+            {
+                _selectedBuffDefinitionIndex = Mathf.Clamp(_selectedBuffDefinitionIndex, 0, labelsSnapshot.Length - 1);
+                int nextIndex = EditorGUILayout.Popup("Buff", _selectedBuffDefinitionIndex, labelsSnapshot);
+                if (nextIndex != _selectedBuffDefinitionIndex)
+                {
+                    _selectedBuffDefinitionIndex = nextIndex;
+                    SyncSelectedBuffConfigText();
+                    RefreshSelectedEntityBuffSnapshot(binding);
+                }
+
+                BuffDefinitionOption option = GetSelectedBuffDefinitionOption();
+                DrawReadOnlyInt("ConfigId", option.configId);
+                DrawReadOnlyText("Name", option.name);
+                DrawReadOnlyText("Dropdown Source", option.source);
+                DrawReadOnlyText("Runtime Ready", option.runtimeStatus);
+                if (option.runtimeStatus == "NotReady")
+                {
+                    EditorGUILayout.HelpBox(
+                        "Asset exists, but selected config is not registered in current runtime BuffSystem.",
+                        MessageType.Warning);
+                }
+                else if (option.runtimeStatus == "DefinitionReady / EffectMissing")
+                {
+                    EditorGUILayout.HelpBox(
+                        "Runtime definition is registered, but the selected Buff EffectId is not registered in the current BuffEffectRegistry. Add Buff can still create runtime data if BuffSystem tolerates missing effects, but effect callbacks will be skipped.",
+                        MessageType.Warning);
+                }
+                if (TryGetBuffDefinition(binding.buffSystem, option.configId, out BuffDefinition definition))
+                {
+                    DrawReadOnlyInt("Selected Buff MaxStack", definition.MaxStack);
+                    DrawReadOnlyText("BuffType / Storage", definition.BuffType + " / " + definition.ParallelStorageMode);
+                }
+            }
+
+            EditorGUILayout.BeginHorizontal();
+            try
+            {
+                _buffStackText = EditorGUILayout.TextField("Stack", _buffStackText, GUILayout.MinWidth(120f));
+                _buffTickFramesText = EditorGUILayout.TextField("Tick N Frames", _buffTickFramesText, GUILayout.MinWidth(140f));
+            }
+            finally
+            {
+                EditorGUILayout.EndHorizontal();
+            }
+
+            DrawBuffDebugStackInputWarning(binding.buffSystem);
+
+            EditorGUILayout.BeginHorizontal();
+            try
+            {
+                using (new EditorGUI.DisabledScope(!hasBuffOptions))
+                {
+                    if (GUILayout.Button("Add Buff", GUILayout.Height(26f)))
+                        AddSelectedBuffToTarget(binding);
+                    if (GUILayout.Button("Add Buff + Tick 1 Frame", GUILayout.Height(26f)))
+                        AddSelectedBuffToTargetAndTickOneFrame(binding);
+                    if (GUILayout.Button("Remove Selected Buff", GUILayout.Height(26f)))
+                        RemoveSelectedBuffView(binding);
+                }
+                if (GUILayout.Button("Tick 1 Frame", GUILayout.Height(26f)))
+                    TickBuffDebugFrames(binding, 1);
+                if (GUILayout.Button("Tick N Frames", GUILayout.Height(26f)))
+                    TickBuffDebugFrames(binding, ReadBuffTickFramesOrDefault());
+                if (GUILayout.Button("Refresh", GUILayout.Height(26f)))
+                    RefreshSelectedEntityBuffSnapshot(binding);
+            }
+            finally
+            {
+                EditorGUILayout.EndHorizontal();
+            }
+        }
+        finally
+        {
+            EditorGUILayout.EndVertical();
+        }
+    }
+
+    private void DrawBuffDebugEntitySelectionSummary(BuffDebugBinding binding)
+    {
+        DrawSectionTitle("Entity Selection");
+        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+        try
+        {
+            EditorGUILayout.BeginHorizontal();
+            try
+            {
+                DrawReadOnlyText("Target Entity", FormatEntity(_buffDebugTarget));
+                DrawReadOnlyText("Source Entity", FormatEntity(_buffDebugSource));
+                DrawReadOnlyText("Selected Entity", FormatEntity(_selectedEntity));
+            }
+            finally
+            {
+                EditorGUILayout.EndHorizontal();
+            }
+
+            EditorGUILayout.BeginHorizontal();
+            try
+            {
+                using (new EditorGUI.DisabledScope(!IsEntityAliveInWorld(binding.world, _selectedEntity)))
+                {
+                    if (GUILayout.Button("Selected -> Target"))
+                        SetBuffDebugTarget(binding.world, _selectedEntity);
+                    if (GUILayout.Button("Selected -> Source"))
+                        SetBuffDebugSource(binding.world, _selectedEntity);
+                    if (GUILayout.Button("Add Selected Buff To Selected Entity"))
+                        AddSelectedBuffToEntity(binding, _selectedEntity);
+                }
+                _showLegacyBuffEntityFields = EditorGUILayout.Foldout(_showLegacyBuffEntityFields, "Legacy 手写 Entity ID", true);
+            }
+            finally
+            {
+                EditorGUILayout.EndHorizontal();
+            }
+
+            if (_showLegacyBuffEntityFields)
+                DrawBuffDebugLegacyEntityFields();
+        }
+        finally
+        {
+            EditorGUILayout.EndVertical();
+        }
+    }
+
+    private void DrawBuffDebugLegacyEntityFields()
+    {
+        EditorGUI.indentLevel++;
+        try
+        {
+            EditorGUILayout.HelpBox("Legacy Debug only：主路径请使用 Entity 列表中的 Set Target / Set Source。", MessageType.Info);
+            EditorGUILayout.BeginHorizontal();
+            try
+            {
+                _buffTargetIdText = EditorGUILayout.TextField("Target ID", _buffTargetIdText);
+                _buffTargetVersionText = EditorGUILayout.TextField("Target Version", _buffTargetVersionText);
+            }
+            finally
+            {
+                EditorGUILayout.EndHorizontal();
+            }
+
+            EditorGUILayout.BeginHorizontal();
+            try
+            {
+                _buffSourceIdText = EditorGUILayout.TextField("Source ID", _buffSourceIdText);
+                _buffSourceVersionText = EditorGUILayout.TextField("Source Version", _buffSourceVersionText);
+            }
+            finally
+            {
+                EditorGUILayout.EndHorizontal();
+            }
+        }
+        finally
+        {
+            EditorGUI.indentLevel--;
+        }
+    }
+
+    private void DrawBuffDebugEntityList(BuffDebugBinding binding)
+    {
+        DrawSectionTitle($"Entity List ({_entities.Count})");
+        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+        try
+        {
+            _entityListScroll = EditorGUILayout.BeginScrollView(_entityListScroll, GUILayout.MinHeight(180f), GUILayout.MaxHeight(280f));
+            try
+            {
+                DrawBuffDebugEntityListHeader();
+                _buffDebugEntityDrawBuffer.Clear();
+                _buffDebugEntityDrawBuffer.AddRange(_entities);
+                string[] labelsSnapshot = _buffDefinitionLabels ?? Array.Empty<string>();
+
+                for (int i = 0; i < _buffDebugEntityDrawBuffer.Count; i++)
+                {
+                    Entity entity = _buffDebugEntityDrawBuffer[i];
+                    if (!binding.world.TryGetEntityDebugInfo(entity, out EntityDebugInfo info))
+                        continue;
+
+                    IReadOnlyList<BuffViewData> buffs = GetEntityBuffs(binding.buffSystem, entity);
+                    int buffCount = buffs != null ? buffs.Count : 0;
+                    bool hasView = HasEntityComponentName(binding.world, entity, "View");
+                    bool isTarget = entity == _buffDebugTarget;
+                    bool isSource = entity == _buffDebugSource;
+
+                    EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
+                    try
+                    {
+                        EditorGUILayout.LabelField(entity.ID.ToString(), GUILayout.Width(54f));
+                        EditorGUILayout.LabelField(entity.Version.ToString(), GUILayout.Width(58f));
+                        EditorGUILayout.LabelField(info.isAlive ? "Yes" : "No", GUILayout.Width(52f));
+                        EditorGUILayout.LabelField(buffCount.ToString(), GUILayout.Width(68f));
+                        EditorGUILayout.LabelField(buffCount > 0 ? "Yes" : "No", GUILayout.Width(58f));
+                        EditorGUILayout.LabelField(hasView ? "Yes" : "No", GUILayout.Width(58f));
+                        EditorGUILayout.LabelField(isTarget ? "T" : "-", GUILayout.Width(36f));
+                        EditorGUILayout.LabelField(isSource ? "S" : "-", GUILayout.Width(36f));
+                        if (GUILayout.Button("Select", GUILayout.Width(62f)))
+                            SelectBuffDebugEntity(binding, entity);
+                        if (GUILayout.Button("Set Target", GUILayout.Width(82f)))
+                            SetBuffDebugTarget(binding.world, entity);
+                        if (GUILayout.Button("Set Source", GUILayout.Width(82f)))
+                            SetBuffDebugSource(binding.world, entity);
+                        using (new EditorGUI.DisabledScope(labelsSnapshot.Length == 0))
+                        {
+                            if (GUILayout.Button("Add Buff", GUILayout.Width(76f)))
+                                AddSelectedBuffToEntity(binding, entity);
+                        }
+                    }
+                    finally
+                    {
+                        EditorGUILayout.EndHorizontal();
+                    }
+                }
+
+                if (_buffDebugEntityDrawBuffer.Count == 0)
+                    EditorGUILayout.HelpBox("当前 World 没有已创建 Entity。Add Buff 时可自动创建 Debug Target / Source Entity。", MessageType.Info);
+            }
+            finally
+            {
+                EditorGUILayout.EndScrollView();
+            }
+        }
+        finally
+        {
+            EditorGUILayout.EndVertical();
+        }
+    }
+
+    private static void DrawBuffDebugEntityListHeader()
+    {
+        EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
+        try
+        {
+            EditorGUILayout.LabelField("ID", EditorStyles.boldLabel, GUILayout.Width(54f));
+            EditorGUILayout.LabelField("Version", EditorStyles.boldLabel, GUILayout.Width(58f));
+            EditorGUILayout.LabelField("Alive", EditorStyles.boldLabel, GUILayout.Width(52f));
+            EditorGUILayout.LabelField("Buffs", EditorStyles.boldLabel, GUILayout.Width(68f));
+            EditorGUILayout.LabelField("HasBuff", EditorStyles.boldLabel, GUILayout.Width(58f));
+            EditorGUILayout.LabelField("HasView", EditorStyles.boldLabel, GUILayout.Width(58f));
+            EditorGUILayout.LabelField("T", EditorStyles.boldLabel, GUILayout.Width(36f));
+            EditorGUILayout.LabelField("S", EditorStyles.boldLabel, GUILayout.Width(36f));
+            EditorGUILayout.LabelField("Actions", EditorStyles.boldLabel);
+        }
+        finally
+        {
+            EditorGUILayout.EndHorizontal();
+        }
+    }
+
+    private void DrawBuffDebugSelectedEntityDetail(BuffDebugBinding binding)
+    {
+        DrawSectionTitle("Selected Entity Detail");
+        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+        try
+        {
+            Entity entity = _selectedEntity.IsValid ? _selectedEntity : _buffDebugTarget;
+            if (!IsEntityAliveInWorld(binding.world, entity))
+            {
+                EditorGUILayout.HelpBox("尚未选择有效 Entity。请从 Entity List 选择，或 Add Buff 自动创建。", MessageType.Info);
+                return;
+            }
+
+            if (binding.world.TryGetEntityDebugInfo(entity, out EntityDebugInfo info))
+            {
+                EditorGUILayout.BeginHorizontal();
+                try
+                {
+                    DrawReadOnlyText("Entity", FormatEntity(entity));
+                    DrawReadOnlyText("Alive", info.isAlive.ToString());
+                    DrawReadOnlyInt("Component Count", info.componentCount);
+                    DrawReadOnlyText("Target", entity == _buffDebugTarget ? "Yes" : "No");
+                    DrawReadOnlyText("Source", entity == _buffDebugSource ? "Yes" : "No");
+                }
+                finally
+                {
+                    EditorGUILayout.EndHorizontal();
+                }
+            }
+
+            DrawBuffDebugStackDiagnosis(binding, entity);
+            DrawBuffDebugLastAddTargetHint(entity);
+            DrawBuffDebugLastAddResult(binding, entity);
+            DrawBuffDebugEntityBuffList(binding, entity);
+            DrawBuffDebugComponentSummary(binding.world, entity);
+        }
+        finally
+        {
+            EditorGUILayout.EndVertical();
+        }
+    }
+
+    private void DrawBuffDebugStackInputWarning(BuffSystemCore buffSystem)
+    {
+        int configId = GetSelectedBuffConfigId();
+        int requestedStack = ReadBuffStackOrDefault();
+
+        if (!TryGetBuffDefinition(buffSystem, configId, out BuffDefinition definition))
+            return;
+
+        if (!definition.Unlimited && requestedStack > definition.MaxStack)
+        {
+            EditorGUILayout.HelpBox(
+                $"Stack input {requestedStack} exceeds MaxStack {definition.MaxStack}; actual runtime stack may be capped by BuffDefinition.",
+                MessageType.Warning);
+        }
+    }
+
+    private void DrawBuffDebugStackDiagnosis(BuffDebugBinding binding, Entity entity)
+    {
+        if (!_lastBuffTarget.IsValid || entity != _lastBuffTarget || _lastBuffConfigId <= 0)
+            return;
+
+        int actualStack = ReadActualStack(binding.buffSystem, entity, _lastBuffConfigId, _lastBuffSource);
+        string diagnosis = DiagnoseStackResult(
+            _lastBuffRequestedStack,
+            _lastBuffExpectedStack,
+            actualStack,
+            _lastBuffMaxStack,
+            _lastBuffMaxStack > 0);
+
+        _lastBuffStackDiagnosis = diagnosis;
+
+        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+        try
+        {
+            EditorGUILayout.LabelField(
+                "Stack Diagnosis",
+                $"requested={_lastBuffRequestedStack}, max={FormatOptionalInt(_lastBuffMaxStack)}, expected={FormatOptionalInt(_lastBuffExpectedStack)}, actual={actualStack}, diagnosis={diagnosis}");
+
+            if (diagnosis == "CAPPED_BY_MAXSTACK")
+                EditorGUILayout.HelpBox("Requested Stack was higher than BuffDefinition.MaxStack. Runtime correctly capped the actual stack.", MessageType.Info);
+        }
+        finally
+        {
+            EditorGUILayout.EndVertical();
+        }
+    }
+
+    private void DrawBuffDebugLastAddTargetHint(Entity entity)
+    {
+        if (!_lastBuffTarget.IsValid || entity == _lastBuffTarget || _lastBuffConfigId <= 0)
+            return;
+
+        EditorGUILayout.HelpBox(
+            $"Last Add Buff target is {FormatEntity(_lastBuffTarget)}, but current Selected Entity is {FormatEntity(entity)}. Buff list is target-scoped; select the target entity or use Add Buff again to auto-focus it.",
+            MessageType.Info);
+    }
+
+    private void DrawBuffDebugLastAddResult(BuffDebugBinding binding, Entity entity)
+    {
+        if (!_lastBuffTarget.IsValid || entity != _lastBuffTarget || _lastBuffConfigId <= 0)
+            return;
+
+        int currentBuffCount = CountEntityBuffViews(binding.buffSystem, entity);
+        if (_lastAddResult == "QUEUED")
+        {
+            EditorGUILayout.HelpBox(
+                $"Last Add Result: QUEUED. AddBuffCommand is waiting for Tick. Reason={_lastAddFailureReason}.",
+                MessageType.Info);
             return;
         }
 
-        DrawBuffDebugInputs();
-        DrawBuffDebugPreflightDiagnostics(_buffDebugBinding);
-        DrawBuffDebugCommandQueueDiagnostics(_buffDebugBinding);
-        DrawBuffDebugCompressedRuntimeTrace(_buffDebugBinding);
-        DrawBuffDebugEntityControls(_buffDebugBinding);
-        DrawBuffDebugActionButtons(_buffDebugBinding);
-        DrawBuffDebugResult();
-        DrawBuffDebugRuntimeStats();
-        DrawBuffDebugViewList();
-        DrawBuffDebugLogs();
+        if (currentBuffCount == 0 && _lastAddResult != "N/A")
+        {
+            EditorGUILayout.HelpBox(
+                $"Last Add Result: No runtime Buff found after Tick. Result={_lastAddResult}, Reason={_lastAddFailureReason}, AfterTickActualBuffCount={FormatOptionalInt(_lastAfterTickActualBuffCount)}, FoundSelectedConfigOnTarget={_lastFoundSelectedConfigOnTarget}.",
+                _lastAddResult == "RUNTIME_READY" ? MessageType.Info : MessageType.Warning);
+            return;
+        }
+
+        if (_lastAddResult != "N/A")
+        {
+            EditorGUILayout.LabelField(
+                "Last Add Result",
+                $"Result={_lastAddResult}, Reason={_lastAddFailureReason}, AfterTickActualBuffCount={FormatOptionalInt(_lastAfterTickActualBuffCount)}, FoundSelectedConfigOnTarget={_lastFoundSelectedConfigOnTarget}");
+        }
+    }
+
+    private void DrawBuffDebugEntityBuffList(BuffDebugBinding binding, Entity entity)
+    {
+        IReadOnlyList<BuffViewData> buffs = GetEntityBuffs(binding.buffSystem, entity);
+        _buffDebugViewDrawBuffer.Clear();
+        if (buffs != null)
+        {
+            for (int i = 0; i < buffs.Count; i++)
+                _buffDebugViewDrawBuffer.Add(buffs[i]);
+        }
+
+        int count = _buffDebugViewDrawBuffer.Count;
+        DrawReadOnlyInt("Buff Count", count);
+
+        if (count == 0)
+        {
+            EditorGUILayout.LabelField("No Buffs");
+            return;
+        }
+
+        _selectedBuffViewIndex = Mathf.Clamp(_selectedBuffViewIndex, 0, count - 1);
+        EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
+        try
+        {
+            EditorGUILayout.LabelField("Sel", EditorStyles.boldLabel, GUILayout.Width(42f));
+            EditorGUILayout.LabelField("ConfigId", EditorStyles.boldLabel, GUILayout.Width(76f));
+            EditorGUILayout.LabelField("Name", EditorStyles.boldLabel, GUILayout.Width(210f));
+            EditorGUILayout.LabelField("Stack", EditorStyles.boldLabel, GUILayout.Width(56f));
+            EditorGUILayout.LabelField("Remaining", EditorStyles.boldLabel, GUILayout.Width(82f));
+            EditorGUILayout.LabelField("Source", EditorStyles.boldLabel, GUILayout.Width(100f));
+            EditorGUILayout.LabelField("RuntimeType", EditorStyles.boldLabel, GUILayout.Width(150f));
+        }
+        finally
+        {
+            EditorGUILayout.EndHorizontal();
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            BuffViewData view = _buffDebugViewDrawBuffer[i];
+            EditorGUILayout.BeginHorizontal(EditorStyles.helpBox);
+            try
+            {
+                if (GUILayout.Toggle(_selectedBuffViewIndex == i, string.Empty, GUILayout.Width(42f)))
+                    _selectedBuffViewIndex = i;
+                EditorGUILayout.LabelField(view.ConfigId.ToString(), GUILayout.Width(76f));
+                EditorGUILayout.LabelField(ResolveBuffName(binding.buffSystem, view.ConfigId), GUILayout.Width(210f));
+                EditorGUILayout.LabelField(view.Stack.ToString(), GUILayout.Width(56f));
+                EditorGUILayout.LabelField(view.RemainingFrames.ToString(), GUILayout.Width(82f));
+                EditorGUILayout.LabelField(FormatEntity(view.Source), GUILayout.Width(100f));
+                EditorGUILayout.LabelField(GetRuntimeTypeSummary(binding.world, view), GUILayout.Width(150f));
+            }
+            finally
+            {
+                EditorGUILayout.EndHorizontal();
+            }
+        }
+    }
+
+    private void DrawBuffDebugComponentSummary(World world, Entity entity)
+    {
+        world.FillEntityComponentTypes(entity, _componentTypes);
+        string summary = JoinTypeNames(_componentTypes);
+        EditorGUILayout.LabelField("Component Summary", EditorStyles.miniBoldLabel);
+        EditorGUILayout.TextArea(summary, GUILayout.MinHeight(32f), GUILayout.MaxHeight(64f));
+
+        if (GUILayout.Button("写入完整组件摘要到日志 / Clipboard"))
+        {
+            _buffDebugCopyText = $"Entity {FormatEntity(entity)} Components:{Environment.NewLine}{summary}";
+            AppendBuffDebugInfoLog("Entity Component Summary", "组件摘要已写入下方可复制日志。");
+        }
+    }
+
+    private void DrawBuffDebugDiagnosticBar(BuffDebugBinding binding)
+    {
+        DrawSectionTitle("Log / Clipboard Diagnostics");
+        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+        try
+        {
+            EditorGUILayout.HelpBox("详细 Definition、Command Queue、Compressed Runtime Trace、绑定一致性和内部字段不再常驻主区域。点击下列按钮生成到日志 / Clipboard。", MessageType.Info);
+            EditorGUILayout.BeginHorizontal();
+            try
+            {
+                if (GUILayout.Button("生成绑定诊断日志"))
+                {
+                    _buffDebugCopyText = BuildBuffDebugBindingCopyText(binding);
+                    AppendBuffDebugInfoLog("生成绑定诊断日志", "详细绑定一致性已写入日志区。");
+                }
+                if (GUILayout.Button("生成 Definition 诊断日志"))
+                    GenerateBuffDebugDefinitionCopyText(binding);
+                if (GUILayout.Button("生成 Command Queue 诊断日志"))
+                {
+                    CaptureAndLogBuffCommandQueueStage(binding, "ManualSnapshot", "记录队列诊断快照");
+                    _buffDebugCopyText = BuildBuffCommandQueueDiagnosticsCopyText();
+                }
+                if (GUILayout.Button("生成 Compressed Trace 日志"))
+                    RunBuffCompressedRuntimeLifecycleTrace(binding);
+            }
+            finally
+            {
+                EditorGUILayout.EndHorizontal();
+            }
+        }
+        finally
+        {
+            EditorGUILayout.EndVertical();
+        }
+    }
+
+    private void RefreshBuffDefinitionOptions(BuffSystemCore buffSystem)
+    {
+        _buffDefinitionOptions.Clear();
+
+        AddBuffDefinitionOptionsFromAssetDatabase();
+
+        if (_buffDefinitionOptions.Count == 0)
+            AddBuffDefinitionOptionsFromResources();
+
+        IBuffDefinitionProvider provider = GetPrivateFieldValue<IBuffDefinitionProvider>(buffSystem, "_definitionProvider");
+        if (provider != null)
+        {
+            object ids = GetPrivateFieldValue<object>(provider, "_indexToBuffId");
+            AddBuffDefinitionOptionsFromIds(provider, ids);
+
+            if (_buffDefinitionOptions.Count == 0)
+                AddBuffDefinitionOptionsFromDefinitionMap(provider, GetPrivateFieldValue<object>(provider, "_definitions"));
+
+            if (_buffDefinitionOptions.Count == 0)
+            {
+                object registry = GetPrivateFieldValue<object>(provider, "_definitionRegistry");
+                AddBuffDefinitionOptionsFromDefinitionMap(provider, GetPrivateFieldValue<object>(registry, "_definitions"));
+            }
+        }
+
+        RefreshBuffDefinitionOptionRuntimeStatus(buffSystem, provider);
+        _buffDefinitionOptions.Sort((left, right) => left.configId.CompareTo(right.configId));
+        _buffDefinitionLabels = new string[_buffDefinitionOptions.Count];
+        for (int i = 0; i < _buffDefinitionOptions.Count; i++)
+        {
+            BuffDefinitionOption option = _buffDefinitionOptions[i];
+            option.label = BuildBuffDefinitionOptionLabel(option);
+            _buffDefinitionOptions[i] = option;
+            _buffDefinitionLabels[i] = option.label;
+        }
+
+        if (_selectedBuffDefinitionIndex >= _buffDefinitionOptions.Count)
+            _selectedBuffDefinitionIndex = Mathf.Max(0, _buffDefinitionOptions.Count - 1);
+
+        SyncSelectedBuffConfigText();
+    }
+
+    private void RefreshBuffDefinitionOptionRuntimeStatus(BuffSystemCore buffSystem, IBuffDefinitionProvider provider)
+    {
+        for (int i = 0; i < _buffDefinitionOptions.Count; i++)
+        {
+            BuffDefinitionOption option = _buffDefinitionOptions[i];
+            option.runtimeStatus = GetRuntimeReadyStatus(buffSystem, provider, option.configId);
+            option.runtimeReady = option.runtimeStatus == "Ready";
+            _buffDefinitionOptions[i] = option;
+        }
+    }
+
+    private static string BuildBuffDefinitionOptionLabel(BuffDefinitionOption option)
+    {
+        string runtimeStatus = string.IsNullOrEmpty(option.runtimeStatus) ? "Unknown" : option.runtimeStatus;
+        return $"[{option.configId}] {option.name} ({option.source}, Runtime: {runtimeStatus})";
+    }
+
+    private void AddBuffDefinitionOptionsFromAssetDatabase()
+    {
+        if (!AssetDatabase.IsValidFolder(BuffConfigResourceAssetPath))
+            return;
+
+        string[] guids = AssetDatabase.FindAssets("t:BuffConfigData", new[] { BuffConfigResourceAssetPath });
+        if (guids == null || guids.Length == 0)
+            return;
+
+        for (int i = 0; i < guids.Length; i++)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guids[i]);
+            BuffConfigData configData = AssetDatabase.LoadAssetAtPath<BuffConfigData>(path);
+            AddBuffDefinitionOption(configData, "AssetDatabase");
+        }
+    }
+
+    private void AddBuffDefinitionOptionsFromResources()
+    {
+        BuffConfigData[] configs = Resources.LoadAll<BuffConfigData>(BuffConfigResourcesPath);
+        if (configs == null || configs.Length == 0)
+            return;
+
+        for (int i = 0; i < configs.Length; i++)
+            AddBuffDefinitionOption(configs[i], "Resources.LoadAll");
+    }
+
+    private void AddBuffDefinitionOptionsFromIds(IBuffDefinitionProvider provider, object ids)
+    {
+        if (provider == null || !(ids is IEnumerable enumerable))
+            return;
+
+        foreach (object value in enumerable)
+        {
+            if (!TryConvertToInt(value, out int configId) || configId <= 0)
+                continue;
+
+            if (!provider.TryGetDefinition(configId, out BuffDefinition definition))
+                continue;
+
+            AddBuffDefinitionOption(definition);
+        }
+    }
+
+    private void AddBuffDefinitionOptionsFromDefinitionMap(IBuffDefinitionProvider provider, object map)
+    {
+        if (!(map is IEnumerable enumerable))
+            return;
+
+        foreach (object entry in enumerable)
+        {
+            int configId = 0;
+            BuffDefinition definition = default;
+            bool hasDefinition = false;
+
+            if (entry is DictionaryEntry dictionaryEntry)
+            {
+                TryConvertToInt(dictionaryEntry.Key, out configId);
+                if (dictionaryEntry.Value is BuffDefinition valueDefinition)
+                {
+                    definition = valueDefinition;
+                    hasDefinition = true;
+                }
+            }
+            else
+            {
+                Type entryType = entry != null ? entry.GetType() : null;
+                object key = entryType != null ? entryType.GetProperty("Key")?.GetValue(entry, null) : null;
+                object value = entryType != null ? entryType.GetProperty("Value")?.GetValue(entry, null) : null;
+                TryConvertToInt(key, out configId);
+                if (value is BuffDefinition valueDefinition)
+                {
+                    definition = valueDefinition;
+                    hasDefinition = true;
+                }
+            }
+
+            if (!hasDefinition && provider != null && configId > 0)
+                hasDefinition = provider.TryGetDefinition(configId, out definition);
+
+            if (hasDefinition)
+                AddBuffDefinitionOption(definition);
+        }
+    }
+
+    private void AddBuffDefinitionOption(in BuffDefinition definition)
+    {
+        if (definition.ConfigId <= 0 || HasBuffDefinitionOption(definition.ConfigId))
+            return;
+
+        string name = string.IsNullOrEmpty(definition.Name) ? $"Buff {definition.ConfigId}" : definition.Name;
+        _buffDefinitionOptions.Add(new BuffDefinitionOption
+        {
+            configId = definition.ConfigId,
+            name = name,
+            label = $"[{definition.ConfigId}] {name}",
+            source = "Runtime Provider",
+            definition = definition,
+            hasDefinition = true
+        });
+    }
+
+    private void AddBuffDefinitionOption(BuffConfigData configData, string source)
+    {
+        if (configData == null || configData.ID <= 0 || HasBuffDefinitionOption(configData.ID))
+            return;
+
+        string name = !string.IsNullOrEmpty(configData.Name) ? configData.Name : configData.name;
+        if (string.IsNullOrEmpty(name))
+            name = $"Buff {configData.ID}";
+
+        BuffDefinition definition = configData.ToDefinition(DebugBuffDefinitionTickLength);
+        _buffDefinitionOptions.Add(new BuffDefinitionOption
+        {
+            configId = configData.ID,
+            name = name,
+            label = $"[{configData.ID}] {name}",
+            source = source,
+            definition = definition,
+            hasDefinition = true
+        });
+    }
+
+    private bool HasBuffDefinitionOption(int configId)
+    {
+        for (int i = 0; i < _buffDefinitionOptions.Count; i++)
+        {
+            if (_buffDefinitionOptions[i].configId == configId)
+                return true;
+        }
+
+        return false;
+    }
+
+    private BuffDefinitionOption GetSelectedBuffDefinitionOption()
+    {
+        if (_buffDefinitionOptions.Count == 0)
+            return default;
+
+        _selectedBuffDefinitionIndex = Mathf.Clamp(_selectedBuffDefinitionIndex, 0, _buffDefinitionOptions.Count - 1);
+        return _buffDefinitionOptions[_selectedBuffDefinitionIndex];
+    }
+
+    private int GetSelectedBuffConfigId()
+    {
+        BuffDefinitionOption option = GetSelectedBuffDefinitionOption();
+        return option.configId;
+    }
+
+    private void SyncSelectedBuffConfigText()
+    {
+        int configId = GetSelectedBuffConfigId();
+        if (configId > 0)
+            _buffConfigIdText = configId.ToString();
+    }
+
+    private string ResolveBuffName(BuffSystemCore buffSystem, int configId)
+    {
+        for (int i = 0; i < _buffDefinitionOptions.Count; i++)
+        {
+            if (_buffDefinitionOptions[i].configId == configId)
+                return _buffDefinitionOptions[i].name;
+        }
+
+        IBuffDefinitionProvider provider = GetPrivateFieldValue<IBuffDefinitionProvider>(buffSystem, "_definitionProvider");
+        if (provider != null && provider.TryGetDefinition(configId, out BuffDefinition definition) && !string.IsNullOrEmpty(definition.Name))
+            return definition.Name;
+
+        return $"Buff {configId}";
+    }
+
+    private bool TryGetBuffDefinition(BuffSystemCore buffSystem, int configId, out BuffDefinition definition)
+    {
+        definition = default;
+
+        if (buffSystem == null || configId <= 0)
+            return false;
+
+        IBuffDefinitionProvider provider = GetPrivateFieldValue<IBuffDefinitionProvider>(buffSystem, "_definitionProvider");
+        if (provider != null && provider.TryGetDefinition(configId, out definition))
+            return true;
+
+        for (int i = 0; i < _buffDefinitionOptions.Count; i++)
+        {
+            BuffDefinitionOption option = _buffDefinitionOptions[i];
+            if (option.configId == configId && option.hasDefinition)
+            {
+                definition = option.definition;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool TryGetRuntimeBuffDefinition(BuffSystemCore buffSystem, int configId, out BuffDefinition definition)
+    {
+        definition = default;
+
+        if (buffSystem == null || configId <= 0)
+            return false;
+
+        IBuffDefinitionProvider provider = GetPrivateFieldValue<IBuffDefinitionProvider>(buffSystem, "_definitionProvider");
+        return provider != null && provider.TryGetDefinition(configId, out definition);
+    }
+
+    private string GetRuntimeReadyStatus(BuffSystemCore buffSystem, int configId)
+    {
+        IBuffDefinitionProvider provider = GetPrivateFieldValue<IBuffDefinitionProvider>(buffSystem, "_definitionProvider");
+        return GetRuntimeReadyStatus(buffSystem, provider, configId);
+    }
+
+    private static string GetRuntimeReadyStatus(IBuffDefinitionProvider provider, int configId)
+    {
+        if (provider == null || configId <= 0)
+            return "Unknown";
+
+        return provider.TryGetDefinition(configId, out BuffDefinition _)
+            ? "Ready"
+            : "NotReady";
+    }
+
+    private static string GetRuntimeReadyStatus(BuffSystemCore buffSystem, IBuffDefinitionProvider provider, int configId)
+    {
+        if (provider == null || configId <= 0)
+            return "Unknown";
+
+        if (!provider.TryGetDefinition(configId, out BuffDefinition definition))
+            return "NotReady";
+
+        if (definition.EffectId == 0)
+            return "Ready";
+
+        BuffEffectRegistry effectRegistry = GetPrivateFieldValue<BuffEffectRegistry>(buffSystem, "_effectRegistry");
+        if (effectRegistry == null)
+            return "DefinitionReady / EffectRegistryMissing";
+
+        return effectRegistry.TryGet(definition.EffectId, out IBuffEffectExecutor _)
+            ? "Ready"
+            : "DefinitionReady / EffectMissing";
+    }
+
+    private static int GetExpectedStackAfterRequest(in BuffDefinition definition, int requestedStack)
+    {
+        int safeRequested = requestedStack > 0 ? requestedStack : 1;
+
+        if (definition.Unlimited)
+            return safeRequested;
+
+        return Math.Min(safeRequested, definition.MaxStack);
+    }
+
+    private static string DiagnoseStackResult(int requestedStack, int expectedStack, int actualStack, int maxStack, bool hasMaxStack)
+    {
+        if (requestedStack <= 0)
+            return "UNKNOWN";
+
+        if (hasMaxStack && maxStack > 0 && requestedStack > maxStack && actualStack <= maxStack)
+            return "CAPPED_BY_MAXSTACK";
+
+        if (expectedStack > 0 && actualStack == expectedStack)
+            return "PASS";
+
+        return "UNKNOWN";
+    }
+
+    private static string FormatOptionalInt(int value)
+    {
+        return value >= 0 ? value.ToString() : "N/A";
+    }
+
+    private static string BuildShortDurationAddNote(bool hasDefinition, in BuffDefinition definition)
+    {
+        if (!hasDefinition || definition.IsForever || definition.DurationFrames > 2)
+            return string.Empty;
+
+        return $" Note: selected Buff duration is very short ({definition.DurationFrames} frames). Tick once and inspect immediately; extra ticks may expire it.";
+    }
+
+    private int ReadActualStack(BuffSystemCore buffSystem, Entity target, int configId, Entity source)
+    {
+        IReadOnlyList<BuffViewData> buffs = GetEntityBuffs(buffSystem, target);
+        if (buffs == null || buffs.Count == 0)
+            return 0;
+
+        int stack = 0;
+        for (int i = 0; i < buffs.Count; i++)
+        {
+            BuffViewData view = buffs[i];
+            if (view.ConfigId != configId)
+                continue;
+
+            if (source.IsValid && view.Source != source)
+                continue;
+
+            stack += view.Stack;
+        }
+
+        return stack;
+    }
+
+    private void SelectBuffDebugEntity(BuffDebugBinding binding, Entity entity)
+    {
+        _selectedEntity = entity;
+        RefreshSelectedEntityBuffSnapshot(binding);
+    }
+
+    private void SetBuffDebugTarget(World world, Entity entity)
+    {
+        if (!IsEntityAliveInWorld(world, entity))
+        {
+            AppendBuffDebugLog("Set Target", false, "存活 Entity", FormatEntity(entity));
+            return;
+        }
+
+        _buffDebugTarget = entity;
+        SyncBuffEntityFields();
+        AppendBuffDebugInfoLog("Set Target", $"Target={FormatEntity(entity)}");
+    }
+
+    private void SetBuffDebugSource(World world, Entity entity)
+    {
+        if (!IsEntityAliveInWorld(world, entity))
+        {
+            AppendBuffDebugLog("Set Source", false, "存活 Entity", FormatEntity(entity));
+            return;
+        }
+
+        _buffDebugSource = entity;
+        SyncBuffEntityFields();
+        AppendBuffDebugInfoLog("Set Source", $"Source={FormatEntity(entity)}");
+    }
+
+    private void RefreshSelectedEntityBuffSnapshot(BuffDebugBinding binding)
+    {
+        Entity target = _selectedEntity.IsValid ? _selectedEntity : _buffDebugTarget;
+        if (IsEntityAliveInWorld(binding.world, target))
+        {
+            _buffDebugTarget = target;
+            if (!_buffDebugSource.IsValid || !binding.world.IsAlive(_buffDebugSource))
+                _buffDebugSource = target;
+            SyncBuffEntityFields();
+        }
+
+        RefreshBuffDebugSnapshot(binding.world, binding.buffSystem, "刷新 Entity + Buff 概览");
+    }
+
+    private IReadOnlyList<BuffViewData> GetEntityBuffs(BuffSystemCore buffSystem, Entity entity)
+    {
+        if (buffSystem == null || !entity.IsValid)
+            return null;
+
+        return buffSystem.GetBuffs(entity);
+    }
+
+    private int CountEntityBuffViews(BuffSystemCore buffSystem, Entity entity)
+    {
+        IReadOnlyList<BuffViewData> buffs = GetEntityBuffs(buffSystem, entity);
+        return buffs != null ? buffs.Count : 0;
+    }
+
+    private int CountMatchingBuffViews(BuffSystemCore buffSystem, Entity entity, int configId)
+    {
+        IReadOnlyList<BuffViewData> buffs = GetEntityBuffs(buffSystem, entity);
+        if (buffs == null || buffs.Count == 0 || configId <= 0)
+            return 0;
+
+        int count = 0;
+        for (int i = 0; i < buffs.Count; i++)
+        {
+            if (buffs[i].ConfigId == configId)
+                count++;
+        }
+
+        return count;
+    }
+
+    private string DiagnoseAfterTickFailureReason(BuffDebugBinding binding, Entity target, int configId)
+    {
+        if (!IsEntityAliveInWorld(binding.world, target))
+            return "TARGET_INVALID";
+
+        string runtimeStatus = GetRuntimeReadyStatus(binding.buffSystem, configId);
+        if (runtimeStatus == "NotReady")
+            return "DEFINITION_MISSING_OR_NOT_RUNTIME_READY";
+
+        if (TryGetBuffDefinition(binding.buffSystem, configId, out BuffDefinition definition)
+            && !definition.IsForever
+            && definition.DurationFrames <= 2)
+        {
+            return "EXPIRED_BEFORE_REFRESH";
+        }
+
+        return "UNKNOWN_AFTER_TICK";
+    }
+
+    private void AddSelectedBuffToTarget(BuffDebugBinding binding)
+    {
+        if (!EnsureBuffDebugTargetAndSource(binding.world))
+            return;
+
+        AddSelectedBuffToEntity(binding, _buffDebugTarget);
+    }
+
+    private void AddSelectedBuffToTargetAndTickOneFrame(BuffDebugBinding binding)
+    {
+        if (GetSelectedBuffConfigId() <= 0)
+        {
+            AppendBuffDebugLog("Add Buff + Tick 1 Frame", false, "Selected Buff", "No valid Buff selected");
+            return;
+        }
+
+        if (!EnsureBuffDebugTargetAndSource(binding.world))
+            return;
+
+        AddSelectedBuffToEntity(binding, _buffDebugTarget);
+        if (_lastAddResult == "NOT_RUNTIME_READY")
+        {
+            AppendBuffDebugInfoLog("Add Buff + Tick 1 Frame", "Tick skipped because selected Buff is not runtime-ready.");
+            return;
+        }
+
+        TickBuffDebugFrames(binding, 1, _lastBuffExpectedStack);
+        int actualCount = CountEntityBuffViews(binding.buffSystem, _lastBuffTarget);
+        int actualStack = ReadActualStack(binding.buffSystem, _lastBuffTarget, _lastBuffConfigId, _lastBuffSource);
+        bool foundSelectedConfig = CountMatchingBuffViews(binding.buffSystem, _lastBuffTarget, _lastBuffConfigId) > 0;
+        string failureReason = foundSelectedConfig
+            ? "NONE"
+            : DiagnoseAfterTickFailureReason(binding, _lastBuffTarget, _lastBuffConfigId);
+        string diagnosis = DiagnoseStackResult(
+            _lastBuffRequestedStack,
+            _lastBuffExpectedStack,
+            actualStack,
+            _lastBuffMaxStack,
+            _lastBuffMaxStack > 0);
+
+        _lastAfterTickActualBuffCount = actualCount;
+        _lastFoundSelectedConfigOnTarget = foundSelectedConfig;
+        _lastAddResult = foundSelectedConfig ? "RUNTIME_READY" : "NOT_RUNTIME_READY";
+        _lastAddFailureReason = failureReason;
+        _lastBuffStackDiagnosis = diagnosis;
+        AppendBuffDebugInfoLog(
+            "Add Buff + Tick 1 Frame",
+            $"AfterTick Target={FormatEntity(_lastBuffTarget)}, ConfigId={_lastBuffConfigId}, AfterTickActualBuffCount={actualCount}, FoundSelectedConfigOnTarget={foundSelectedConfig}, ActualStack={actualStack}, ExpectedRuntimeStack={FormatOptionalInt(_lastBuffExpectedStack)}, FailureReason={failureReason}, Diagnosis={diagnosis}.");
+    }
+
+    private void AddSelectedBuffToEntity(BuffDebugBinding binding, Entity target)
+    {
+        int configId = GetSelectedBuffConfigId();
+        if (configId <= 0)
+        {
+            AppendBuffDebugLog("Add Buff", false, "下拉菜单选中 Buff", "没有可用 Buff 配置");
+            return;
+        }
+
+        if (!IsEntityAliveInWorld(binding.world, target))
+        {
+            if (!EnsureBuffDebugTargetAndSource(binding.world))
+                return;
+
+            target = _buffDebugTarget;
+        }
+
+        _buffDebugTarget = target;
+        _selectedEntity = target;
+        if (!IsEntityAliveInWorld(binding.world, _buffDebugSource))
+        {
+            _buffDebugSource = binding.world.CreateEntity();
+            AppendBuffDebugInfoLog("Auto Create Source", $"自动创建 Debug Source Entity={FormatEntity(_buffDebugSource)}");
+        }
+
+        SyncBuffEntityFields();
+        int stack = ReadBuffStackOrDefault();
+        CaptureBuffDebugPreflight(binding.world, binding.buffSystem, configId, _buffDebugTarget, _buffDebugSource, stack);
+        bool hasDefinition = TryGetBuffDefinition(binding.buffSystem, configId, out BuffDefinition definition);
+        string runtimeStatus = GetRuntimeReadyStatus(binding.buffSystem, configId);
+        int maxStack = hasDefinition ? definition.MaxStack : -1;
+        int expectedStack = hasDefinition ? GetExpectedStackAfterRequest(in definition, stack) : -1;
+        _lastBuffRequestedStack = stack;
+        _lastBuffExpectedStack = expectedStack;
+        _lastBuffMaxStack = maxStack;
+        _lastBuffConfigId = configId;
+        _lastBuffTarget = _buffDebugTarget;
+        _lastBuffSource = _buffDebugSource;
+        _lastAfterTickActualBuffCount = -1;
+        _lastFoundSelectedConfigOnTarget = false;
+        _lastBuffStackDiagnosis = hasDefinition && !definition.Unlimited && stack > definition.MaxStack
+            ? "CAPPED_BY_MAXSTACK"
+            : "QUEUED";
+        if (runtimeStatus == "NotReady")
+        {
+            _lastAddResult = "NOT_RUNTIME_READY";
+            _lastAddFailureReason = "DEFINITION_MISSING_OR_NOT_RUNTIME_READY";
+            AppendBuffDebugLog(
+                "Add Buff",
+                false,
+                "RuntimeReady",
+                $"NOT_RUNTIME_READY: selected Buff asset exists in {GetSelectedBuffDefinitionOption().source}, but current runtime BuffSystem does not expose this definition. ConfigId={configId}, Target={FormatEntity(_buffDebugTarget)}, Source={FormatEntity(_buffDebugSource)}");
+            RefreshData();
+            CaptureBuffDebugSnapshot(binding.world, binding.buffSystem, configId, _buffDebugTarget, _buffDebugSource);
+            return;
+        }
+
+        _lastAddResult = "QUEUED";
+        _lastAddFailureReason = runtimeStatus == "Unknown" ? "RUNTIME_READY_UNKNOWN_PENDING_TICK" : "PENDING_TICK";
+        binding.buffSystem.AddBuff(new AddBuffCommand(_buffDebugTarget, configId, _buffDebugSource, stack));
+        string durationNote = BuildShortDurationAddNote(hasDefinition, in definition);
+        AppendBuffDebugInfoLog(
+            "Add Buff Queued",
+            $"RuntimeReady={runtimeStatus}. AddBuffCommand is queued only. Runtime Buff appears after Tick. Selected Entity auto-focused to Target={FormatEntity(_buffDebugTarget)}. Use Tick 1 Frame, or Add Buff + Tick 1 Frame for immediate debug visibility.{durationNote}");
+        AppendBuffDebugInfoLog(
+            "Add Buff",
+            $"ConfigId={configId}, Target={FormatEntity(_buffDebugTarget)}, Source={FormatEntity(_buffDebugSource)}, RequestedStack={stack}, MaxStack={FormatOptionalInt(maxStack)}, ExpectedRuntimeStack={FormatOptionalInt(expectedStack)}, Diagnosis={_lastBuffStackDiagnosis} 已入队，请 Tick 后查看实际 Stack。");
+        RefreshData();
+        CaptureBuffDebugSnapshot(binding.world, binding.buffSystem, configId, _buffDebugTarget, _buffDebugSource);
+    }
+
+    private bool EnsureBuffDebugTargetAndSource(World world)
+    {
+        if (world == null)
+        {
+            AppendBuffDebugLog("Add Buff", false, "World valid", "World invalid");
+            return false;
+        }
+
+        if (!_buffDebugTarget.IsValid || !world.IsAlive(_buffDebugTarget))
+        {
+            _buffDebugTarget = world.CreateEntity();
+            AppendBuffDebugInfoLog("Auto Create Target", $"自动创建 Debug Target Entity={FormatEntity(_buffDebugTarget)}");
+        }
+
+        if (!_buffDebugSource.IsValid || !world.IsAlive(_buffDebugSource))
+        {
+            _buffDebugSource = world.CreateEntity();
+            AppendBuffDebugInfoLog("Auto Create Source", $"自动创建 Debug Source Entity={FormatEntity(_buffDebugSource)}");
+        }
+
+        SyncBuffEntityFields();
+        return true;
+    }
+
+    private void RemoveSelectedBuffView(BuffDebugBinding binding)
+    {
+        Entity target = _selectedEntity.IsValid ? _selectedEntity : _buffDebugTarget;
+        IReadOnlyList<BuffViewData> buffs = GetEntityBuffs(binding.buffSystem, target);
+        if (buffs == null || buffs.Count == 0)
+        {
+            AppendBuffDebugLog("Remove Selected Buff", false, "选中 Entity 存在 Buff", "No Buffs");
+            return;
+        }
+
+        _selectedBuffViewIndex = Mathf.Clamp(_selectedBuffViewIndex, 0, buffs.Count - 1);
+        BuffViewData view = buffs[_selectedBuffViewIndex];
+        binding.buffSystem.RemoveBuff(new RemoveBuffCommand(target, view.ConfigId, view.Source, view.Stack));
+        _buffDebugTarget = target;
+        _buffDebugSource = view.Source;
+        SyncBuffEntityFields();
+        AppendBuffDebugInfoLog("Remove Selected Buff", $"ConfigId={view.ConfigId}, Target={FormatEntity(target)}, Source={FormatEntity(view.Source)} 已入队，请 Tick 后查看。");
+        RefreshData();
+        CaptureBuffDebugSnapshot(binding.world, binding.buffSystem, view.ConfigId, target, view.Source);
+    }
+
+    private bool HasEntityComponentName(World world, Entity entity, string namePart)
+    {
+        if (world == null || string.IsNullOrEmpty(namePart) || !entity.IsValid)
+            return false;
+
+        world.FillEntityComponentTypes(entity, _componentTypes);
+        for (int i = 0; i < _componentTypes.Count; i++)
+        {
+            Type type = _componentTypes[i];
+            if (type != null && type.Name.IndexOf(namePart, StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+        }
+
+        return false;
+    }
+
+    private string GetRuntimeTypeSummary(World world, BuffViewData view)
+    {
+        if (world == null)
+            return "Unknown";
+
+        bool compressed = false;
+        bool entityPerStack = false;
+
+        world.ForEach<CompressedParallelBuffRuntimeComponent>((Entity entity, ref CompressedParallelBuffRuntimeComponent runtime) =>
+        {
+            if (runtime.configId == view.ConfigId && runtime.target == view.Target)
+                compressed = true;
+        });
+
+        world.ForEach<BuffRuntimeComponent>((Entity entity, ref BuffRuntimeComponent runtime) =>
+        {
+            if (runtime.configId == view.ConfigId && runtime.target == view.Target)
+                entityPerStack = true;
+        });
+
+        if (compressed)
+            return "CompressedParallel";
+
+        if (entityPerStack)
+            return "EntityPerStack";
+
+        return "Unknown";
+    }
+
+    private static bool TryConvertToInt(object value, out int result)
+    {
+        if (value is int intValue)
+        {
+            result = intValue;
+            return true;
+        }
+
+        if (value != null && int.TryParse(value.ToString(), out result))
+            return true;
+
+        result = 0;
+        return false;
+    }
+
+    private static string ShortenDiagnostic(string value)
+    {
+        return ShortenDiagnostic(value, 80);
+    }
+
+    private static string ShortenDiagnostic(string value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value))
+            return "N/A";
+
+        if (maxLength <= 3 || value.Length <= maxLength)
+            return value;
+
+        return value.Substring(0, maxLength - 3) + "...";
     }
 
     private void DrawBuffDebugInputs()
@@ -3771,6 +5040,23 @@ public sealed class ECSWorldDebuggerWindow : EditorWindow
         return type != null ? type.Name : "None";
     }
 
+    private static string JoinTypeNames(List<Type> types)
+    {
+        if (types == null || types.Count == 0)
+            return "None";
+
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < types.Count; i++)
+        {
+            if (i > 0)
+                builder.Append(", ");
+
+            builder.Append(ShortTypeName(types[i]));
+        }
+
+        return builder.ToString();
+    }
+
     private struct BuffDebugBinding
     {
         public string selectedSourceName;
@@ -3909,6 +5195,18 @@ public sealed class ECSWorldDebuggerWindow : EditorWindow
         public int elapsedFrames;
         public int ticks;
         public bool expired;
+    }
+
+    private struct BuffDefinitionOption
+    {
+        public int configId;
+        public string name;
+        public string label;
+        public string source;
+        public BuffDefinition definition;
+        public bool hasDefinition;
+        public string runtimeStatus;
+        public bool runtimeReady;
     }
 
     private readonly struct DebugLine

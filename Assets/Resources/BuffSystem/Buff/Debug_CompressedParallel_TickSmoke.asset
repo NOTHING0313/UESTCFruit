@@ -19,7 +19,7 @@ MonoBehaviour:
   Priority: 0
   Tags: []
   IsForever: 0
-  Duration: 2
+  Duration: 999999
   BuffTriggerType: 0
   TickTime: 1
   BuffType: 1

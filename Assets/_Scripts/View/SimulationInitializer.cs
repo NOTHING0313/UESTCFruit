@@ -3,6 +3,7 @@ using Contracts;
 using ECSFrameWork;
 using FrameWork.RollBackSystem;   // 2号回滚系统命名空间
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace View
@@ -10,6 +11,7 @@ namespace View
     public class SimulationInitializer : MonoBehaviour
     {
         private const int DefaultDebugHudSmokeBuffDurationFrames = 60;
+        private const string BuffConfigResourcesPath = "BuffSystem/Buff";
 
         [Header("Time")]
         [SerializeField] private float _fixedDeltaTime = 1f / 60f;
@@ -63,26 +65,9 @@ namespace View
             // ---------- 核心世界 ----------
             _world = new World();
 
-            // ---------- Buff 系统（注册测试用 configId=1）----------
-            var defRegistry = new BuffDefinitionRegistry();
-            defRegistry.Register(new BuffDefinition(
-                configId: 1,
-                name: "TestBuff",
-                priority: 0,
-                maxStack: 1,
-                unlimited: false,
-                isForever: false,
-                durationFrames: GetDebugHudSmokeBuffDurationFrames(),
-                tickIntervalFrames: 0,
-                durationExtendFramesPerStack: 0,
-                triggerType: BuffTriggerType.Tick,
-                buffType: BuffInstanceType.normal,
-                normalStackPolicy: NormalBuffStackPolicy.RefreshDuration,
-                parallelStackUpPolicy: ParallelBuffStackUpPolicy.Append,
-                parallelStackDownPolicy: ParallelBuffStackDownPolicy.RemoveEarliest,
-                effectId: 0
-            ));
-            _buffSystem = new BuffSystemCore(defRegistry, new BuffEffectRegistry());
+            // ---------- Buff 系统（注册本地 smoke + Resources 配置）----------
+            BuffDefinitionRegistry defRegistry = CreateBuffDefinitionRegistry();
+            _buffSystem = new BuffSystemCore(defRegistry, CreateBuffEffectRegistry());
 
             // ---------- 固定帧推进 ----------
             _runner = new SimulateRunner(_world, _fixedDeltaTime, _maxCompensationTicks);
@@ -223,6 +208,100 @@ namespace View
 
             _rollbackBootstrap = GetComponent<RollbackBootstrap>();
             return _rollbackBootstrap;
+        }
+
+        private BuffDefinitionRegistry CreateBuffDefinitionRegistry()
+        {
+            var defRegistry = new BuffDefinitionRegistry();
+            RegisterDebugHudSmokeBuff(defRegistry);
+            int resourcesCount = RegisterResourcesBuffDefinitions(defRegistry);
+            Debug.Log($"[SimulationInitializer] Buff definitions registered. LocalDebug=1, Resources={resourcesCount}, Total={defRegistry.Count}.");
+            return defRegistry;
+        }
+
+        private void RegisterDebugHudSmokeBuff(BuffDefinitionRegistry defRegistry)
+        {
+            if (defRegistry == null)
+                return;
+
+            defRegistry.Register(new BuffDefinition(
+                configId: 1,
+                name: "TestBuff",
+                priority: 0,
+                maxStack: 1,
+                unlimited: false,
+                isForever: false,
+                durationFrames: GetDebugHudSmokeBuffDurationFrames(),
+                tickIntervalFrames: 0,
+                durationExtendFramesPerStack: 0,
+                triggerType: BuffTriggerType.Tick,
+                buffType: BuffInstanceType.normal,
+                normalStackPolicy: NormalBuffStackPolicy.RefreshDuration,
+                parallelStackUpPolicy: ParallelBuffStackUpPolicy.Append,
+                parallelStackDownPolicy: ParallelBuffStackDownPolicy.RemoveEarliest,
+                effectId: 0));
+        }
+
+        private int RegisterResourcesBuffDefinitions(BuffDefinitionRegistry defRegistry)
+        {
+            if (defRegistry == null)
+                return 0;
+
+            BuffConfigData[] configs = Resources.LoadAll<BuffConfigData>(BuffConfigResourcesPath);
+            if (configs == null || configs.Length == 0)
+            {
+                Debug.LogWarning($"[SimulationInitializer] No BuffConfigData found in Resources/{BuffConfigResourcesPath}.");
+                return 0;
+            }
+
+            int registeredCount = 0;
+            var resourceNames = new HashSet<string>();
+
+            for (int i = 0; i < configs.Length; i++)
+            {
+                BuffConfigData config = configs[i];
+                if (config == null)
+                    continue;
+
+                if (config.ID <= 0)
+                {
+                    Debug.LogWarning($"[SimulationInitializer] Skip invalid Resources BuffConfigData: ID={config.ID}, AssetName={config.name}.");
+                    continue;
+                }
+
+                if (defRegistry.TryGetDefinition(config.ID, out BuffDefinition _))
+                {
+                    Debug.LogWarning($"[SimulationInitializer] Skip duplicate Resources BuffConfigData ID={config.ID}. Existing runtime definition is preserved.");
+                    continue;
+                }
+
+                string configName = !string.IsNullOrEmpty(config.Name) ? config.Name : config.name;
+                if (!string.IsNullOrEmpty(configName) && !resourceNames.Add(configName))
+                {
+                    Debug.LogWarning($"[SimulationInitializer] Skip duplicate Resources BuffConfigData name={configName}, ID={config.ID}.");
+                    continue;
+                }
+
+                try
+                {
+                    BuffDefinition definition = config.ToDefinition(_fixedDeltaTime);
+                    defRegistry.Register(definition);
+                    registeredCount++;
+                }
+                catch (Exception exception)
+                {
+                    Debug.LogWarning($"[SimulationInitializer] Skip Resources BuffConfigData ID={config.ID}, Name={configName}: {exception.Message}");
+                }
+            }
+
+            return registeredCount;
+        }
+
+        private static BuffEffectRegistry CreateBuffEffectRegistry()
+        {
+            var effectRegistry = new BuffEffectRegistry();
+            BuffEffectRegistryBootstrap.RegisterProductionEffects(effectRegistry);
+            return effectRegistry;
         }
 
         private void CreatePlayerEntity()
