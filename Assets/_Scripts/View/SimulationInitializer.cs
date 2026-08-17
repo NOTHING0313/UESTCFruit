@@ -121,6 +121,7 @@ namespace View
             RollbackBootstrap rollbackBootstrap = ResolveRollbackBootstrap();
             if (rollbackBootstrap != null && rollbackBootstrap.isActiveAndEnabled)
             {
+                rollbackBootstrap.BindBuffSystem(_buffSystem);
                 Debug.Log("[SimulationInitializer] RollbackBootstrap reference resolved, attempting mount...");
                 if (rollbackBootstrap.TryMount(timeSim, out string rollbackMountMessage))
                 {

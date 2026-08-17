@@ -12,6 +12,7 @@
  * 不修改任何外部文件，全部通过运行时发现与 Hook 实现。
  */
 
+using BuffSystem;
 using ECSFrameWork;
 using UnityEngine;
 using System.Collections;
@@ -40,6 +41,8 @@ namespace FrameWork.RollBackSystem
         private WorldRollbackAdapter<PlayerInputSnapshot> _rollbackAdapter;
         private PlayerSnapshotInputApplier _inputApplier;
         private RollbackFrameCommandReplayBinding _frameCommandReplayBinding;
+        private BuffSystemCore _boundBuffSystem;
+        private BuffRollbackRestoreListener _buffRestoreListener;
 
         private bool _mounted;
         private bool _catchUpBlockedLogged;
@@ -142,9 +145,9 @@ namespace FrameWork.RollBackSystem
         {
             _inputApplier = new PlayerSnapshotInputApplier();
 
-            _rollbackAdapter = new WorldRollbackAdapter<PlayerInputSnapshot>(
-                _world, _world, _inputApplier, null);
+            _rollbackAdapter = new WorldRollbackAdapter<PlayerInputSnapshot>(_world, _world, _inputApplier, null);
             _rollbackAdapter.SetFrameCommandReplayBinding(_frameCommandReplayBinding);
+            AttachBuffRestoreListener();
 
             var snapBuf = new SnapshotRingBuffer<EcsWorldSnapshot>(_snapshotRingCapacity);
 
@@ -311,7 +314,32 @@ namespace FrameWork.RollBackSystem
         {
             Unmount();
         }
+        internal void BindBuffSystem(BuffSystemCore buffSystem)
+        {
+            if (ReferenceEquals(_boundBuffSystem, buffSystem))
+            {
+                AttachBuffRestoreListener();
+                return;
+            }
 
+            DetachBuffRestoreListener();
+            _boundBuffSystem = buffSystem;
+            AttachBuffRestoreListener();
+        }
+
+        private void AttachBuffRestoreListener()
+        {
+            if (_boundBuffSystem == null || _rollbackAdapter == null || _buffRestoreListener != null) return;
+            _buffRestoreListener = new BuffRollbackRestoreListener(_boundBuffSystem);
+            _rollbackAdapter.AddRollbackRestoreListener(_buffRestoreListener);
+        }
+
+        private void DetachBuffRestoreListener()
+        {
+            if (_rollbackAdapter != null && _buffRestoreListener != null)
+                _rollbackAdapter.RemoveRollbackRestoreListener(_buffRestoreListener);
+            _buffRestoreListener = null;
+        }
         private void Unmount()
         {
             if (_mountCoroutine != null)
@@ -320,8 +348,7 @@ namespace FrameWork.RollBackSystem
                 _mountCoroutine = null;
             }
 
-            if (!_mounted)
-                return;
+            if (!_mounted) return;
 
             if (_runner != null)
             {
@@ -329,12 +356,14 @@ namespace FrameWork.RollBackSystem
                 _runner.AfterTick -= OnAfterTick;
             }
 
+            DetachBuffRestoreListener();
+
             _mounted = false;
             _coordinator = null;
             _rollbackAdapter = null;
             _inputApplier = null;
             _adapter = null;
-            _frameCommandReplayBinding = default(RollbackFrameCommandReplayBinding);
+            _frameCommandReplayBinding = default;
         }
 
         //--------------------------------
