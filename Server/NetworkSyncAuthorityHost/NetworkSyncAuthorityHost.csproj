@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 正式 Network Protocol：直接编译 Unity 使用的同一份源码 -->
+    <Compile Include="../../Assets/_Scripts/FrameWork/NetworkSync/Protocol/*.cs"
+             Link="Shared/NetworkSync/Protocol/%(Filename)%(Extension)" />
+
+    <!-- 正式 UDP Transport -->
+    <Compile Include="../../Assets/_Scripts/FrameWork/NetworkSync/Transport/*.cs"
+             Link="Shared/NetworkSync/Transport/%(Filename)%(Extension)" />
+
+    <!-- 正式服务器帧输入聚合器 -->
+    <Compile Include="../../Assets/_Scripts/FrameWork/NetworkSync/InputExchange/ServerInputFrameCollector.cs"
+             Link="Shared/NetworkSync/InputExchange/ServerInputFrameCollector.cs" />
+
+    <!-- Protocol / Collector 所需的纯逻辑输入类型 -->
+    <!-- ECS 输入协议基础类型 -->
+    <Compile Include="../../Assets/_Scripts/FrameWork/ECS/Input/InputButtonFlags.cs"
+             Link="Shared/ECS/Input/InputButtonFlags.cs" />
+
+    <Compile Include="../../Assets/_Scripts/FrameWork/ECS/Input/PlayerInputSnapshot.cs"
+             Link="Shared/ECS/Input/PlayerInputSnapshot.cs" />
+
+    <Compile Include="../../Assets/_Scripts/**/PlayerInputSnapshotComparer.cs"
+             Link="Shared/Rollback/PlayerInputSnapshotComparer.cs" />
+
+    <Compile Include="../../Assets/_Scripts/**/FrameInputSet.cs"
+             Link="Shared/Rollback/FrameInputSet.cs" />
+
+    <Compile Include="../../Assets/_Scripts/**/FrameInputAccumulator.cs"
+             Link="Shared/Rollback/FrameInputAccumulator.cs" />
+
+    <!-- 如果现有 Comparer 实现了这些接口，存在则自动纳入；不存在不会产生文件 -->
+    <Compile Include="../../Assets/_Scripts/**/IInputComparer.cs"
+             Link="Shared/Rollback/IInputComparer.cs" />
+
+    <Compile Include="../../Assets/_Scripts/**/IInputSnapshotComparer.cs"
+             Link="Shared/Rollback/IInputSnapshotComparer.cs" />
+
+    <Compile Include="../../Assets/_Scripts/**/IRollbackInputComparer.cs"
+             Link="Shared/Rollback/IRollbackInputComparer.cs" />
+  </ItemGroup>
+</Project>
