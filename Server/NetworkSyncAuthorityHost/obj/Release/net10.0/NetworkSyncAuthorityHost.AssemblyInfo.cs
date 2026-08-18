@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("NetworkSyncAuthorityHost")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+59c61ac58c2b30b959847b90b2c901d8895ed0ee")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+023cd9a283a681aaf8d7cd6bf1b362a97c701e46")]
 [assembly: System.Reflection.AssemblyProductAttribute("NetworkSyncAuthorityHost")]
 [assembly: System.Reflection.AssemblyTitleAttribute("NetworkSyncAuthorityHost")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
