@@ -1,0 +1,15 @@
+E:\Github\UESTCFruit\Server\NetworkSyncAuthorityHost\obj\Release\net10.0\NetworkSyncAuthorityHost.GeneratedMSBuildEditorConfig.editorconfig
+E:\Github\UESTCFruit\Server\NetworkSyncAuthorityHost\obj\Release\net10.0\NetworkSyncAuthorityHost.AssemblyInfoInputs.cache
+E:\Github\UESTCFruit\Server\NetworkSyncAuthorityHost\obj\Release\net10.0\NetworkSyncAuthorityHost.AssemblyInfo.cs
+E:\Github\UESTCFruit\Server\NetworkSyncAuthorityHost\obj\Release\net10.0\NetworkSyncAuthorityHost.csproj.CoreCompileInputs.cache
+E:\Github\UESTCFruit\Server\NetworkSyncAuthorityHost\obj\Release\net10.0\NetworkSyncAuthorityHost.sourcelink.json
+E:\Github\UESTCFruit\Server\NetworkSyncAuthorityHost\bin\Release\net10.0\NetworkSyncAuthorityHost.exe
+E:\Github\UESTCFruit\Server\NetworkSyncAuthorityHost\bin\Release\net10.0\NetworkSyncAuthorityHost.deps.json
+E:\Github\UESTCFruit\Server\NetworkSyncAuthorityHost\bin\Release\net10.0\NetworkSyncAuthorityHost.runtimeconfig.json
+E:\Github\UESTCFruit\Server\NetworkSyncAuthorityHost\bin\Release\net10.0\NetworkSyncAuthorityHost.dll
+E:\Github\UESTCFruit\Server\NetworkSyncAuthorityHost\bin\Release\net10.0\NetworkSyncAuthorityHost.pdb
+E:\Github\UESTCFruit\Server\NetworkSyncAuthorityHost\obj\Release\net10.0\NetworkSyncAuthorityHost.dll
+E:\Github\UESTCFruit\Server\NetworkSyncAuthorityHost\obj\Release\net10.0\refint\NetworkSyncAuthorityHost.dll
+E:\Github\UESTCFruit\Server\NetworkSyncAuthorityHost\obj\Release\net10.0\NetworkSyncAuthorityHost.pdb
+E:\Github\UESTCFruit\Server\NetworkSyncAuthorityHost\obj\Release\net10.0\NetworkSyncAuthorityHost.genruntimeconfig.cache
+E:\Github\UESTCFruit\Server\NetworkSyncAuthorityHost\obj\Release\net10.0\ref\NetworkSyncAuthorityHost.dll
