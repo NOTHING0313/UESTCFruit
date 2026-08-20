@@ -12,16 +12,29 @@
     <Compile Include="../../Assets/_Scripts/FrameWork/NetworkSync/Protocol/*.cs"
              Link="Shared/NetworkSync/Protocol/%(Filename)%(Extension)" />
 
-    <!-- 正式 UDP Transport -->
+    <!-- 正式 Raw UDP Transport：保留原 UDP 基线 -->
     <Compile Include="../../Assets/_Scripts/FrameWork/NetworkSync/Transport/*.cs"
              Link="Shared/NetworkSync/Transport/%(Filename)%(Extension)" />
+
+    <!-- KCP NetworkSync Adapter：Unity 与 Authority Host 共用 -->
+    <Compile Include="../../Assets/_Scripts/FrameWork/NetworkSync/Kcp/*.cs"
+             Link="Shared/NetworkSync/Kcp/%(Filename)%(Extension)" />
+
+<Compile Include="../../Assets/_Scripts/FrameWork/Kcp2k/kcp/*.cs"
+         Link="ThirdParty/kcp2k/kcp/%(Filename)%(Extension)" />
+
+<Compile Include="../../Assets/_Scripts/FrameWork/Kcp2k/highlevel/*.cs"
+         Link="ThirdParty/kcp2k/highlevel/%(Filename)%(Extension)" />
 
     <!-- 正式服务器帧输入聚合器 -->
     <Compile Include="../../Assets/_Scripts/FrameWork/NetworkSync/InputExchange/ServerInputFrameCollector.cs"
              Link="Shared/NetworkSync/InputExchange/ServerInputFrameCollector.cs" />
 
+    <!-- KCP Client Adapter 所需拒绝原因 -->
+    <Compile Include="../../Assets/_Scripts/FrameWork/NetworkSync/InputExchange/NetworkInputExchangeRejectReason.cs"
+             Link="Shared/NetworkSync/InputExchange/NetworkInputExchangeRejectReason.cs" />
+
     <!-- Protocol / Collector 所需的纯逻辑输入类型 -->
-    <!-- ECS 输入协议基础类型 -->
     <Compile Include="../../Assets/_Scripts/FrameWork/ECS/Input/InputButtonFlags.cs"
              Link="Shared/ECS/Input/InputButtonFlags.cs" />
 
@@ -37,7 +50,6 @@
     <Compile Include="../../Assets/_Scripts/**/FrameInputAccumulator.cs"
              Link="Shared/Rollback/FrameInputAccumulator.cs" />
 
-    <!-- 如果现有 Comparer 实现了这些接口，存在则自动纳入；不存在不会产生文件 -->
     <Compile Include="../../Assets/_Scripts/**/IInputComparer.cs"
              Link="Shared/Rollback/IInputComparer.cs" />
 

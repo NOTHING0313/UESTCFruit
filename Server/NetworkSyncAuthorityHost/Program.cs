@@ -18,6 +18,8 @@ namespace UESTCFruit.NetworkSyncAuthorityHost
                 {
                     "server"=>new AuthorityServerApp(options).Run(),
                     "client"=>new AuthorityClientProbeApp(options).Run(),
+                    "kcp-server"=>new KcpAuthorityServerApp(options).Run(),
+                    "kcp-client"=>new KcpAuthorityClientProbeApp(options).Run(),
                     _=>ShowUsage()
                 };
             }
@@ -32,11 +34,17 @@ namespace UESTCFruit.NetworkSyncAuthorityHost
         {
             Console.WriteLine("NetworkSyncAuthorityHost");
             Console.WriteLine();
-            Console.WriteLine("Server:");
+            Console.WriteLine("Raw UDP Server:");
             Console.WriteLine("  NetworkSyncAuthorityHost server --port 28015 --players 2 --session 0x11223344");
             Console.WriteLine();
-            Console.WriteLine("Client:");
+            Console.WriteLine("Raw UDP Client:");
             Console.WriteLine("  NetworkSyncAuthorityHost client --host <IPv4> --port 28015 --players 2 --frames 100 --timeout 3000 --session 0x11223344");
+            Console.WriteLine();
+            Console.WriteLine("KCP Server:");
+            Console.WriteLine("  NetworkSyncAuthorityHost kcp-server --port 28015 --players 2 --session 0x11223344");
+            Console.WriteLine();
+            Console.WriteLine("KCP Client:");
+            Console.WriteLine("  NetworkSyncAuthorityHost kcp-client --host <IPv4> --port 28015 --players 2 --frames 100 --timeout 5000 --session 0x11223344");
             return 1;
         }
 
@@ -63,8 +71,14 @@ namespace UESTCFruit.NetworkSyncAuthorityHost
                     SessionId=GetUIntArg(args,"--session",DefaultSessionId)
                 };
 
-                if(string.Equals(args[0],"client",StringComparison.OrdinalIgnoreCase)&&string.IsNullOrWhiteSpace(options.Host))
+                string mode=args[0];
+
+                if((string.Equals(mode,"client",StringComparison.OrdinalIgnoreCase)||
+                    string.Equals(mode,"kcp-client",StringComparison.OrdinalIgnoreCase))&&
+                    string.IsNullOrWhiteSpace(options.Host))
+                {
                     throw new ArgumentException("Client Requires --host");
+                }
 
                 return options;
             }
