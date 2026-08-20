@@ -9,22 +9,26 @@ namespace FrameWork.NetworkSync
     /// <summary>
     /// 基于 kcp2k Reliable Channel 的网络输入客户端。
     /// </summary>
-    public sealed class KcpNetworkInputClient : IDisposable
+    public sealed class KcpNetworkInputClient : INetworkInputClient
     {
         private readonly KcpClient _client;
         private readonly Queue<ServerAuthorityFramePacket> _authorityQueue=new();
         private uint _nextSequence=1;
         private bool _isDisposed;
 
+        public NetworkInputTransportMode TransportMode => NetworkInputTransportMode.Kcp;
         public uint SessionId { get; }
         public int PlayerID { get; }
         public bool IsConnected => _client.connected;
+        public bool IsReady => IsConnected&&!_isDisposed;
         public IPEndPoint LocalEndPoint => _client.LocalEndPoint as IPEndPoint;
         public uint LastSentSequence { get; private set; }
         public NetworkInputExchangeRejectReason LastRejectReason { get; private set; }
         public NetworkPacketDecodeError LastDecodeError { get; private set; }
         public ErrorCode? LastKcpError { get; private set; }
         public string LastKcpErrorMessage { get; private set; }
+        public bool HasTransportError => LastKcpError.HasValue;
+        public string LastTransportError => LastKcpError.HasValue?$"{LastKcpError}: {LastKcpErrorMessage}":null;
 
         public KcpNetworkInputClient(string serverAddress,int serverPort,uint sessionId,int playerID,KcpConfig config=null)
         {
@@ -35,13 +39,7 @@ namespace FrameWork.NetworkSync
             SessionId=sessionId;
             PlayerID=playerID;
 
-            _client=new KcpClient(
-                OnConnected,
-                OnData,
-                OnDisconnected,
-                OnError,
-                config??KcpNetworkConfigFactory.Create());
-
+            _client=new KcpClient(OnConnected,OnData,OnDisconnected,OnError,config??KcpNetworkConfigFactory.Create());
             _client.Connect(serverAddress,(ushort)serverPort);
         }
 
@@ -74,7 +72,6 @@ namespace FrameWork.NetworkSync
         public bool TryReceiveAuthority(out ServerAuthorityFramePacket packet)
         {
             ThrowIfDisposed();
-
             _client.Tick();
 
             if(_authorityQueue.Count==0)
@@ -104,6 +101,11 @@ namespace FrameWork.NetworkSync
         private void OnData(ArraySegment<byte> message,KcpChannel channel)
         {
             if(channel!=KcpChannel.Reliable) return;
+            if(message.Array==null)
+            {
+                LastRejectReason=NetworkInputExchangeRejectReason.DecodeFailed;
+                return;
+            }
 
             byte[] data=new byte[message.Count];
             Buffer.BlockCopy(message.Array,message.Offset,data,0,message.Count);

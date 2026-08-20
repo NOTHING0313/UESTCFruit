@@ -1,7 +1,8 @@
-﻿using BuffSystem;
+using BuffSystem;
 using Contracts;
 using ECSFrameWork;
 using FrameWork.RollBackSystem;   // 2号回滚系统命名空间
+using FrameWork.NetworkSync;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -51,7 +52,9 @@ namespace View
 
         [Header("Rollback")]
         [SerializeField] private RollbackBootstrap _rollbackBootstrap;
+        [SerializeField] private NetworkRollbackBootstrap _networkRollbackBootstrap;
         private SimulationDebugProbe _probe;
+        private bool _directInputWriteEnabled;
 
         private void Start()
         {
@@ -107,7 +110,12 @@ namespace View
             if (_inputAdapter != null)
             {
                 _inputAdapter.Init(_world, _playerEntity);
-                _runner.BeforeTick += _inputAdapter.WriteInputToWorld;
+                timeSim.SetInputAdapters(_inputAdapter);
+                SetDirectInputWriteEnabled(true);
+            }
+            else
+            {
+                timeSim.SetInputAdapters();
             }
 
             // ---------- 调试面板 ----------
@@ -118,8 +126,25 @@ namespace View
             }
 
             // ---------- 回滚系统自动接入 ----------
+            NetworkRollbackBootstrap networkRollbackBootstrap = ResolveNetworkRollbackBootstrap();
             RollbackBootstrap rollbackBootstrap = ResolveRollbackBootstrap();
-            if (rollbackBootstrap != null && rollbackBootstrap.isActiveAndEnabled)
+
+            if (networkRollbackBootstrap != null && networkRollbackBootstrap.isActiveAndEnabled && networkRollbackBootstrap.NetworkEnabled)
+            {
+                if (rollbackBootstrap != null && rollbackBootstrap.isActiveAndEnabled)
+                {
+                    Debug.LogError("SimulationInitializer Start Error: NetworkRollbackBootstrap 与 RollbackBootstrap 不能同时启用，请在网络场景禁用 RollbackBootstrap。");
+                }
+                else if (networkRollbackBootstrap.TryStartMount(this,out string networkMountMessage))
+                {
+                    Debug.Log($"SimulationInitializer Start Log: {networkMountMessage}");
+                }
+                else
+                {
+                    Debug.LogError($"SimulationInitializer Start Error: NetworkRollbackBootstrap Mount Failed: {networkMountMessage}");
+                }
+            }
+            else if (rollbackBootstrap != null && rollbackBootstrap.isActiveAndEnabled)
             {
                 rollbackBootstrap.BindBuffSystem(_buffSystem);
                 Debug.Log("[SimulationInitializer] RollbackBootstrap reference resolved, attempting mount...");
@@ -170,9 +195,7 @@ namespace View
                 _probe.SetRollbackInfo(isRollback, checksum);
             }
 
-            // 2. 输入采样
-            if (_inputAdapter != null)
-                _inputAdapter.SampleInput();
+            // 2. 输入由 TimeSimulator 在 Unity Update 中统一采样。
 
             // 3. 挂载 Buff UI（仅一次）
             if (!_playerBuffUIAttached && _playerEntity.IsValid)
@@ -191,12 +214,15 @@ namespace View
 
         private void OnDestroy()
         {
-            if (_runner != null && _inputAdapter != null)
-                _runner.BeforeTick -= _inputAdapter.WriteInputToWorld;
+            SetDirectInputWriteEnabled(false);
 
             TimeSimulator timeSim = TimeSimulator.Instance;
-            if (timeSim != null && ReferenceEquals(timeSim.DebugFrameCommandApplier, _frameCommandApplier))
-                timeSim.SetFrameCommandApplier(null);
+            if (timeSim != null)
+            {
+                timeSim.SetInputAdapters();
+                if (ReferenceEquals(timeSim.DebugFrameCommandApplier, _frameCommandApplier))
+                    timeSim.SetFrameCommandApplier(null);
+            }
 
             _viewManager?.Clear();
             _world?.Dispose();
@@ -209,6 +235,90 @@ namespace View
 
             _rollbackBootstrap = GetComponent<RollbackBootstrap>();
             return _rollbackBootstrap;
+        }
+
+        private NetworkRollbackBootstrap ResolveNetworkRollbackBootstrap()
+        {
+            if (_networkRollbackBootstrap != null)
+                return _networkRollbackBootstrap;
+
+            _networkRollbackBootstrap = GetComponent<NetworkRollbackBootstrap>();
+            return _networkRollbackBootstrap;
+        }
+
+        /// <summary>网络回滚接线使用的当前 World。</summary>
+        internal World RuntimeWorld => _world;
+
+        /// <summary>网络回滚接线使用的当前 Runner。</summary>
+        internal SimulateRunner RuntimeRunner => _runner;
+
+        /// <summary>网络回滚接线使用的真实 FrameCommandBuffer。</summary>
+        internal SimulationFrameCommandBuffer RuntimeFrameCommandBuffer => _frameCommandBuffer;
+
+        /// <summary>网络回滚接线使用的真实 FrameCommandApplier。</summary>
+        internal SimulationFrameCommandApplier RuntimeFrameCommandApplier => _frameCommandApplier;
+
+        /// <summary>当前本地 Unity 输入 Adapter。</summary>
+        internal UnityInputAdapter RuntimeInputAdapter => _inputAdapter;
+
+        /// <summary>当前本地玩家 Entity。</summary>
+        internal Entity RuntimeLocalPlayerEntity => _playerEntity;
+
+        /// <summary>当前 BuffSystem，用于 Rollback Restore 后重建派生缓存。</summary>
+        internal BuffSystemCore RuntimeBuffSystem => _buffSystem;
+
+        /// <summary>
+        /// 显式切换旧版 BeforeTick 直接输入写入所有权。
+        /// 网络回滚挂载时必须关闭，避免 CollectSnapshot 被旧路径提前消费。
+        /// </summary>
+        internal void SetDirectInputWriteEnabled(bool enabled)
+        {
+            if (_runner == null || _inputAdapter == null)
+            {
+                _directInputWriteEnabled = false;
+                return;
+            }
+
+            if (enabled == _directInputWriteEnabled)
+                return;
+
+            if (enabled)
+                _runner.BeforeTick += _inputAdapter.WriteInputToWorld;
+            else
+                _runner.BeforeTick -= _inputAdapter.WriteInputToWorld;
+
+            _directInputWriteEnabled = enabled;
+        }
+
+        /// <summary>把已有玩家 Entity 显式绑定到网络 PlayerID。</summary>
+        internal void SetNetworkPlayerIdentity(Entity entity,int playerID)
+        {
+            if (_world == null || !_world.IsAlive(entity))
+                throw new InvalidOperationException($"SimulationInitializer SetNetworkPlayerIdentity Error: Entity Is Not Alive: {entity}");
+
+            if (playerID <= 0)
+                throw new ArgumentOutOfRangeException(nameof(playerID));
+
+            _world.SetComponent(entity,new PlayerInputSnapshotComponent(0,playerID,0f,0f));
+        }
+
+        /// <summary>创建一个用于网络会话的远端玩家 Entity。</summary>
+        internal Entity CreateNetworkPlayerEntity(int playerID,Vector3 spawnPos)
+        {
+            if (_world == null)
+                throw new InvalidOperationException("SimulationInitializer CreateNetworkPlayerEntity Error: World Is Null");
+
+            if (playerID <= 0)
+                throw new ArgumentOutOfRangeException(nameof(playerID));
+
+            Entity entity=_world.CreateEntity();
+            _world.SetComponent(entity,new PositionComponent(spawnPos.x,spawnPos.y,spawnPos.z));
+            _world.SetComponent(entity,new VelocityComponent(0f,0f,0f));
+            _world.SetComponent(entity,new PrefabViewRequestComponent(1));
+            _world.SetComponent(entity,new PlayerInputSnapshotComponent(0,playerID,0f,0f));
+            _world.SetComponent(entity,new PlayerTagComponent());
+            _world.SetComponent(entity,new MoveSpeedComponent(5f));
+            return entity;
         }
 
         private BuffDefinitionRegistry CreateBuffDefinitionRegistry()
@@ -307,14 +417,8 @@ namespace View
 
         private void CreatePlayerEntity()
         {
-            Vector3 spawnPos = Vector3.zero;
-            _playerEntity = _world.CreateEntity();
-            _world.SetComponent(_playerEntity, new PositionComponent(spawnPos.x, spawnPos.y, spawnPos.z));
-            _world.SetComponent(_playerEntity, new VelocityComponent(0f, 0f, 0f));
-            _world.SetComponent(_playerEntity, new PrefabViewRequestComponent(1));
-            _world.SetComponent(_playerEntity, new PlayerInputSnapshotComponent(0f, 0f));
-            _world.SetComponent(_playerEntity, new PlayerTagComponent());
-            _world.SetComponent(_playerEntity, new MoveSpeedComponent(5f));
+            int playerID = _inputAdapter != null && _inputAdapter.PlayerID > 0 ? _inputAdapter.PlayerID : 1;
+            _playerEntity = CreateNetworkPlayerEntity(playerID,Vector3.zero);
 
             // 测试 Buff
             var buffCmd = new AddBuffCommand(_playerEntity, configId: 1, source: _playerEntity, stack: 1);

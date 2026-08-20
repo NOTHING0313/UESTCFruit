@@ -20,6 +20,10 @@ public class TimeSimulator : Singleton<TimeSimulator>, IECSRuntimeDebugSource, I
     private InputSnapshotBuffer _inputSnapshotBuffer;
     private WorldInputApplier _worldInputApplier;
     private SimulationFrameCommandApplier _frameCommandApplier;
+    private bool _simulationRunning = true;
+
+    /// <summary>当前是否允许 Unity Update 推进正常逻辑帧。</summary>
+    public bool IsSimulationRunning => _simulationRunning;
 
     /// <summary>当前绑定的逻辑帧推进器。</summary>
     public SimulateRunner DebugRunner => _runner;
@@ -40,7 +44,7 @@ public class TimeSimulator : Singleton<TimeSimulator>, IECSRuntimeDebugSource, I
     private void Update()
     {
         SampleInputAdapters();
-        _runner?.Update(Time.deltaTime);
+        if (_simulationRunning) _runner?.Update(Time.deltaTime);
     }
 
     /// <summary>销毁时解除 Runner 事件订阅，避免场景切换后残留引用。</summary>
@@ -67,6 +71,14 @@ public class TimeSimulator : Singleton<TimeSimulator>, IECSRuntimeDebugSource, I
     public void SetInputAdapters(params UnityInputAdapter[] adapters)
     {
         inputAdapters = adapters;
+    }
+
+    /// <summary>
+    /// 开启或暂停正常逻辑帧推进。暂停期间仍会采样 Unity 输入，供网络握手完成后继续使用。
+    /// </summary>
+    public void SetSimulationRunning(bool running)
+    {
+        _simulationRunning = running;
     }
 
     /// <summary>设置按帧输入缓存和输入应用器；设置后输入会先进入 InputSnapshotBuffer，再按 frameNumber 写入 World。</summary>
