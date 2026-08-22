@@ -639,11 +639,13 @@ MonoBehaviour:
   _serverAddress: 8.137.83.229
   _serverPort: 28015
   _sessionId: 287454020
-  _playerCount: 1
+  _playerCount: 2
   _connectTimeoutSeconds: 5
   _snapshotRingCapacity: 256
   _snapshotIntervalFrames: 10
-  _remoteSpawnSpacing: 3
+  _playerSpawnSpacing: 3
+  _runInBackground: 1
+  _enableViewRollbackAudit: 1
 --- !u!114 &1286861967
 MonoBehaviour:
   m_ObjectHideFlags: 0

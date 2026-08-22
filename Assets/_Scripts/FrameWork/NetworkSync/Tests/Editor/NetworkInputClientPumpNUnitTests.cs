@@ -43,6 +43,20 @@ namespace FrameWork.NetworkSync.Tests
         }
 
         [Test]
+        public void ConnectionStateChanged_ForwardsClientState()
+        {
+            var client=new FakeNetworkInputClient();
+            using var pump=new NetworkInputClientPump(client);
+            var states=new List<NetworkInputClientConnectionState>();
+            pump.ConnectionStateChanged+=states.Add;
+
+            client.SetConnectionState(NetworkInputClientConnectionState.Faulted);
+
+            Assert.AreEqual(NetworkInputClientConnectionState.Faulted,pump.ConnectionState);
+            CollectionAssert.AreEqual(new[] { NetworkInputClientConnectionState.Faulted },states);
+        }
+
+        [Test]
         public void Tick_TransportError_Throws()
         {
             var client=new FakeNetworkInputClient { HasTransportErrorValue=true,LastTransportErrorValue="Injected" };
@@ -65,7 +79,8 @@ namespace FrameWork.NetworkSync.Tests
             public NetworkInputTransportMode TransportMode => NetworkInputTransportMode.RawUdp;
             public uint SessionId => 0x11223344u;
             public int PlayerID => 1;
-            public bool IsReady => true;
+            public bool IsReady => ConnectionState==NetworkInputClientConnectionState.Connected;
+            public NetworkInputClientConnectionState ConnectionState { get; private set; }=NetworkInputClientConnectionState.Connected;
             public IPEndPoint LocalEndPoint => new(IPAddress.Loopback,12345);
             public uint LastSentSequence { get; private set; }
             public NetworkInputExchangeRejectReason LastRejectReason { get; set; }
@@ -76,6 +91,15 @@ namespace FrameWork.NetworkSync.Tests
             public string LastTransportErrorValue { get; set; }
             public int TickCount { get; private set; }
             public List<PlayerInputSnapshot> SentInputs { get; }=new();
+
+            public event Action<NetworkInputClientConnectionState> ConnectionStateChanged;
+
+            public void SetConnectionState(NetworkInputClientConnectionState state)
+            {
+                if(ConnectionState==state) return;
+                ConnectionState=state;
+                ConnectionStateChanged?.Invoke(state);
+            }
 
             public void Enqueue(ServerAuthorityFramePacket packet)=>_authorities.Enqueue(packet);
 

@@ -1,4 +1,4 @@
-﻿using Contracts;
+using Contracts;
 using ECSFrameWork;
 using System;
 using System.Collections.Generic;
@@ -74,6 +74,20 @@ namespace View
 
             view = transform.gameObject;
             return true;
+        }
+
+        /// <summary>把当前 Entity -> ViewID 绑定复制到外部列表，供 Rollback 后表现层对账。</summary>
+        public int FillBindings(List<KeyValuePair<Entity,int>> results)
+        {
+            if (results == null)
+                return 0;
+
+            results.Clear();
+
+            foreach (KeyValuePair<Entity,int> pair in _entityToViewId)
+                results.Add(pair);
+
+            return results.Count;
         }
 
         public bool TryGetEntity(int viewId, out Entity entity)

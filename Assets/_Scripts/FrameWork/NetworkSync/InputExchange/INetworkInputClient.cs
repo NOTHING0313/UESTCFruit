@@ -13,12 +13,16 @@ namespace FrameWork.NetworkSync
         uint SessionId { get; }
         int PlayerID { get; }
         bool IsReady { get; }
+        NetworkInputClientConnectionState ConnectionState { get; }
         IPEndPoint LocalEndPoint { get; }
         uint LastSentSequence { get; }
         NetworkInputExchangeRejectReason LastRejectReason { get; }
         NetworkPacketDecodeError LastDecodeError { get; }
         bool HasTransportError { get; }
         string LastTransportError { get; }
+
+        /// <summary>传输连接状态发生变化。</summary>
+        event Action<NetworkInputClientConnectionState> ConnectionStateChanged;
 
         /// <summary>推进需要主动 Pump 的传输；Raw UDP 为无操作。</summary>
         void Tick();

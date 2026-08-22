@@ -100,6 +100,13 @@ public sealed class UnityInputAdapter : MonoBehaviour
 
     public int PlayerID => playerID;
 
+    /// <summary>在 Simulation 初始化前覆盖本地网络 PlayerID。</summary>
+    public void SetPlayerID(int value)
+    {
+        if (value <= 0) throw new ArgumentOutOfRangeException(nameof(value), value, "Player ID Must Be Greater Than Zero");
+        playerID = value;
+    }
+
     /// <summary>初始化输入 Adapter 的写入目标。</summary>
     public void Init(World world, Entity playerEntity)
     {

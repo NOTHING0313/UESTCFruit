@@ -19,6 +19,7 @@ namespace FrameWork.NetworkSync
         private readonly int _expectedPlayerCount;
         private uint _nextAuthoritySequence=1;
         private bool _isDisposed;
+        private bool _sessionBarrierActive;
 
         public uint SessionId { get; }
         public IPEndPoint LocalEndPoint => _server.LocalEndPoint as IPEndPoint;
@@ -27,6 +28,11 @@ namespace FrameWork.NetworkSync
         public int ProcessedMessageCount { get; private set; }
         public int RejectedMessageCount { get; private set; }
         public int AuthorityFrameCount { get; private set; }
+        public int LastAuthorityFrame { get; private set; }
+        public int PendingFrameCount => _collector.PendingFrameCount;
+        public int DroppedPendingFrameCount { get; private set; }
+        public int DroppedIncompleteSessionInputCount { get; private set; }
+        public bool IsSessionBarrierActive => _sessionBarrierActive;
         public ErrorCode? LastKcpError { get; private set; }
         public string LastKcpErrorMessage { get; private set; }
         public string LastRejectMessage { get; private set; }
@@ -126,6 +132,22 @@ namespace FrameWork.NetworkSync
 
             if(!TryBindPlayer(connectionId,playerID)) return;
 
+            // 初次建房阶段允许先到玩家的输入进入 Collector：
+            // P1 的首包既负责 BIND，也可能先于 P2 首包到达。
+            // 只有发生过真实成员断开后才进入 Session Barrier。
+            if(_sessionBarrierActive)
+            {
+                if(_playerConnectionIds.Count!=_expectedPlayerCount)
+                {
+                    DroppedIncompleteSessionInputCount++;
+                    return;
+                }
+
+                // 当前输入完成了最后一个缺失 Player 的 Rebind。
+                // 从这一包开始重新接受 fresh input。
+                _sessionBarrierActive=false;
+            }
+
             FrameInputSet completedFrame;
 
             try
@@ -149,6 +171,7 @@ namespace FrameWork.NetworkSync
                 _server.Send(_playerConnectionIds[id],segment,KcpChannel.Reliable);
 
             AuthorityFrameCount++;
+            LastAuthorityFrame=completedFrame.frameNumber;
             _generatedAuthorities.Enqueue(authorityPacket);
             AuthorityGenerated?.Invoke(authorityPacket);
         }
@@ -156,8 +179,14 @@ namespace FrameWork.NetworkSync
         private void OnDisconnected(int connectionId)
         {
             if(!_connectionPlayerIds.TryGetValue(connectionId,out int playerID)) return;
+
             _connectionPlayerIds.Remove(connectionId);
             _playerConnectionIds.Remove(playerID);
+
+            // 任何已绑定成员断开都进入 Session Barrier。
+            // completed Authority 保留；只丢弃尚未提交的 pending 输入。
+            _sessionBarrierActive=true;
+            DroppedPendingFrameCount+=_collector.ClearPendingFrames();
         }
 
         private void OnError(int connectionId,ErrorCode error,string message)

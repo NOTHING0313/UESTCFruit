@@ -20,6 +20,7 @@ namespace FrameWork.NetworkSync
         private readonly SnapshotRingBuffer<EcsWorldSnapshot> _snapshotBuffer;
         private readonly RollbackCoordinator<FrameInputSet,EcsWorldSnapshot> _coordinator;
         private readonly NetworkRollbackClientRuntime _networkRuntime;
+        private readonly RollbackMetricsListener _rollbackMetrics=new();
         private readonly int _snapshotIntervalFrames;
         private bool _mounted;
         private bool _disposed;
@@ -32,12 +33,23 @@ namespace FrameWork.NetworkSync
         public NetworkRollbackClientRuntime NetworkRuntime => _networkRuntime;
         public bool IsMounted => _mounted;
         public bool IsReady => _networkRuntime.IsReady;
+        public NetworkInputClientConnectionState ConnectionState => _networkRuntime.ConnectionState;
+        public bool CanReconnect => _networkRuntime.CanReconnect;
         public int LocalPlayerID => _networkRuntime.PlayerID;
         public int PlayerCount => _inputApplier.PlayerCount;
         public int NormalFrameCount { get; private set; }
         public int PredictedFrameCount { get; private set; }
         public int PredictedInputCount { get; private set; }
         public int LastPredictedCount { get; private set; }
+        public int RollbackRestoreCount => _rollbackMetrics.RestoreCount;
+        public int RollbackResimulateCount => _rollbackMetrics.ResimulateCount;
+
+        /// <summary>底层传输连接状态发生变化。</summary>
+        public event Action<NetworkInputClientConnectionState> ConnectionStateChanged
+        {
+            add=>_networkRuntime.ConnectionStateChanged+=value;
+            remove=>_networkRuntime.ConnectionStateChanged-=value;
+        }
 
         /// <summary>
         /// 创建多人网络回滚 Runtime。构造阶段不订阅 Runner；网络握手完成后显式 Mount。
@@ -73,6 +85,7 @@ namespace FrameWork.NetworkSync
 
             _rollbackAdapter=new WorldRollbackAdapter<FrameInputSet>(_world,_world,_inputApplier,null);
             _rollbackAdapter.SetFrameCommandReplayBinding(new RollbackFrameCommandReplayBinding(commandBuffer,commandApplier));
+            _rollbackAdapter.AddRollbackRestoreListener(_rollbackMetrics);
 
             _snapshotBuffer=new SnapshotRingBuffer<EcsWorldSnapshot>(snapshotRingCapacity);
             _coordinator=new RollbackCoordinator<FrameInputSet,EcsWorldSnapshot>(
@@ -125,6 +138,13 @@ namespace FrameWork.NetworkSync
             return _networkRuntime.Tick();
         }
 
+        /// <summary>在保留当前 World / Runner / Rollback 历史的前提下重建底层 Transport。</summary>
+        public void Reconnect()
+        {
+            ThrowIfDisposed();
+            _networkRuntime.Reconnect();
+        }
+
         /// <summary>注册回滚 Restore/Resimulate 后置监听器，例如 Buff Runtime 重建。</summary>
         public void AddRollbackRestoreListener(IRollbackRestoreListener listener)
         {
@@ -151,6 +171,7 @@ namespace FrameWork.NetworkSync
             if(_disposed) return;
             Unmount();
             _disposed=true;
+            _rollbackAdapter.RemoveRollbackRestoreListener(_rollbackMetrics);
             _networkRuntime.Dispose();
             _snapshotBuffer.Clear();
         }
@@ -239,6 +260,15 @@ namespace FrameWork.NetworkSync
         private void ThrowIfDisposed()
         {
             if(_disposed) throw new ObjectDisposedException(nameof(NetworkRollbackSimulationRuntime));
+        }
+
+        private sealed class RollbackMetricsListener : IRollbackRestoreListener
+        {
+            public int RestoreCount { get; private set; }
+            public int ResimulateCount { get; private set; }
+
+            public void OnRollbackWorldRestored(World world,int restoredFrame)=>RestoreCount++;
+            public void OnRollbackResimulated(World world,int currentFrame)=>ResimulateCount++;
         }
     }
 }

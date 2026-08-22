@@ -47,6 +47,7 @@ namespace View
         private EntityViewBinder _binder;
         private IViewBridge _viewBridge;
         private Entity _playerEntity;
+        private readonly List<NetworkPlayerBinding> _networkPlayerBindings=new();
 
         private bool _playerBuffUIAttached = false;
 
@@ -63,6 +64,27 @@ namespace View
             {
                 Debug.LogError("[SimulationInitializer] TimeSimulator.Instance missing!");
                 return;
+            }
+
+            NetworkRollbackBootstrap networkRollbackBootstrap=ResolveNetworkRollbackBootstrap();
+            RollbackBootstrap rollbackBootstrap=ResolveRollbackBootstrap();
+            bool networkMode=networkRollbackBootstrap!=null&&networkRollbackBootstrap.isActiveAndEnabled&&networkRollbackBootstrap.NetworkEnabled;
+
+            if(networkMode)
+            {
+                if(rollbackBootstrap!=null&&rollbackBootstrap.isActiveAndEnabled)
+                {
+                    Debug.LogError("SimulationInitializer Start Error: NetworkRollbackBootstrap 与 RollbackBootstrap 不能同时启用，请在网络场景禁用 RollbackBootstrap。");
+                    return;
+                }
+
+                if(!networkRollbackBootstrap.PrepareBeforeSimulationInitialization(_inputAdapter,out string prepareMessage))
+                {
+                    Debug.LogError($"SimulationInitializer Start Error: Network PreInitialization Failed: {prepareMessage}");
+                    return;
+                }
+
+                Debug.Log($"SimulationInitializer Start Log: {prepareMessage}");
             }
 
             // ---------- 核心世界 ----------
@@ -90,7 +112,7 @@ namespace View
             _viewBridge = new ViewBridge(_binder, _viewManager, _buffSystem, _world);
 
             // ---------- 系统注册（按 sequence 顺序）----------
-            _world.AddSystem(new ViewSpawnSystem(_viewManager));
+            _world.AddSystem(new ViewSpawnSystem(_viewManager,_binder));
             _world.AddSystem(new EntityViewBindingSystem(_binder));
             _world.AddSystem(new InputMoveSystem());
             _world.AddSystem(new MovementSystem());
@@ -101,7 +123,10 @@ namespace View
             _world.AddSystem(new EntityDestroySystem(_viewManager));
 
             // ---------- 创建玩家实体 ----------
-            CreatePlayerEntity();
+            if(networkMode)
+                CreateNetworkPlayerEntities(networkRollbackBootstrap.PlayerCount,_inputAdapter.PlayerID,networkRollbackBootstrap.PlayerSpawnSpacing);
+            else
+                CreatePlayerEntity();
 
             if (_buffTextHudPresenter != null)
                 _buffTextHudPresenter.Initialize(_buffSystem, _playerEntity);
@@ -126,10 +151,7 @@ namespace View
             }
 
             // ---------- 回滚系统自动接入 ----------
-            NetworkRollbackBootstrap networkRollbackBootstrap = ResolveNetworkRollbackBootstrap();
-            RollbackBootstrap rollbackBootstrap = ResolveRollbackBootstrap();
-
-            if (networkRollbackBootstrap != null && networkRollbackBootstrap.isActiveAndEnabled && networkRollbackBootstrap.NetworkEnabled)
+            if (networkMode)
             {
                 if (rollbackBootstrap != null && rollbackBootstrap.isActiveAndEnabled)
                 {
@@ -267,6 +289,18 @@ namespace View
         /// <summary>当前 BuffSystem，用于 Rollback Restore 后重建派生缓存。</summary>
         internal BuffSystemCore RuntimeBuffSystem => _buffSystem;
 
+        /// <summary>当前 ViewManager，用于 Rollback 后重建瞬时 View 映射。</summary>
+        internal ViewManager RuntimeViewManager => _viewManager;
+
+        /// <summary>当前 EntityViewBinder，用于 Rollback 后重建瞬时 View 映射。</summary>
+        internal EntityViewBinder RuntimeViewBinder => _binder;
+
+        /// <summary>当前网络玩家使用的 View Prefab，仅用于运行时 View 审计。</summary>
+        internal GameObject RuntimePlayerPrefab => _playerPrefab;
+
+        /// <summary>按 PlayerID 升序创建的确定性网络玩家集合。</summary>
+        internal IReadOnlyList<NetworkPlayerBinding> RuntimeNetworkPlayers => _networkPlayerBindings;
+
         /// <summary>
         /// 显式切换旧版 BeforeTick 直接输入写入所有权。
         /// 网络回滚挂载时必须关闭，避免 CollectSnapshot 被旧路径提前消费。
@@ -290,30 +324,44 @@ namespace View
             _directInputWriteEnabled = enabled;
         }
 
-        /// <summary>把已有玩家 Entity 显式绑定到网络 PlayerID。</summary>
-        internal void SetNetworkPlayerIdentity(Entity entity,int playerID)
+        /// <summary>按 PlayerID 升序创建所有网络玩家，确保不同客户端 Entity 身份一致。</summary>
+        private void CreateNetworkPlayerEntities(int playerCount,int localPlayerID,float spacing)
         {
-            if (_world == null || !_world.IsAlive(entity))
-                throw new InvalidOperationException($"SimulationInitializer SetNetworkPlayerIdentity Error: Entity Is Not Alive: {entity}");
+            _networkPlayerBindings.Clear();
+            _playerEntity=default;
 
-            if (playerID <= 0)
-                throw new ArgumentOutOfRangeException(nameof(playerID));
+            for(int playerID=1;playerID<=playerCount;playerID++)
+            {
+                Vector3 spawnPos=NetworkPlayerLayout.GetSpawnPosition(playerID,playerCount,spacing);
+                Entity entity=CreateNetworkPlayerEntity(playerID,spawnPos);
+                _networkPlayerBindings.Add(new NetworkPlayerBinding(playerID,entity));
 
-            _world.SetComponent(entity,new PlayerInputSnapshotComponent(0,playerID,0f,0f));
+                if(playerID==localPlayerID)
+                    _playerEntity=entity;
+            }
+
+            if(!_playerEntity.IsValid)
+                throw new InvalidOperationException($"SimulationInitializer CreateNetworkPlayerEntities Error: Local Player Missing: PlayerID={localPlayerID}");
+
+            // Debug TestBuff 是逻辑状态；网络模式必须对所有 Player 按相同顺序添加，避免客户端初始状态分叉。
+            for(int i=0;i<_networkPlayerBindings.Count;i++)
+            {
+                Entity entity=_networkPlayerBindings[i].Entity;
+                var buffCmd=new AddBuffCommand(entity,configId:1,source:entity,stack:1);
+                _buffSystem.AddBuff(buffCmd);
+            }
+
+            Debug.Log(
+                $"SimulationInitializer CreateNetworkPlayerEntities Log: Players={playerCount}, LocalPlayerID={localPlayerID}, " +
+                $"LocalEntity={_playerEntity}, SpawnSpacing={spacing}");
         }
 
-        /// <summary>创建一个用于网络会话的远端玩家 Entity。</summary>
-        internal Entity CreateNetworkPlayerEntity(int playerID,Vector3 spawnPos)
+        private Entity CreateNetworkPlayerEntity(int playerID,Vector3 spawnPos)
         {
-            if (_world == null)
-                throw new InvalidOperationException("SimulationInitializer CreateNetworkPlayerEntity Error: World Is Null");
-
-            if (playerID <= 0)
-                throw new ArgumentOutOfRangeException(nameof(playerID));
-
             Entity entity=_world.CreateEntity();
             _world.SetComponent(entity,new PositionComponent(spawnPos.x,spawnPos.y,spawnPos.z));
             _world.SetComponent(entity,new VelocityComponent(0f,0f,0f));
+            _world.SetComponent(entity,new ViewPrefabComponent(1));
             _world.SetComponent(entity,new PrefabViewRequestComponent(1));
             _world.SetComponent(entity,new PlayerInputSnapshotComponent(0,playerID,0f,0f));
             _world.SetComponent(entity,new PlayerTagComponent());
@@ -417,6 +465,7 @@ namespace View
 
         private void CreatePlayerEntity()
         {
+            _networkPlayerBindings.Clear();
             int playerID = _inputAdapter != null && _inputAdapter.PlayerID > 0 ? _inputAdapter.PlayerID : 1;
             _playerEntity = CreateNetworkPlayerEntity(playerID,Vector3.zero);
 

@@ -8,9 +8,9 @@ namespace PoolSystem
 {
     public sealed class GameObjectPoolCenter : Singleton<GameObjectPoolCenter>
     {
-        [SerializeField, LabelText("���ӳ�ʼ������")] 
+        [SerializeField, LabelText("池子初始化个数")] 
         private int _defaultInitialCapacity = 8;
-        [SerializeField, LabelText("UI�ظ��ڵ�")]
+        [SerializeField, LabelText("UI池根节点")]
         private RectTransform _sceneUIRoot;
         private int _poolIDCounter = 0;
         private readonly Dictionary<int, GameObjectPool> _gameObjectPools = new();
@@ -19,6 +19,10 @@ namespace PoolSystem
         private readonly Dictionary<int, int> _uiPrefabIdToPoolId = new();
         private Transform _worldPoolRoot;
         private RectTransform _uiPoolRoot;
+        
+        /// <summary>整个 PoolCenter 是否正在结束生命周期。</summary>
+        public bool IsShuttingDown { get; private set; }
+
         protected override void Awake()
         {
             base.Awake();
@@ -134,6 +138,10 @@ namespace PoolSystem
             _normalPrefabIdToPoolId.Clear();
             _uiPrefabIdToPoolId.Clear();
         }
-        private void OnDestroy() => ClearAllPools();
+        private void OnDestroy()
+        {
+            IsShuttingDown=true;
+            ClearAllPools();
+        }
     }
 }

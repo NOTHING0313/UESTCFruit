@@ -654,9 +654,12 @@ public class World : IEcsWorldSnapshotProvider
 
         try
         {
+            // 保留完整 RegisteredComponentTypes，确保 ComponentMask256 注册 ID 与已缓存 Query Mask 在 Restore 后保持稳定。
+            // 仅过滤 Snapshot 中的组件值；ViewID / ViewRequest 等瞬时表现状态不属于逻辑权威状态。
             IReadOnlyList<Type> registeredTypes = _registry.CaptureRegisteredTypes();
             EcsEntityManagerSnapshot entityManagerSnapshot = _entityManager.CaptureSnapshot();
             List<EcsComponentStoreSnapshot> componentStores = _componentManager.CaptureStoreSnapshots();
+            componentStores.RemoveAll(store => IsRollbackTransientComponent(store.ComponentType));
             List<EcsSingletonSnapshot> singletons = CaptureSingletonSnapshots();
 
             snapshot = new EcsWorldSnapshot(frameNumber, registeredTypes, entityManagerSnapshot, componentStores, singletons);
@@ -824,7 +827,7 @@ public class World : IEcsWorldSnapshotProvider
             Type componentType = pair.Key;
             Entity entity = pair.Value;
 
-            if (componentType == null || !_entityManager.IsAlive(entity))
+            if (componentType == null || IsRollbackTransientComponent(componentType) || !_entityManager.IsAlive(entity))
                 continue;
 
             if (!_componentManager.TryGetComponentDebugValue(entity, componentType, out object component) || component == null)
@@ -1191,6 +1194,11 @@ public class World : IEcsWorldSnapshotProvider
             EcsSingletonSnapshot snapshot = snapshots[i];
             _singletonEntities[snapshot.ComponentType] = snapshot.Entity;
         }
+    }
+
+    private static bool IsRollbackTransientComponent(Type componentType)
+    {
+        return componentType != null && typeof(IRollbackTransientComponent).IsAssignableFrom(componentType);
     }
 
     private static int CountAliveEntities(EcsEntityManagerSnapshot snapshot)

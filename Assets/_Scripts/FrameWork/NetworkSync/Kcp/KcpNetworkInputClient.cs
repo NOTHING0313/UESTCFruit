@@ -9,9 +9,11 @@ namespace FrameWork.NetworkSync
     /// <summary>
     /// 基于 kcp2k Reliable Channel 的网络输入客户端。
     /// </summary>
-    public sealed class KcpNetworkInputClient : INetworkInputClient
+    public sealed class KcpNetworkInputClient : INetworkInputClient,IReconnectableNetworkInputClient
     {
         private readonly KcpClient _client;
+        private readonly string _serverAddress;
+        private readonly int _serverPort;
         private readonly Queue<ServerAuthorityFramePacket> _authorityQueue=new();
         private uint _nextSequence=1;
         private bool _isDisposed;
@@ -20,7 +22,8 @@ namespace FrameWork.NetworkSync
         public uint SessionId { get; }
         public int PlayerID { get; }
         public bool IsConnected => _client.connected;
-        public bool IsReady => IsConnected&&!_isDisposed;
+        public bool IsReady => ConnectionState==NetworkInputClientConnectionState.Connected&&IsConnected&&!_isDisposed;
+        public NetworkInputClientConnectionState ConnectionState { get; private set; }=NetworkInputClientConnectionState.Disconnected;
         public IPEndPoint LocalEndPoint => _client.LocalEndPoint as IPEndPoint;
         public uint LastSentSequence { get; private set; }
         public NetworkInputExchangeRejectReason LastRejectReason { get; private set; }
@@ -29,6 +32,9 @@ namespace FrameWork.NetworkSync
         public string LastKcpErrorMessage { get; private set; }
         public bool HasTransportError => LastKcpError.HasValue;
         public string LastTransportError => LastKcpError.HasValue?$"{LastKcpError}: {LastKcpErrorMessage}":null;
+        public bool CanReconnect => !_isDisposed&&(ConnectionState==NetworkInputClientConnectionState.Disconnected||ConnectionState==NetworkInputClientConnectionState.Faulted);
+
+        public event Action<NetworkInputClientConnectionState> ConnectionStateChanged;
 
         public KcpNetworkInputClient(string serverAddress,int serverPort,uint sessionId,int playerID,KcpConfig config=null)
         {
@@ -38,9 +44,32 @@ namespace FrameWork.NetworkSync
 
             SessionId=sessionId;
             PlayerID=playerID;
+            _serverAddress=serverAddress;
+            _serverPort=serverPort;
 
             _client=new KcpClient(OnConnected,OnData,OnDisconnected,OnError,config??KcpNetworkConfigFactory.Create());
-            _client.Connect(serverAddress,(ushort)serverPort);
+            ConnectTransport();
+        }
+
+        /// <summary>
+        /// 在同一个 Client / Session / PlayerID 上重新建立 KCP Transport。
+        /// 保留应用层发送 Sequence，清理旧连接残留的 Authority 与错误状态。
+        /// </summary>
+        public void Reconnect()
+        {
+            ThrowIfDisposed();
+
+            if(!CanReconnect)
+                throw new InvalidOperationException(
+                    $"KCP Client Cannot Reconnect From State={ConnectionState}: PlayerID={PlayerID}");
+
+            _authorityQueue.Clear();
+            LastRejectReason=NetworkInputExchangeRejectReason.None;
+            LastDecodeError=NetworkPacketDecodeError.None;
+            LastKcpError=null;
+            LastKcpErrorMessage=null;
+
+            ConnectTransport();
         }
 
         /// <summary>推进 KCP 收发、ACK 与重传。</summary>
@@ -90,12 +119,20 @@ namespace FrameWork.NetworkSync
             _isDisposed=true;
             _client.Disconnect();
             _authorityQueue.Clear();
+            SetConnectionState(NetworkInputClientConnectionState.Disconnected);
+        }
+
+        private void ConnectTransport()
+        {
+            SetConnectionState(NetworkInputClientConnectionState.Connecting);
+            _client.Connect(_serverAddress,(ushort)_serverPort);
         }
 
         private void OnConnected()
         {
             LastKcpError=null;
             LastKcpErrorMessage=null;
+            SetConnectionState(NetworkInputClientConnectionState.Connected);
         }
 
         private void OnData(ArraySegment<byte> message,KcpChannel channel)
@@ -128,12 +165,25 @@ namespace FrameWork.NetworkSync
             _authorityQueue.Enqueue(packet);
         }
 
-        private void OnDisconnected(){}
+        private void OnDisconnected()
+        {
+            if(_isDisposed) return;
+            if(ConnectionState!=NetworkInputClientConnectionState.Faulted)
+                SetConnectionState(NetworkInputClientConnectionState.Disconnected);
+        }
 
         private void OnError(ErrorCode error,string message)
         {
             LastKcpError=error;
             LastKcpErrorMessage=message;
+            SetConnectionState(NetworkInputClientConnectionState.Faulted);
+        }
+
+        private void SetConnectionState(NetworkInputClientConnectionState state)
+        {
+            if(ConnectionState==state) return;
+            ConnectionState=state;
+            ConnectionStateChanged?.Invoke(state);
         }
 
         private void ThrowIfDisposed()

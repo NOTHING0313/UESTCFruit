@@ -17,6 +17,8 @@ namespace FrameWork.NetworkSync
         public uint SessionId => _pump.Client.SessionId;
         public int PlayerID => _pump.Client.PlayerID;
         public bool IsReady => _pump.Client.IsReady;
+        public NetworkInputClientConnectionState ConnectionState => _pump.ConnectionState;
+        public bool CanReconnect => _pump.CanReconnect;
         public uint LastSentSequence => _pump.Client.LastSentSequence;
         public IPEndPoint LocalEndPoint => _pump.Client.LocalEndPoint;
         public int ReceivedAuthorityCount => _pump.ReceivedAuthorityCount;
@@ -24,6 +26,13 @@ namespace FrameWork.NetworkSync
         public int OutOfOrderAuthorityCount => _authorityDriver.OutOfOrderAuthorityCount;
         public int LastAuthorityFrame => _authorityDriver.LastAuthorityFrame;
         public string LastTransportError => _pump.Client.LastTransportError;
+
+        /// <summary>底层传输连接状态发生变化。</summary>
+        public event Action<NetworkInputClientConnectionState> ConnectionStateChanged
+        {
+            add=>_pump.ConnectionStateChanged+=value;
+            remove=>_pump.ConnectionStateChanged-=value;
+        }
 
         public NetworkRollbackClientRuntime(INetworkInputClient client,NetworkAuthorityRollbackDriver authorityDriver)
         {
@@ -37,6 +46,13 @@ namespace FrameWork.NetworkSync
         {
             ThrowIfDisposed();
             return _pump.Tick();
+        }
+
+        /// <summary>重新建立支持该能力的底层 Transport。</summary>
+        public void Reconnect()
+        {
+            ThrowIfDisposed();
+            _pump.Reconnect();
         }
 
         /// <summary>发送本地玩家输入。</summary>

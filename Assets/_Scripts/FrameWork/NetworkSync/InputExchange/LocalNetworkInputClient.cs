@@ -17,13 +17,16 @@ namespace FrameWork.NetworkSync
         public NetworkInputTransportMode TransportMode => NetworkInputTransportMode.RawUdp;
         public uint SessionId { get; }
         public int PlayerID { get; }
-        public bool IsReady => !_isDisposed;
+        public bool IsReady => ConnectionState==NetworkInputClientConnectionState.Connected&&!_isDisposed;
+        public NetworkInputClientConnectionState ConnectionState { get; private set; }=NetworkInputClientConnectionState.Connected;
         public IPEndPoint LocalEndPoint => _transport.LocalEndPoint;
         public uint LastSentSequence { get; private set; }
         public NetworkInputExchangeRejectReason LastRejectReason { get; private set; }
         public NetworkPacketDecodeError LastDecodeError { get; private set; }
         public bool HasTransportError => false;
         public string LastTransportError => null;
+
+        public event Action<NetworkInputClientConnectionState> ConnectionStateChanged;
 
         public LocalNetworkInputClient(UdpTransportConfig config,IPEndPoint serverEndPoint,uint sessionId,int playerID)
         {
@@ -95,6 +98,14 @@ namespace FrameWork.NetworkSync
             if(_isDisposed) return;
             _isDisposed=true;
             _transport.Dispose();
+            SetConnectionState(NetworkInputClientConnectionState.Disconnected);
+        }
+
+        private void SetConnectionState(NetworkInputClientConnectionState state)
+        {
+            if(ConnectionState==state) return;
+            ConnectionState=state;
+            ConnectionStateChanged?.Invoke(state);
         }
 
         private void ThrowIfDisposed()

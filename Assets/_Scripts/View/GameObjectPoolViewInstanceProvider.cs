@@ -16,22 +16,27 @@ namespace View
         GameObject IViewInstanceProvider.Spawn(GameObject prefab, Vector3 position, Quaternion rotation)
         {
             if (prefab == null) return null;
-            GameObject instance = GameObjectPoolCenter.Instance.GetInstance(prefab, position, rotation);
+
+            GameObjectPoolCenter center=GameObjectPoolCenter.Instance;
+            if (center == null || center.IsShuttingDown) return null;
+
+            GameObject instance=center.GetInstance(prefab,position,rotation,_worldViewRoot);
             if (instance == null) return null;
+
             instance.SetActive(true);
-            if (_worldViewRoot != null)
-                instance.transform.SetParent(_worldViewRoot, false);
-            // 移除 ViewAutoRecycle 的挂载，正常回收由 ViewDestroySystem 负责
             return instance;
         }
 
         void IViewInstanceProvider.Release(GameObject instance)
         {
-            if (instance != null)
-                GameObjectPoolCenter.Instance.Release(instance);
+            if (instance == null) return;
+
+            GameObjectPoolCenter center=GameObjectPoolCenter.Instance;
+            if (center == null || center.IsShuttingDown) return;
+
+            center.Release(instance);
         }
 
         void IViewInstanceProvider.Clear() { }
     }
-    // 删除整个 ViewAutoRecycle 类定义
 }
